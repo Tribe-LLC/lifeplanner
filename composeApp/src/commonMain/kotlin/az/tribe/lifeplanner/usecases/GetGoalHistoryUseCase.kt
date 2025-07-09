@@ -1,7 +1,7 @@
 package az.tribe.lifeplanner.usecases
 
-import az.tribe.lifeplanner.domain.GoalHistoryRepository
-import az.tribe.lifeplanner.domain.GoalChange
+import az.tribe.lifeplanner.domain.repository.GoalHistoryRepository
+import az.tribe.lifeplanner.domain.model.GoalChange
 
 class GetGoalHistoryUseCase(private val repository: GoalHistoryRepository) {
     suspend operator fun invoke(goalId: String): List<GoalChange> {

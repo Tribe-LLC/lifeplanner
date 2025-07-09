@@ -1,7 +1,7 @@
 package az.tribe.lifeplanner.usecases
 
-import az.tribe.lifeplanner.domain.GoalAnalytics
-import az.tribe.lifeplanner.domain.GoalRepository
+import az.tribe.lifeplanner.domain.model.GoalAnalytics
+import az.tribe.lifeplanner.domain.repository.GoalRepository
 
 class GetGoalAnalyticsUseCase(
     private val repository: GoalRepository

@@ -1,0 +1,1002 @@
+[
+  {
+    "id": "5b3d1ed9-fde4-4679-9c14-a34e0ecdf33a",
+    "category": "FAMILY",
+    "title": "Plan family day outings #1",
+    "description": "Organize monthly day trips with family",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-07-30",
+    "progress": 0
+  },
+  {
+    "id": "497809a4-cd03-46b2-bd19-c9e2b564acf4",
+    "category": "PHYSICAL",
+    "title": "Walk 10,000 steps daily #2",
+    "description": "Maintain fitness through consistent activity",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-10-23",
+    "progress": 0
+  },
+  {
+    "id": "4819989a-1426-4a90-8722-0c12242287fa",
+    "category": "FINANCIAL",
+    "title": "Increase sales by 15% #3",
+    "description": "Execute new sales strategy to boost quarterly revenue",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-06-30",
+    "progress": 0
+  },
+  {
+    "id": "9cee59ac-32e9-4299-b001-5a8004b1c1bb",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #4",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-08-01",
+    "progress": 0
+  },
+  {
+    "id": "4f9c11a1-4fe6-4c98-9dd1-72ad688bab0f",
+    "category": "FINANCIAL",
+    "title": "Increase sales by 15% #5",
+    "description": "Execute new sales strategy to boost quarterly revenue",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-08-10",
+    "progress": 0
+  },
+  {
+    "id": "d1762094-6989-4303-bb40-1a6e6cdbe3ab",
+    "category": "EMOTIONAL",
+    "title": "Meditate daily #6",
+    "description": "Meditate 10 minutes every morning",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-09-18",
+    "progress": 0
+  },
+  {
+    "id": "85389451-85a1-4eb1-a2ac-a06907110858",
+    "category": "FAMILY",
+    "title": "Plan family day outings #7",
+    "description": "Organize monthly day trips with family",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-06-30",
+    "progress": 0
+  },
+  {
+    "id": "ff2e5a18-a8b0-48cb-91ae-b1f821157a87",
+    "category": "FINANCIAL",
+    "title": "Increase sales by 15% #8",
+    "description": "Execute new sales strategy to boost quarterly revenue",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-08-19",
+    "progress": 0
+  },
+  {
+    "id": "ceac141b-c1d7-4553-b5b6-cd0bac12aa1b",
+    "category": "EMOTIONAL",
+    "title": "Meditate daily #9",
+    "description": "Meditate 10 minutes every morning",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-10-12",
+    "progress": 0
+  },
+  {
+    "id": "e1fbe8d9-0b77-425a-aaea-54351ccbdabc",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #10",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-09-02",
+    "progress": 0
+  },
+  {
+    "id": "0f3185a7-d4cd-4821-9a4b-9ef2dc035e2b",
+    "category": "CAREER",
+    "title": "Lead quarterly strategy meeting #11",
+    "description": "Prepare and lead Q2 strategy session with department heads",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-08-13",
+    "progress": 0
+  },
+  {
+    "id": "8e7932cb-971f-43a2-bed8-3c511e4884fe",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #12",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-11-01",
+    "progress": 0
+  },
+  {
+    "id": "408b35d5-b4c8-4a94-a580-613f6d80dad0",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #13",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-09-05",
+    "progress": 0
+  },
+  {
+    "id": "270071ac-8ed9-4b5c-a8db-8bb7701fe174",
+    "category": "CAREER",
+    "title": "Lead quarterly strategy meeting #14",
+    "description": "Prepare and lead Q2 strategy session with department heads",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-06-25",
+    "progress": 0
+  },
+  {
+    "id": "482b9511-0533-46d1-aa80-a3141c49badd",
+    "category": "CAREER",
+    "title": "Lead quarterly strategy meeting #15",
+    "description": "Prepare and lead Q2 strategy session with department heads",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-07-29",
+    "progress": 0
+  },
+  {
+    "id": "fa5945d5-6bc9-4102-b396-08ee22f94a90",
+    "category": "FAMILY",
+    "title": "Plan family day outings #16",
+    "description": "Organize monthly day trips with family",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-11-11",
+    "progress": 0
+  },
+  {
+    "id": "6b427b5d-35e0-4a10-80d6-b9d0cb7bf62f",
+    "category": "CAREER",
+    "title": "Lead quarterly strategy meeting #17",
+    "description": "Prepare and lead Q2 strategy session with department heads",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-11-01",
+    "progress": 0
+  },
+  {
+    "id": "cc060af9-548b-4df8-9218-5667887ec580",
+    "category": "SOCIAL",
+    "title": "Host a social dinner #18",
+    "description": "Invite friends over for a monthly gathering",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-11-10",
+    "progress": 0
+  },
+  {
+    "id": "478246b8-5734-45e1-a218-f3ac6614fecd",
+    "category": "FINANCIAL",
+    "title": "Increase sales by 15% #19",
+    "description": "Execute new sales strategy to boost quarterly revenue",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-07-09",
+    "progress": 0
+  },
+  {
+    "id": "85b8e0c9-4507-4205-b3e2-b0560d6ccbe3",
+    "category": "CAREER",
+    "title": "Lead quarterly strategy meeting #20",
+    "description": "Prepare and lead Q2 strategy session with department heads",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-10-17",
+    "progress": 0
+  },
+  {
+    "id": "13d0048c-32dc-4130-aff5-c87ea9f0bd69",
+    "category": "SOCIAL",
+    "title": "Host a social dinner #21",
+    "description": "Invite friends over for a monthly gathering",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-11-05",
+    "progress": 0
+  },
+  {
+    "id": "6a53a06f-4ed2-4e08-8309-bf1275147c6b",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #22",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-09-19",
+    "progress": 0
+  },
+  {
+    "id": "3be6820f-03ee-4c1d-982d-10aaef166176",
+    "category": "FINANCIAL",
+    "title": "Increase sales by 15% #23",
+    "description": "Execute new sales strategy to boost quarterly revenue",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-10-05",
+    "progress": 0
+  },
+  {
+    "id": "0fcf710a-f29a-4d6f-a5d8-02ce3c7bab58",
+    "category": "FINANCIAL",
+    "title": "Increase sales by 15% #24",
+    "description": "Execute new sales strategy to boost quarterly revenue",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-08-30",
+    "progress": 0
+  },
+  {
+    "id": "5787b975-be75-4aa8-9e71-790315937a43",
+    "category": "FINANCIAL",
+    "title": "Increase sales by 15% #25",
+    "description": "Execute new sales strategy to boost quarterly revenue",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-06-27",
+    "progress": 0
+  },
+  {
+    "id": "1046ba36-5d82-4026-bd11-0d0eecf1154b",
+    "category": "CAREER",
+    "title": "Lead quarterly strategy meeting #26",
+    "description": "Prepare and lead Q2 strategy session with department heads",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-10-15",
+    "progress": 0
+  },
+  {
+    "id": "d4c5adfa-23f1-41f0-8bcd-d7d00ff01d66",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #27",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-10-20",
+    "progress": 0
+  },
+  {
+    "id": "6f311c99-c39f-4248-8327-eb1616506e7c",
+    "category": "PHYSICAL",
+    "title": "Walk 10,000 steps daily #28",
+    "description": "Maintain fitness through consistent activity",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-11-02",
+    "progress": 0
+  },
+  {
+    "id": "ed45d75d-7b63-4c68-8a60-5b5a856aa2f1",
+    "category": "EMOTIONAL",
+    "title": "Meditate daily #29",
+    "description": "Meditate 10 minutes every morning",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-10-26",
+    "progress": 0
+  },
+  {
+    "id": "5e0b4c82-6880-43e6-a5a3-89151baa70d4",
+    "category": "EMOTIONAL",
+    "title": "Meditate daily #30",
+    "description": "Meditate 10 minutes every morning",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-09-29",
+    "progress": 0
+  },
+  {
+    "id": "0951675e-c9a2-4547-8837-bf3b4b1b95c6",
+    "category": "PHYSICAL",
+    "title": "Walk 10,000 steps daily #31",
+    "description": "Maintain fitness through consistent activity",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-06-21",
+    "progress": 0
+  },
+  {
+    "id": "15a60c18-b53d-4832-9832-b5a1821c778d",
+    "category": "FAMILY",
+    "title": "Plan family day outings #32",
+    "description": "Organize monthly day trips with family",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-09-22",
+    "progress": 0
+  },
+  {
+    "id": "27ec5ec6-e700-4c95-8537-dd6b853aefba",
+    "category": "EMOTIONAL",
+    "title": "Meditate daily #33",
+    "description": "Meditate 10 minutes every morning",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-09-17",
+    "progress": 0
+  },
+  {
+    "id": "94b10b35-0a05-4d19-91ba-c7bdb1a26687",
+    "category": "PHYSICAL",
+    "title": "Walk 10,000 steps daily #34",
+    "description": "Maintain fitness through consistent activity",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-09-25",
+    "progress": 0
+  },
+  {
+    "id": "dca5f572-d766-4523-9c47-8cb6a30bfccc",
+    "category": "EMOTIONAL",
+    "title": "Meditate daily #35",
+    "description": "Meditate 10 minutes every morning",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-08-26",
+    "progress": 0
+  },
+  {
+    "id": "231d66ee-c40b-431c-9784-05bfbcb33a6b",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #36",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-07-23",
+    "progress": 0
+  },
+  {
+    "id": "d13b68d3-aac7-4ec3-981a-dbed8692e4aa",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #37",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-07-27",
+    "progress": 0
+  },
+  {
+    "id": "5fe40844-cd4f-4c49-9864-ceb6bf5c9aa5",
+    "category": "CAREER",
+    "title": "Lead quarterly strategy meeting #38",
+    "description": "Prepare and lead Q2 strategy session with department heads",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-08-24",
+    "progress": 0
+  },
+  {
+    "id": "ff5d48d0-26cc-4eb4-9151-f3fa3e8eaf29",
+    "category": "PHYSICAL",
+    "title": "Walk 10,000 steps daily #39",
+    "description": "Maintain fitness through consistent activity",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-09-11",
+    "progress": 0
+  },
+  {
+    "id": "bc61930e-952c-4e8c-97e8-28e403def79a",
+    "category": "PHYSICAL",
+    "title": "Walk 10,000 steps daily #40",
+    "description": "Maintain fitness through consistent activity",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-09-08",
+    "progress": 0
+  },
+  {
+    "id": "aed7cc06-9df1-4c0e-93e2-ba0627c1bf2e",
+    "category": "PHYSICAL",
+    "title": "Walk 10,000 steps daily #41",
+    "description": "Maintain fitness through consistent activity",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-08-06",
+    "progress": 0
+  },
+  {
+    "id": "2751bc7d-3af6-44f5-bea9-ba02bbeaab6e",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #42",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-09-17",
+    "progress": 0
+  },
+  {
+    "id": "2b2aebcb-343f-4b31-8a01-815b4e0631ea",
+    "category": "EMOTIONAL",
+    "title": "Meditate daily #43",
+    "description": "Meditate 10 minutes every morning",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-07-30",
+    "progress": 0
+  },
+  {
+    "id": "c1be3e6c-9f0d-476a-8225-489ebf163044",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #44",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-09-19",
+    "progress": 0
+  },
+  {
+    "id": "911fcd39-2889-42f4-a3e9-04ed2247caed",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #45",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-07-31",
+    "progress": 0
+  },
+  {
+    "id": "2acc4753-74cb-4c04-a2f2-7e6afdcc5c80",
+    "category": "FAMILY",
+    "title": "Plan family day outings #46",
+    "description": "Organize monthly day trips with family",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-07-20",
+    "progress": 0
+  },
+  {
+    "id": "56acd42f-b695-4c56-9e20-1ad13d351dfd",
+    "category": "EMOTIONAL",
+    "title": "Meditate daily #47",
+    "description": "Meditate 10 minutes every morning",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-09-10",
+    "progress": 0
+  },
+  {
+    "id": "c45cc71a-4767-4d9c-bff0-2b92a9cdccf2",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #48",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-09-23",
+    "progress": 0
+  },
+  {
+    "id": "b17716fc-bd70-4b84-9364-5b4d13d4954f",
+    "category": "PHYSICAL",
+    "title": "Walk 10,000 steps daily #49",
+    "description": "Maintain fitness through consistent activity",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-09-05",
+    "progress": 0
+  },
+  {
+    "id": "8bcb265f-ddba-4578-9764-3608e0808f6b",
+    "category": "SOCIAL",
+    "title": "Host a social dinner #50",
+    "description": "Invite friends over for a monthly gathering",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-09-26",
+    "progress": 0
+  },
+  {
+    "id": "644e256b-a40d-4268-bb87-1300878faf12",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #51",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-10-21",
+    "progress": 0
+  },
+  {
+    "id": "7583f3c2-34e9-47d9-b988-b42ebcd78527",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #52",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-07-13",
+    "progress": 0
+  },
+  {
+    "id": "e94ed959-4e99-45c6-8230-996431b96d07",
+    "category": "FAMILY",
+    "title": "Plan family day outings #53",
+    "description": "Organize monthly day trips with family",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-09-13",
+    "progress": 0
+  },
+  {
+    "id": "71315b43-186d-4dc1-928d-72e995151313",
+    "category": "SOCIAL",
+    "title": "Host a social dinner #54",
+    "description": "Invite friends over for a monthly gathering",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-09-30",
+    "progress": 0
+  },
+  {
+    "id": "acd14990-3852-4d34-82b8-70c8a3de74e9",
+    "category": "CAREER",
+    "title": "Lead quarterly strategy meeting #55",
+    "description": "Prepare and lead Q2 strategy session with department heads",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-08-27",
+    "progress": 0
+  },
+  {
+    "id": "7a14bc89-5d00-4fe7-9ad2-1ef295537118",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #56",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-11-06",
+    "progress": 0
+  },
+  {
+    "id": "3eb38230-1e6c-43f9-9dd5-eb2632813104",
+    "category": "CAREER",
+    "title": "Lead quarterly strategy meeting #57",
+    "description": "Prepare and lead Q2 strategy session with department heads",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-07-04",
+    "progress": 0
+  },
+  {
+    "id": "7e75fb1d-80f9-4467-8647-dad850b50e19",
+    "category": "CAREER",
+    "title": "Lead quarterly strategy meeting #58",
+    "description": "Prepare and lead Q2 strategy session with department heads",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-06-27",
+    "progress": 0
+  },
+  {
+    "id": "17ec484a-7eee-4d64-bf60-557954138b83",
+    "category": "PHYSICAL",
+    "title": "Walk 10,000 steps daily #59",
+    "description": "Maintain fitness through consistent activity",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-08-17",
+    "progress": 0
+  },
+  {
+    "id": "0f3c4be4-6218-4c72-90fc-deb9539cb644",
+    "category": "FAMILY",
+    "title": "Plan family day outings #60",
+    "description": "Organize monthly day trips with family",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-10-04",
+    "progress": 0
+  },
+  {
+    "id": "6f335209-46cf-4161-acf4-cbf0912091a1",
+    "category": "FAMILY",
+    "title": "Plan family day outings #61",
+    "description": "Organize monthly day trips with family",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-08-09",
+    "progress": 0
+  },
+  {
+    "id": "a634f051-6bf1-4922-a488-ff8d9b1d5a25",
+    "category": "EMOTIONAL",
+    "title": "Meditate daily #62",
+    "description": "Meditate 10 minutes every morning",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-07-26",
+    "progress": 0
+  },
+  {
+    "id": "f8fcba09-4e8d-4774-8ff7-6892859eb23b",
+    "category": "EMOTIONAL",
+    "title": "Meditate daily #63",
+    "description": "Meditate 10 minutes every morning",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-09-30",
+    "progress": 0
+  },
+  {
+    "id": "930eed54-456d-43d9-8db4-4a81e57c954d",
+    "category": "FINANCIAL",
+    "title": "Increase sales by 15% #64",
+    "description": "Execute new sales strategy to boost quarterly revenue",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-09-16",
+    "progress": 0
+  },
+  {
+    "id": "af2310cb-5420-4489-8a20-b849724220dd",
+    "category": "CAREER",
+    "title": "Lead quarterly strategy meeting #65",
+    "description": "Prepare and lead Q2 strategy session with department heads",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-07-11",
+    "progress": 0
+  },
+  {
+    "id": "35c11a12-a203-4617-8ab8-ddde4ce9864d",
+    "category": "EMOTIONAL",
+    "title": "Meditate daily #66",
+    "description": "Meditate 10 minutes every morning",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-07-18",
+    "progress": 0
+  },
+  {
+    "id": "dd985c29-efaf-4ebb-aa29-03e7e13ff400",
+    "category": "FAMILY",
+    "title": "Plan family day outings #67",
+    "description": "Organize monthly day trips with family",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-08-15",
+    "progress": 0
+  },
+  {
+    "id": "a63c60a5-bfb1-4fcd-86b7-bf7cce373ba2",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #68",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-10-01",
+    "progress": 0
+  },
+  {
+    "id": "82e04049-f3b9-4adc-8492-0c14429ae608",
+    "category": "SOCIAL",
+    "title": "Host a social dinner #69",
+    "description": "Invite friends over for a monthly gathering",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-10-19",
+    "progress": 0
+  },
+  {
+    "id": "393eb3c2-146f-4f7a-8eef-1a5c197b2d2f",
+    "category": "CAREER",
+    "title": "Lead quarterly strategy meeting #70",
+    "description": "Prepare and lead Q2 strategy session with department heads",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-10-05",
+    "progress": 0
+  },
+  {
+    "id": "a89fa544-c4a6-43da-b2a4-3f5656385e1e",
+    "category": "FAMILY",
+    "title": "Plan family day outings #71",
+    "description": "Organize monthly day trips with family",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-08-20",
+    "progress": 0
+  },
+  {
+    "id": "0ab2e77e-451a-4f51-adef-fa9d4b9247ba",
+    "category": "FINANCIAL",
+    "title": "Increase sales by 15% #72",
+    "description": "Execute new sales strategy to boost quarterly revenue",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-11-03",
+    "progress": 0
+  },
+  {
+    "id": "7443d889-b34c-41c3-8146-bbb3a157460a",
+    "category": "FAMILY",
+    "title": "Plan family day outings #73",
+    "description": "Organize monthly day trips with family",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-07-15",
+    "progress": 0
+  },
+  {
+    "id": "acc4b82e-ccb0-4de2-9ded-01ba563d5d1f",
+    "category": "FINANCIAL",
+    "title": "Increase sales by 15% #74",
+    "description": "Execute new sales strategy to boost quarterly revenue",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-08-29",
+    "progress": 0
+  },
+  {
+    "id": "8a55cf4f-1b8b-4469-a4e7-2180421f33ad",
+    "category": "FAMILY",
+    "title": "Plan family day outings #75",
+    "description": "Organize monthly day trips with family",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-06-24",
+    "progress": 0
+  },
+  {
+    "id": "c20d8a71-f647-4b96-907b-0f2b2e61d50b",
+    "category": "FAMILY",
+    "title": "Plan family day outings #76",
+    "description": "Organize monthly day trips with family",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-06-19",
+    "progress": 0
+  },
+  {
+    "id": "b6960d40-977f-452f-a2b9-3eff896df96a",
+    "category": "CAREER",
+    "title": "Lead quarterly strategy meeting #77",
+    "description": "Prepare and lead Q2 strategy session with department heads",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-10-24",
+    "progress": 0
+  },
+  {
+    "id": "925a46d6-423f-4eb0-9e58-85c3a92b2e7c",
+    "category": "EMOTIONAL",
+    "title": "Meditate daily #78",
+    "description": "Meditate 10 minutes every morning",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-10-10",
+    "progress": 0
+  },
+  {
+    "id": "b8eb46ff-2b5f-47df-8730-e06bd68274e6",
+    "category": "SOCIAL",
+    "title": "Host a social dinner #79",
+    "description": "Invite friends over for a monthly gathering",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-09-10",
+    "progress": 0
+  },
+  {
+    "id": "ea828d8c-f885-4f6e-8d97-729bcab4380b",
+    "category": "FINANCIAL",
+    "title": "Increase sales by 15% #80",
+    "description": "Execute new sales strategy to boost quarterly revenue",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-09-15",
+    "progress": 0
+  },
+  {
+    "id": "7abccd39-433c-48d6-bd67-56d3279bec19",
+    "category": "PHYSICAL",
+    "title": "Walk 10,000 steps daily #81",
+    "description": "Maintain fitness through consistent activity",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-09-13",
+    "progress": 0
+  },
+  {
+    "id": "009b896b-1dde-4328-a65c-081857cd1419",
+    "category": "PHYSICAL",
+    "title": "Walk 10,000 steps daily #82",
+    "description": "Maintain fitness through consistent activity",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-09-25",
+    "progress": 0
+  },
+  {
+    "id": "c64db074-e1c0-4031-b394-c07fdaa3b592",
+    "category": "FINANCIAL",
+    "title": "Increase sales by 15% #83",
+    "description": "Execute new sales strategy to boost quarterly revenue",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-07-25",
+    "progress": 0
+  },
+  {
+    "id": "8a9fd7fb-3ac1-40f4-9618-60c4ab318da3",
+    "category": "PHYSICAL",
+    "title": "Walk 10,000 steps daily #84",
+    "description": "Maintain fitness through consistent activity",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-09-02",
+    "progress": 0
+  },
+  {
+    "id": "720d5f0c-636a-436b-9faf-ec7c88654f22",
+    "category": "FINANCIAL",
+    "title": "Increase sales by 15% #85",
+    "description": "Execute new sales strategy to boost quarterly revenue",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-07-07",
+    "progress": 0
+  },
+  {
+    "id": "343c3a21-0256-4b74-b5e4-52156c1912e9",
+    "category": "EMOTIONAL",
+    "title": "Meditate daily #86",
+    "description": "Meditate 10 minutes every morning",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-07-04",
+    "progress": 0
+  },
+  {
+    "id": "673b33e4-cef8-40e0-911a-9ce928706795",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #87",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-08-11",
+    "progress": 0
+  },
+  {
+    "id": "a4464c76-de51-464c-bbe7-1fac8b91d201",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #88",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-06-15",
+    "progress": 0
+  },
+  {
+    "id": "424e432a-6b8e-4625-b738-439ffa0a7ae4",
+    "category": "FINANCIAL",
+    "title": "Increase sales by 15% #89",
+    "description": "Execute new sales strategy to boost quarterly revenue",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-09-10",
+    "progress": 0
+  },
+  {
+    "id": "53551fb9-ecf5-4092-bb11-f6ba884e7878",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #90",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-09-09",
+    "progress": 0
+  },
+  {
+    "id": "b9c267c5-0212-482d-a1d0-08c7ac6caa33",
+    "category": "SOCIAL",
+    "title": "Host a social dinner #91",
+    "description": "Invite friends over for a monthly gathering",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-07-21",
+    "progress": 0
+  },
+  {
+    "id": "b05fe27d-9cec-411f-8e50-9746594833a1",
+    "category": "SOCIAL",
+    "title": "Host a social dinner #92",
+    "description": "Invite friends over for a monthly gathering",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-07-21",
+    "progress": 0
+  },
+  {
+    "id": "b9a2e051-e89f-4df3-91ad-cda5be54500c",
+    "category": "FINANCIAL",
+    "title": "Increase sales by 15% #93",
+    "description": "Execute new sales strategy to boost quarterly revenue",
+    "status": "not_started",
+    "timeline": "MID_TERM",
+    "dueDate": "2025-11-10",
+    "progress": 0
+  },
+  {
+    "id": "1cde3ea6-0bf4-4b7b-aa1c-86cfe47bc568",
+    "category": "SOCIAL",
+    "title": "Host a social dinner #94",
+    "description": "Invite friends over for a monthly gathering",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-06-26",
+    "progress": 0
+  },
+  {
+    "id": "e417696f-60de-48f1-8f4a-5db91d93356c",
+    "category": "EMOTIONAL",
+    "title": "Meditate daily #95",
+    "description": "Meditate 10 minutes every morning",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-07-07",
+    "progress": 0
+  },
+  {
+    "id": "0c06a048-35bb-427c-ae6a-8148d7a861aa",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #96",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-10-02",
+    "progress": 0
+  },
+  {
+    "id": "27c1e241-a4ab-4467-8785-ff4a10a7552a",
+    "category": "SPIRITUAL",
+    "title": "Practice gratitude journaling #97",
+    "description": "Write 3 things you're grateful for each day",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-10-23",
+    "progress": 0
+  },
+  {
+    "id": "33679f12-8d89-4057-879b-416cc29fc424",
+    "category": "FAMILY",
+    "title": "Plan family day outings #98",
+    "description": "Organize monthly day trips with family",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-06-21",
+    "progress": 0
+  },
+  {
+    "id": "e3f64174-45ed-4edf-a7d1-fe80cbfabed3",
+    "category": "EMOTIONAL",
+    "title": "Meditate daily #99",
+    "description": "Meditate 10 minutes every morning",
+    "status": "not_started",
+    "timeline": "LONG_TERM",
+    "dueDate": "2025-10-09",
+    "progress": 0
+  },
+  {
+    "id": "41be288b-a693-46b3-bb75-eb6e1e7440b1",
+    "category": "SOCIAL",
+    "title": "Host a social dinner #100",
+    "description": "Invite friends over for a monthly gathering",
+    "status": "not_started",
+    "timeline": "SHORT_TERM",
+    "dueDate": "2025-09-23",
+    "progress": 0
+  }
+]

@@ -1,7 +1,9 @@
 package az.tribe.lifeplanner.ui.components
 
 import androidx.compose.ui.graphics.Color
-import az.tribe.lifeplanner.domain.GoalCategory
+import az.tribe.lifeplanner.domain.enum.GoalCategory
+import az.tribe.lifeplanner.domain.enum.GoalTimeline
+import az.tribe.lifeplanner.domain.model.GoalAnalytics
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -34,4 +36,16 @@ fun GoalCategory?.backgroundColor(): Color {
         else -> Color(0xFFB388FF)
     }
 }
+
+
+fun GoalAnalytics.getCompletionRatePercentage(): Int = (completionRate * 100).toInt()
+
+fun GoalAnalytics.getMostActiveCategory(): GoalCategory? =
+    goalsByCategory.maxByOrNull { it.value }?.key
+
+fun GoalAnalytics.getMostUsedTimeline(): GoalTimeline? =
+    goalsByTimeline.maxByOrNull { it.value }?.key
+
+fun GoalAnalytics.getCategoryWithHighestProgress(): GoalCategory? =
+    averageProgressPerCategory.maxByOrNull { it.value }?.key
 

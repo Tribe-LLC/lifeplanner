@@ -1,6 +1,6 @@
 package az.tribe.lifeplanner.usecases
 
-import az.tribe.lifeplanner.domain.GoalHistoryRepository
+import az.tribe.lifeplanner.domain.repository.GoalHistoryRepository
 import kotlinx.datetime.Clock
 
 class LogGoalChangeUseCase(private val repository: GoalHistoryRepository) {

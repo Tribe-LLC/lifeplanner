@@ -1,8 +1,8 @@
 package az.tribe.lifeplanner.usecases
 
-import az.tribe.lifeplanner.domain.Goal
-import az.tribe.lifeplanner.domain.GoalRepository
-import az.tribe.lifeplanner.domain.GoalTimeline
+import az.tribe.lifeplanner.domain.model.Goal
+import az.tribe.lifeplanner.domain.repository.GoalRepository
+import az.tribe.lifeplanner.domain.enum.GoalTimeline
 
 class GetGoalsByTimelineUseCase(
     private val repository: GoalRepository

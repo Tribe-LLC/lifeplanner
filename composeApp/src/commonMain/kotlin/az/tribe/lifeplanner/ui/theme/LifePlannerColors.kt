@@ -1,14 +1,107 @@
+// Color.kt
 package az.tribe.lifeplanner.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
-// Material Brutalist color scheme
-data class BrutalistColorScheme(
+// Modern color palette
+object ModernColors {
+    // Primary colors - vibrant blue with purple undertones
+    val primary = Color(0xFF4A6FFF)
+    val primaryVariant = Color(0xFF3B5BE5)
+    val primaryDark = Color(0xFF2C42B0)
+    val primaryContainer = Color(0xFFECF0FF)
+    val onPrimaryContainer = Color(0xFF0C2379)
+
+    // Secondary colors - complementary purple
+    val secondary = Color(0xFF7A5AF8)
+    val secondaryVariant = Color(0xFF6346E0)
+    val secondaryContainer = Color(0xFFF1ECFF)
+    val onSecondaryContainer = Color(0xFF330C79)
+
+    // Tertiary/accent - coral for warmth and contrast
+    val accent = Color(0xFFF86E5A)
+    val accentVariant = Color(0xFFE05A46)
+    val tertiaryContainer = Color(0xFFFFECEA)
+    val onTertiaryContainer = Color(0xFF79160C)
+
+    // Success, error, warning
+    val success = Color(0xFF28C76F)
+    val successContainer = Color(0xFFE0F7EA)
+    val onSuccessContainer = Color(0xFF0B542C)
+
+    val error = Color(0xFFEA5455)
+    val errorContainer = Color(0xFFFFEDED)
+    val onErrorContainer = Color(0xFF7A1214)
+
+    val warning = Color(0xFFFF9F43)
+    val warningContainer = Color(0xFFFFF4E6)
+    val onWarningContainer = Color(0xFF663D0F)
+
+    // Neutrals - clean with subtle undertones
+    val background = Color(0xFFF8F9FC)
+    val surface = Color(0xFFFFFFFF)
+    val surfaceVariant = Color(0xFFF0F2FA)
+
+    // Text colors
+    val textPrimary = Color(0xFF2C3345)
+    val textSecondary = Color(0xFF6E7A94)
+    val textTertiary = Color(0xFF9AA6BC)
+    val textDisabled = Color(0xFFCBD0DD)
+
+    // Component specific
+    val divider = Color(0xFFE8ECF4)
+    val outline = Color(0xFFCBD0DD)
+    val outlineVariant = Color(0xFFE8ECF4)
+    val scrim = Color(0x80000000)
+
+    // Dark theme colors
+    object Dark {
+        val primary = Color(0xFF6A87FF)
+        val primaryVariant = Color(0xFF4A6FFF)
+        val primaryDark = Color(0xFF3B5BE5)
+        val primaryContainer = Color(0xFF1E2746)
+        val onPrimaryContainer = Color(0xFFD7E0FF)
+
+        val secondary = Color(0xFF9578FF)
+        val secondaryVariant = Color(0xFF7A5AF8)
+        val secondaryContainer = Color(0xFF262146)
+        val onSecondaryContainer = Color(0xFFE9DFFF)
+
+        val accent = Color(0xFFFF8A7A)
+        val accentVariant = Color(0xFFF86E5A)
+        val tertiaryContainer = Color(0xFF462421)
+        val onTertiaryContainer = Color(0xFFFFDDD9)
+
+        val success = Color(0xFF3DD98B)
+        val successContainer = Color(0xFF1A3B2A)
+        val onSuccessContainer = Color(0xFFCFF2DE)
+
+        val error = Color(0xFFFF7273)
+        val errorContainer = Color(0xFF3E1A1B)
+        val onErrorContainer = Color(0xFFFFDADA)
+
+        val warning = Color(0xFFFFBF75)
+        val warningContainer = Color(0xFF3E2F1B)
+        val onWarningContainer = Color(0xFFFFEBD4)
+
+        val background = Color(0xFF121826)
+        val surface = Color(0xFF1B2437)
+        val surfaceVariant = Color(0xFF252E42)
+
+        val textPrimary = Color(0xFFF5F6FA)
+        val textSecondary = Color(0xFFB0B7C9)
+        val textTertiary = Color(0xFF8792AB)
+        val textDisabled = Color(0xFF5E6A84)
+
+        val divider = Color(0xFF2E3850)
+        val outline = Color(0xFF5E6A84)
+        val outlineVariant = Color(0xFF2E3850)
+        val scrim = Color(0xB3000000)
+    }
+}
+
+// Modern color scheme data class that replaces the brutalist one
+data class ModernColorScheme(
     // Base Colors
     val background: Color,
     val surface: Color,
@@ -16,286 +109,175 @@ data class BrutalistColorScheme(
     val textPrimary: Color,
     val textSecondary: Color,
     val textTertiary: Color,
+    val textDisabled: Color,
 
     // UI Elements
     val primary: Color,
+    val primaryVariant: Color,
+    val primaryDark: Color,
     val primaryContainer: Color,
+    val onPrimaryContainer: Color,
+
     val secondary: Color,
+    val secondaryVariant: Color,
     val secondaryContainer: Color,
+    val onSecondaryContainer: Color,
+
     val accent: Color,
-    val error: Color,
-    val errorContainer: Color,
+    val accentVariant: Color,
+    val tertiaryContainer: Color,
+    val onTertiaryContainer: Color,
+
     val success: Color,
     val successContainer: Color,
+    val onSuccessContainer: Color,
+
+    val error: Color,
+    val errorContainer: Color,
+    val onErrorContainer: Color,
+
     val warning: Color,
     val warningContainer: Color,
+    val onWarningContainer: Color,
+
     val divider: Color,
+    val outline: Color,
+    val outlineVariant: Color,
     val scrim: Color,
 
     // Component Colors
-    val buttonPrimary: Color,
-    val buttonSecondary: Color,
-    val buttonDisabled: Color,
-    val buttonText: Color,
-    val buttonTextDisabled: Color,
-    val inputBackground: Color,
-    val inputText: Color,
     val cardBackground: Color,
     val chipBackground: Color,
     val chipText: Color,
 
-    // Navigation
-    val navBackground: Color,
-    val navSelected: Color,
-    val navUnselected: Color,
-    val tabIndicator: Color,
-
     // States
-    val focusedBorder: Color,
-    val hoveredBorder: Color,
     val disabledBackground: Color,
     val disabledContent: Color,
 
-    // Elevation and Shadows - brutalism often uses stark shadows
-    val elevationOverlay: Color
+    // Gradient start/end colors for categories
+    val gradientPrimary: List<Color>,
+    val gradientSecondary: List<Color>,
+    val gradientAccent: List<Color>,
+    val gradientSuccess: List<Color>,
+    val gradientWarning: List<Color>,
+    val gradientError: List<Color>
 )
 
-// Static composition local for providing colors throughout the app
-val LocalBrutalistColors = staticCompositionLocalOf {
-    BrutalistColorScheme(
-        // Initialize with Color.Unspecified for all properties
-        background = Color.Unspecified,
-        surface = Color.Unspecified,
-        surfaceVariant = Color.Unspecified,
-        textPrimary = Color.Unspecified,
-        textSecondary = Color.Unspecified,
-        textTertiary = Color.Unspecified,
+// Define the light and dark modern themes
+object ModernThemeColors {
+    val Light = ModernColorScheme(
+        background = ModernColors.background,
+        surface = ModernColors.surface,
+        surfaceVariant = ModernColors.surfaceVariant,
+        textPrimary = ModernColors.textPrimary,
+        textSecondary = ModernColors.textSecondary,
+        textTertiary = ModernColors.textTertiary,
+        textDisabled = ModernColors.textDisabled,
 
-        primary = Color.Unspecified,
-        primaryContainer = Color.Unspecified,
-        secondary = Color.Unspecified,
-        secondaryContainer = Color.Unspecified,
-        accent = Color.Unspecified,
-        error = Color.Unspecified,
-        errorContainer = Color.Unspecified,
-        success = Color.Unspecified,
-        successContainer = Color.Unspecified,
-        warning = Color.Unspecified,
-        warningContainer = Color.Unspecified,
-        divider = Color.Unspecified,
-        scrim = Color.Unspecified,
+        primary = ModernColors.primary,
+        primaryVariant = ModernColors.primaryVariant,
+        primaryDark = ModernColors.primaryDark,
+        primaryContainer = ModernColors.primaryContainer,
+        onPrimaryContainer = ModernColors.onPrimaryContainer,
 
-        buttonPrimary = Color.Unspecified,
-        buttonSecondary = Color.Unspecified,
-        buttonDisabled = Color.Unspecified,
-        buttonText = Color.Unspecified,
-        buttonTextDisabled = Color.Unspecified,
-        inputBackground = Color.Unspecified,
-        inputText = Color.Unspecified,
-        cardBackground = Color.Unspecified,
-        chipBackground = Color.Unspecified,
-        chipText = Color.Unspecified,
+        secondary = ModernColors.secondary,
+        secondaryVariant = ModernColors.secondaryVariant,
+        secondaryContainer = ModernColors.secondaryContainer,
+        onSecondaryContainer = ModernColors.onSecondaryContainer,
 
-        navBackground = Color.Unspecified,
-        navSelected = Color.Unspecified,
-        navUnselected = Color.Unspecified,
-        tabIndicator = Color.Unspecified,
+        accent = ModernColors.accent,
+        accentVariant = ModernColors.accentVariant,
+        tertiaryContainer = ModernColors.tertiaryContainer,
+        onTertiaryContainer = ModernColors.onTertiaryContainer,
 
-        focusedBorder = Color.Unspecified,
-        hoveredBorder = Color.Unspecified,
-        disabledBackground = Color.Unspecified,
-        disabledContent = Color.Unspecified,
+        success = ModernColors.success,
+        successContainer = ModernColors.successContainer,
+        onSuccessContainer = ModernColors.onSuccessContainer,
 
-        elevationOverlay = Color.Unspecified
-    )
-}
+        error = ModernColors.error,
+        errorContainer = ModernColors.errorContainer,
+        onErrorContainer = ModernColors.onErrorContainer,
 
-@Composable
-fun BrutalistTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    content: @Composable () -> Unit
-) {
-    // Map brutalist colors to Material3 color scheme
-    val colorScheme = when {
-        darkTheme -> darkColorScheme(
-            primary = BrutalistThemeColors.Dark.primary,
-            onPrimary = BrutalistThemeColors.Dark.buttonText,
-            primaryContainer = BrutalistThemeColors.Dark.primaryContainer,
-            onPrimaryContainer = BrutalistThemeColors.Dark.textPrimary,
-            secondary = BrutalistThemeColors.Dark.secondary,
-            onSecondary = BrutalistThemeColors.Dark.buttonText,
-            secondaryContainer = BrutalistThemeColors.Dark.secondaryContainer,
-            onSecondaryContainer = BrutalistThemeColors.Dark.textPrimary,
-            tertiary = BrutalistThemeColors.Dark.accent,
-            onTertiary = BrutalistThemeColors.Dark.buttonText,
-            background = BrutalistThemeColors.Dark.background,
-            onBackground = BrutalistThemeColors.Dark.textPrimary,
-            surface = BrutalistThemeColors.Dark.surface,
-            onSurface = BrutalistThemeColors.Dark.textPrimary,
-            surfaceVariant = BrutalistThemeColors.Dark.surfaceVariant,
-            onSurfaceVariant = BrutalistThemeColors.Dark.textSecondary,
-            error = BrutalistThemeColors.Dark.error,
-            onError = BrutalistThemeColors.Dark.buttonText,
-            errorContainer = BrutalistThemeColors.Dark.errorContainer,
-            onErrorContainer = BrutalistThemeColors.Dark.textPrimary,
-            outline = BrutalistThemeColors.Dark.divider,
-            outlineVariant = BrutalistThemeColors.Dark.disabledContent,
-            scrim = BrutalistThemeColors.Dark.scrim
-        )
-        else -> lightColorScheme(
-            primary = BrutalistThemeColors.Light.primary,
-            onPrimary = BrutalistThemeColors.Light.buttonText,
-            primaryContainer = BrutalistThemeColors.Light.primaryContainer,
-            onPrimaryContainer = BrutalistThemeColors.Light.textPrimary,
-            secondary = BrutalistThemeColors.Light.secondary,
-            onSecondary = BrutalistThemeColors.Light.buttonText,
-            secondaryContainer = BrutalistThemeColors.Light.secondaryContainer,
-            onSecondaryContainer = BrutalistThemeColors.Light.textPrimary,
-            tertiary = BrutalistThemeColors.Light.accent,
-            onTertiary = BrutalistThemeColors.Light.buttonText,
-            background = BrutalistThemeColors.Light.background,
-            onBackground = BrutalistThemeColors.Light.textPrimary,
-            surface = BrutalistThemeColors.Light.surface,
-            onSurface = BrutalistThemeColors.Light.textPrimary,
-            surfaceVariant = BrutalistThemeColors.Light.surfaceVariant,
-            onSurfaceVariant = BrutalistThemeColors.Light.textSecondary,
-            error = BrutalistThemeColors.Light.error,
-            onError = BrutalistThemeColors.Light.buttonText,
-            errorContainer = BrutalistThemeColors.Light.errorContainer,
-            onErrorContainer = BrutalistThemeColors.Light.textPrimary,
-            outline = BrutalistThemeColors.Light.divider,
-            outlineVariant = BrutalistThemeColors.Light.disabledContent,
-            scrim = BrutalistThemeColors.Light.scrim
-        )
-    }
+        warning = ModernColors.warning,
+        warningContainer = ModernColors.warningContainer,
+        onWarningContainer = ModernColors.onWarningContainer,
 
-    // Select the appropriate brutalist color scheme based on theme
-    val brutalistColorScheme = when {
-        darkTheme -> BrutalistThemeColors.Dark
-        else -> BrutalistThemeColors.Light
-    }
+        divider = ModernColors.divider,
+        outline = ModernColors.outline,
+        outlineVariant = ModernColors.outlineVariant,
+        scrim = ModernColors.scrim,
 
-    // Provide the brutalist colors to the composition
-    CompositionLocalProvider(
-        LocalBrutalistColors provides brutalistColorScheme
-    ) {
-        MaterialTheme(
-            colorScheme = colorScheme,
-            content = content,
-        )
-    }
-}
+        cardBackground = ModernColors.surface,
+        chipBackground = ModernColors.surfaceVariant,
+        chipText = ModernColors.textSecondary,
 
-// Extension property to easily access brutalist colors
-val MaterialTheme.brutalistColors: BrutalistColorScheme
-    @Composable
-    get() = LocalBrutalistColors.current
+        disabledBackground = ModernColors.surfaceVariant,
+        disabledContent = ModernColors.textDisabled,
 
-// Object containing predefined material brutalist color schemes
-object BrutalistThemeColors {
-    // Light material brutalist theme
-    val Light = BrutalistColorScheme(
-        // Base Colors
-        background = Color(0xFFF0F0F0), // Raw concrete-like background
-        surface = Color(0xFFE0E0E0),    // Slightly darker surface
-        surfaceVariant = Color(0xFFD0D0D0), // Alternate surface for cards/containers
-        textPrimary = Color(0xFF000000), // Pure black for maximum readability
-        textSecondary = Color(0xFF333333), // Near black
-        textTertiary = Color(0xFF666666), // Dark gray
-
-        // UI Elements - bold, unfiltered colors
-        primary = Color(0xFF000000),     // Black as primary - brutalist signature
-        primaryContainer = Color(0xFFCCCCCC), // Gray containers
-        secondary = Color(0xFF2B2B2B),   // Near black
-        secondaryContainer = Color(0xFFBBBBBB), // Light gray
-        accent = Color(0xFFFF0000),      // Pure red accent - stark, unfiltered
-        error = Color(0xFFE50000),       // Bright red error
-        errorContainer = Color(0xFFFFDDDD), // Light red container
-        success = Color(0xFF007000),     // Forest green for success
-        successContainer = Color(0xFFDDFFDD), // Light green container
-        warning = Color(0xFFDD8800),     // Orange for warnings
-        warningContainer = Color(0xFFFFEEDD), // Light orange container
-        divider = Color(0xFF000000),     // Black dividers - brutalist style strong separation
-        scrim = Color(0x99000000),       // Semi-transparent black for overlays
-
-        // Component Colors - unadorned, functional
-        buttonPrimary = Color(0xFF000000), // Black buttons
-        buttonSecondary = Color(0xFFFFFFFF), // White secondary buttons with border
-        buttonDisabled = Color(0xFFA0A0A0), // Gray disabled
-        buttonText = Color(0xFFFFFFFF),    // White text on buttons
-        buttonTextDisabled = Color(0xFF666666), // Dark gray text when disabled
-        inputBackground = Color(0xFFFFFFFF), // White input fields
-        inputText = Color(0xFF000000),     // Black text input
-        cardBackground = Color(0xFFE8E8E8), // Slightly off-white cards
-        chipBackground = Color(0xFFCCCCCC), // Gray chips
-        chipText = Color(0xFF000000),      // Black chip text
-
-        // Navigation - bold contrasts
-        navBackground = Color(0xFFE0E0E0), // Light gray nav background
-        navSelected = Color(0xFF000000),   // Black for selected
-        navUnselected = Color(0xFF777777), // Gray for unselected
-        tabIndicator = Color(0xFF000000),  // Black indicator
-
-        // States - clear indicators
-        focusedBorder = Color(0xFF000000), // Black borders when focused
-        hoveredBorder = Color(0xFF333333), // Dark gray on hover
-        disabledBackground = Color(0xFFBBBBBB), // Light gray disabled
-        disabledContent = Color(0xFF888888), // Medium gray for disabled content
-
-        // Elevation - brutalist minimal shadows
-        elevationOverlay = Color(0x0A000000) // Very subtle shadow
+        // Gradient definitions
+        gradientPrimary = listOf(ModernColors.primary, ModernColors.primaryVariant),
+        gradientSecondary = listOf(ModernColors.secondary, ModernColors.secondaryVariant),
+        gradientAccent = listOf(ModernColors.accent, ModernColors.accentVariant),
+        gradientSuccess = listOf(ModernColors.success, Color(0xFF1AAC59)),
+        gradientWarning = listOf(ModernColors.warning, Color(0xFFE88B2E)),
+        gradientError = listOf(ModernColors.error, Color(0xFFD03A3B))
     )
 
-    // Dark material brutalist theme
-    val Dark = BrutalistColorScheme(
-        // Base Colors - industrial tones
-        background = Color(0xFF121212), // Near black background
-        surface = Color(0xFF1E1E1E),    // Dark surface
-        surfaceVariant = Color(0xFF2A2A2A), // Alternate surface
-        textPrimary = Color(0xFFFFFFFF), // Pure white for maximum readability
-        textSecondary = Color(0xFFE0E0E0), // Near white
-        textTertiary = Color(0xFFAAAAAA), // Light gray
+    val Dark = ModernColorScheme(
+        background = ModernColors.Dark.background,
+        surface = ModernColors.Dark.surface,
+        surfaceVariant = ModernColors.Dark.surfaceVariant,
+        textPrimary = ModernColors.Dark.textPrimary,
+        textSecondary = ModernColors.Dark.textSecondary,
+        textTertiary = ModernColors.Dark.textTertiary,
+        textDisabled = ModernColors.Dark.textDisabled,
 
-        // UI Elements - bold, industrial
-        primary = Color(0xFFFFFFFF),     // White primary - stark contrast
-        primaryContainer = Color(0xFF2A2A2A), // Dark gray containers
-        secondary = Color(0xFFE0E0E0),   // Light gray secondary
-        secondaryContainer = Color(0xFF333333), // Dark gray container
-        accent = Color(0xFFFF3B30),      // Bright red accent
-        error = Color(0xFFFF5252),       // Bright red error
-        errorContainer = Color(0xFF450000), // Dark red container
-        success = Color(0xFF00CC00),     // Bright green for success
-        successContainer = Color(0xFF004400), // Dark green container
-        warning = Color(0xFFFFAA00),     // Bright orange for warnings
-        warningContainer = Color(0xFF442200), // Dark orange container
-        divider = Color(0xFF444444),     // Dark gray dividers
-        scrim = Color(0xBF000000),       // Black scrim with higher opacity
+        primary = ModernColors.Dark.primary,
+        primaryVariant = ModernColors.Dark.primaryVariant,
+        primaryDark = ModernColors.Dark.primaryDark,
+        primaryContainer = ModernColors.Dark.primaryContainer,
+        onPrimaryContainer = ModernColors.Dark.onPrimaryContainer,
 
-        // Component Colors - stark, dramatic
-        buttonPrimary = Color(0xFFFFFFFF), // White buttons
-        buttonSecondary = Color(0xFF2A2A2A), // Dark gray secondary buttons
-        buttonDisabled = Color(0xFF555555), // Medium gray disabled
-        buttonText = Color(0xFF000000),    // Black text on white buttons
-        buttonTextDisabled = Color(0xFF999999), // Gray text when disabled
-        inputBackground = Color(0xFF2A2A2A), // Dark input fields
-        inputText = Color(0xFFFFFFFF),     // White text input
-        cardBackground = Color(0xFF252525), // Slightly lighter cards
-        chipBackground = Color(0xFF333333), // Dark gray chips
-        chipText = Color(0xFFFFFFFF),      // White chip text
+        secondary = ModernColors.Dark.secondary,
+        secondaryVariant = ModernColors.Dark.secondaryVariant,
+        secondaryContainer = ModernColors.Dark.secondaryContainer,
+        onSecondaryContainer = ModernColors.Dark.onSecondaryContainer,
 
-        // Navigation - high contrast
-        navBackground = Color(0xFF1A1A1A), // Very dark nav background
-        navSelected = Color(0xFFFFFFFF),   // White for selected
-        navUnselected = Color(0xFF888888), // Gray for unselected
-        tabIndicator = Color(0xFFFFFFFF),  // White indicator
+        accent = ModernColors.Dark.accent,
+        accentVariant = ModernColors.Dark.accentVariant,
+        tertiaryContainer = ModernColors.Dark.tertiaryContainer,
+        onTertiaryContainer = ModernColors.Dark.onTertiaryContainer,
 
-        // States - bold indicators
-        focusedBorder = Color(0xFFFFFFFF), // White borders when focused
-        hoveredBorder = Color(0xFFCCCCCC), // Light gray on hover
-        disabledBackground = Color(0xFF333333), // Dark gray disabled
-        disabledContent = Color(0xFF666666), // Medium gray for disabled content
+        success = ModernColors.Dark.success,
+        successContainer = ModernColors.Dark.successContainer,
+        onSuccessContainer = ModernColors.Dark.onSuccessContainer,
 
-        // Elevation - minimal but visible shadows
-        elevationOverlay = Color(0x33000000) // Slightly more visible shadow in dark mode
+        error = ModernColors.Dark.error,
+        errorContainer = ModernColors.Dark.errorContainer,
+        onErrorContainer = ModernColors.Dark.onErrorContainer,
+
+        warning = ModernColors.Dark.warning,
+        warningContainer = ModernColors.Dark.warningContainer,
+        onWarningContainer = ModernColors.Dark.onWarningContainer,
+
+        divider = ModernColors.Dark.divider,
+        outline = ModernColors.Dark.outline,
+        outlineVariant = ModernColors.Dark.outlineVariant,
+        scrim = ModernColors.Dark.scrim,
+
+        cardBackground = ModernColors.Dark.surface,
+        chipBackground = ModernColors.Dark.surfaceVariant,
+        chipText = ModernColors.Dark.textSecondary,
+
+        disabledBackground = ModernColors.Dark.surfaceVariant,
+        disabledContent = ModernColors.Dark.textDisabled,
+
+        // Gradient definitions
+        gradientPrimary = listOf(ModernColors.Dark.primary, ModernColors.Dark.primaryVariant),
+        gradientSecondary = listOf(ModernColors.Dark.secondary, ModernColors.Dark.secondaryVariant),
+        gradientAccent = listOf(ModernColors.Dark.accent, ModernColors.Dark.accentVariant),
+        gradientSuccess = listOf(ModernColors.Dark.success, Color(0xFF2BC07C)),
+        gradientWarning = listOf(ModernColors.Dark.warning, Color(0xFFE9A555)),
+        gradientError = listOf(ModernColors.Dark.error, Color(0xFFE85657))
     )
 }

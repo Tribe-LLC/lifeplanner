@@ -1,5 +1,6 @@
 package az.tribe.lifeplanner
 
+import az.tribe.lifeplanner.di.onApplicationStartPlatformSpecific
 import com.mmk.kmpnotifier.notification.NotifierManager
 import com.mmk.kmpnotifier.notification.PayloadData
 

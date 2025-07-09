@@ -1,6 +1,9 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.targets.js.yarn.YarnLockMismatchReport
 import org.jetbrains.kotlin.gradle.targets.js.yarn.YarnRootExtension
+import com.codingfeline.buildkonfig.compiler.FieldSpec
+import java.util.Properties
+import kotlin.apply
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -9,6 +12,7 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.kotlinxSerialization)
     alias(libs.plugins.sqlDelight)
+    alias(libs.plugins.buildkonfig)
     alias(libs.plugins.google.gms.google.services)
     alias(libs.plugins.firebase.crashlytics)
     alias(libs.plugins.firebase.performance)
@@ -29,8 +33,9 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
-            linkerOpts.add("-lsqlite3")
+
             export(libs.kmpnotifier)
+            linkerOpts.add("-lsqlite3")
         }
     }
 
@@ -42,10 +47,15 @@ kotlin {
             implementation(libs.core.splashscreen)
 
             implementation(libs.sqldelight.android)
-            implementation(libs.ktor.client.android)
+            //Http client
+            implementation(libs.ktor.client.okhttp)
             implementation(libs.koin.android)
 
             implementation(libs.accompanist.systemuicontroller)
+
+
+            implementation (libs.firebase.auth.ktx)
+            implementation(libs.firebase.common.ktx)
 
         }
         commonMain.dependencies {
@@ -60,9 +70,14 @@ kotlin {
             implementation(libs.androidx.lifecycle.runtime.compose)
             implementation(libs.navigation.compose)
 
+            //Ktor
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.content.negotiation)
-            implementation(libs.ktor.serialization.kotlinx.json)
+            implementation(libs.ktor.client.serialization)
+            implementation(libs.ktor.client.logging)
+            implementation(libs.ktor.client.auth)
+            implementation(libs.ktor.client.websockets)
+            implementation(libs.ktor.client.cio)
 
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
@@ -77,9 +92,10 @@ kotlin {
             implementation(libs.gitlive.firebase.config)
             implementation(libs.firebase.crashlytics)
             implementation(libs.firebase.perf)
-            implementation(libs.firebase.messaging)
             implementation(libs.gitlive.firebase.analytics)
             api(libs.kmpnotifier) // in iOS export this library
+            //Kermit  for logging
+            implementation(libs.kermit)
 
 
         }
@@ -87,6 +103,7 @@ kotlin {
         iosMain.dependencies {
             // sqlite
             implementation(libs.sqldelight.ios)
+            // ktor
             implementation(libs.ktor.client.darwin)
         }
     }
@@ -97,7 +114,7 @@ sqldelight {
         create("LifePlannerDB") {
             packageName.set("az.tribe.lifeplanner.database")
             schemaOutputDirectory = file("src/commonMain/sqldelight/databases")
-            version = 2 // 👈 Update this
+            version = 3 // 👈 Update this
             generateAsync.set(true)
         }
     }
@@ -119,14 +136,13 @@ android {
 
     sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
     sourceSets["main"].res.srcDirs("src/androidMain/res")
-    sourceSets["main"].resources.srcDirs("src/commonMain/resources")
 
     defaultConfig {
         applicationId = "az.tribe.lifeplanner"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 3
-        versionName = "1.1"
+        versionCode = 4
+        versionName = "1.2"
 
     }
     packaging {
@@ -152,6 +168,32 @@ dependencies {
     debugImplementation(compose.uiTooling)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 }
+
+
+buildkonfig {
+    packageName = "az.tribe.lifeplanner"
+
+    val localProperties =
+        Properties().apply {
+            val propsFile = rootProject.file("local.properties")
+            if (propsFile.exists()) {
+                load(propsFile.inputStream())
+            }
+        }
+
+    defaultConfigs {
+        buildConfigField(
+            FieldSpec.Type.STRING,
+            "GEMINI_API_KEY",
+            localProperties["GEMINI_API_KEY"]?.toString() ?: "",
+        )
+        buildConfigField(
+            FieldSpec.Type.BOOLEAN,
+            "isDebug", "true"
+        )
+    }
+}
+
 
 rootProject.plugins.withType(org.jetbrains.kotlin.gradle.targets.js.yarn.YarnPlugin::class.java) {
     rootProject.the<YarnRootExtension>().yarnLockMismatchReport =
