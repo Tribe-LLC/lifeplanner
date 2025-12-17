@@ -129,10 +129,6 @@ fun JournalScreen(
                             modifier = Modifier.animateItem()
                         )
                     }
-
-                    item {
-                        Spacer(modifier = Modifier.height(80.dp))
-                    }
                 }
             }
         }

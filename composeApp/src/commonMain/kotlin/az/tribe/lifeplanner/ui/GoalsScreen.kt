@@ -259,8 +259,7 @@ fun GoalsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            state = scrollState,
-            contentPadding = PaddingValues(bottom = 100.dp)
+            state = scrollState
         ) {
             // Search Results Summary
             if (searchQuery.text.isNotEmpty() || selectedFilter != GoalFilter.ALL) {

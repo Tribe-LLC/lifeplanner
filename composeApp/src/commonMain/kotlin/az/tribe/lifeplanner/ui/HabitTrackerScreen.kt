@@ -126,11 +126,6 @@ fun HabitTrackerScreen(
                             modifier = Modifier.animateItem()
                         )
                     }
-
-                    // Bottom spacing for FAB
-                    item {
-                        Spacer(modifier = Modifier.height(80.dp))
-                    }
                 }
             }
         }
