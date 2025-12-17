@@ -133,6 +133,16 @@ fun App(
                             navController.navigate(Screen.AiGoalGeneration.route) {
                                 launchSingleTop = true
                             }
+                        },
+                        onNavigateToHabits = {
+                            navController.navigate(Screen.HabitTracker.route) {
+                                launchSingleTop = true
+                            }
+                        },
+                        onNavigateToJournal = {
+                            navController.navigate(Screen.Journal.route) {
+                                launchSingleTop = true
+                            }
                         }
                     )
                 }
