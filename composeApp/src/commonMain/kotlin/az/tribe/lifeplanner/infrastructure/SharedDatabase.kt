@@ -456,6 +456,10 @@ class SharedDatabase(
         }
     }
 
+    suspend fun deleteDuplicateCheckIns() {
+        this { db -> db.lifePlannerDBQueries.deleteDuplicateCheckIns() }
+    }
+
     suspend fun getCheckInsInRange(habitId: String, startDate: String, endDate: String): List<HabitCheckInEntity> {
         return this { db ->
             db.lifePlannerDBQueries.getCheckInsInRange(habitId, startDate, endDate).executeAsList()

@@ -63,6 +63,12 @@ class HabitRepositoryImpl(
     }
 
     override suspend fun checkIn(habitId: String, date: LocalDate, notes: String): HabitCheckIn {
+        // Check if already checked in to prevent duplicates
+        val existingCheckIn = getCheckInByHabitAndDate(habitId, date)
+        if (existingCheckIn != null) {
+            return existingCheckIn
+        }
+
         val checkIn = createNewCheckIn(
             habitId = habitId,
             date = date,
@@ -137,6 +143,9 @@ class HabitRepositoryImpl(
     }
 
     override suspend fun getHabitsWithTodayStatus(today: LocalDate): List<Pair<Habit, Boolean>> {
+        // Clean up any duplicate check-ins first
+        database.deleteDuplicateCheckIns()
+
         val habits = getAllHabits()
         return habits.map { habit ->
             val checkIn = getCheckInByHabitAndDate(habit.id, today)

@@ -372,7 +372,14 @@ getCheckInsByDate:
 SELECT * FROM HabitCheckInEntity WHERE date = ?;
 
 getCheckInByHabitAndDate:
-SELECT * FROM HabitCheckInEntity WHERE habitId = ? AND date = ?;
+SELECT * FROM HabitCheckInEntity WHERE habitId = ? AND date = ? LIMIT 1;
+
+-- Delete duplicate check-ins (keeps the first one)
+deleteDuplicateCheckIns:
+DELETE FROM HabitCheckInEntity
+WHERE id NOT IN (
+    SELECT MIN(id) FROM HabitCheckInEntity GROUP BY habitId, date
+);
 
 deleteCheckIn:
 DELETE FROM HabitCheckInEntity WHERE id = ?;
