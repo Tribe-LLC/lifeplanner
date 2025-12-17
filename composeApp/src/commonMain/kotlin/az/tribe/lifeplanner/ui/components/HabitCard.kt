@@ -34,10 +34,12 @@ fun HabitCard(
     habitWithStatus: HabitWithStatus,
     onCheckIn: () -> Unit,
     onDelete: () -> Unit,
+    onEdit: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val habit = habitWithStatus.habit
     val isCompletedToday = habitWithStatus.isCompletedToday
+    var showMenu by remember { mutableStateOf(false) }
 
     val backgroundColor by animateColorAsState(
         targetValue = if (isCompletedToday)
@@ -63,11 +65,11 @@ fun HabitCard(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Check-in button
+            // Check-in button (now toggleable)
             CheckInButton(
                 isCompleted = isCompletedToday,
                 categoryColor = habit.category.backgroundColor(),
-                onClick = onCheckIn
+                onClick = onCheckIn // Now toggles check/uncheck
             )
 
             // Habit info
@@ -133,8 +135,41 @@ fun HabitCard(
                 }
             }
 
-            // Category indicator
-            CategoryIndicator(category = habit.category)
+            // More options menu
+            Box {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(
+                        imageVector = Icons.Rounded.MoreVert,
+                        contentDescription = "More options",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Edit") },
+                        onClick = {
+                            showMenu = false
+                            onEdit()
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Rounded.Edit, contentDescription = null)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete") },
+                        onClick = {
+                            showMenu = false
+                            onDelete()
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Rounded.Delete, contentDescription = null)
+                        }
+                    )
+                }
+            }
         }
     }
 }
@@ -167,7 +202,7 @@ private fun CheckInButton(
         modifier = Modifier
             .size(48.dp)
             .scale(scale)
-            .clickable(enabled = !isCompleted) { onClick() },
+            .clickable { onClick() },
         shape = CircleShape,
         color = backgroundColor,
         border = if (!isCompleted) {

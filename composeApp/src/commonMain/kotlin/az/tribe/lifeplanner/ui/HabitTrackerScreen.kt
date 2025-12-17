@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.HabitFrequency
+import az.tribe.lifeplanner.domain.model.Habit
 import az.tribe.lifeplanner.ui.components.HabitCard
 import az.tribe.lifeplanner.ui.habit.HabitViewModel
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
@@ -121,6 +122,8 @@ fun HabitTrackerScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
     val showAddSheet by viewModel.showAddHabitDialog.collectAsState()
+
+    var habitToEdit by remember { mutableStateOf<Habit?>(null) }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -224,8 +227,9 @@ fun HabitTrackerScreen(
                     ) { habitWithStatus ->
                         HabitCard(
                             habitWithStatus = habitWithStatus,
-                            onCheckIn = { viewModel.checkInHabit(habitWithStatus.habit.id) },
+                            onCheckIn = { viewModel.toggleCheckIn(habitWithStatus.habit.id) },
                             onDelete = { viewModel.deleteHabit(habitWithStatus.habit.id) },
+                            onEdit = { habitToEdit = habitWithStatus.habit },
                             modifier = Modifier.animateItem()
                         )
                     }
@@ -244,6 +248,18 @@ fun HabitTrackerScreen(
                         category = category,
                         frequency = frequency
                     )
+                }
+            )
+        }
+
+        // Edit Habit Bottom Sheet
+        habitToEdit?.let { habit ->
+            EditHabitBottomSheet(
+                habit = habit,
+                onDismiss = { habitToEdit = null },
+                onConfirm = { updatedHabit ->
+                    viewModel.updateHabit(updatedHabit)
+                    habitToEdit = null
                 }
             )
         }
@@ -914,5 +930,184 @@ private fun CustomHabitForm(
         }
 
         Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EditHabitBottomSheet(
+    habit: Habit,
+    onDismiss: () -> Unit,
+    onConfirm: (Habit) -> Unit
+) {
+    var title by remember { mutableStateOf(habit.title) }
+    var description by remember { mutableStateOf(habit.description) }
+    var selectedCategory by remember { mutableStateOf(habit.category) }
+    var selectedFrequency by remember { mutableStateOf(habit.frequency) }
+    var expandedCategory by remember { mutableStateOf(false) }
+    var expandedFrequency by remember { mutableStateOf(false) }
+
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        dragHandle = null,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+        ) {
+            // Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Edit Habit",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = "Close"
+                    )
+                }
+            }
+
+            // Form
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+            ) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Habit name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Description (optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Category dropdown
+                ExposedDropdownMenuBox(
+                    expanded = expandedCategory,
+                    onExpandedChange = { expandedCategory = !expandedCategory }
+                ) {
+                    OutlinedTextField(
+                        value = selectedCategory.name.lowercase().replaceFirstChar { it.uppercase() },
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Category") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedCategory) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(MenuAnchorType.PrimaryNotEditable),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    ExposedDropdownMenu(
+                        expanded = expandedCategory,
+                        onDismissRequest = { expandedCategory = false }
+                    ) {
+                        GoalCategory.entries.forEach { category ->
+                            DropdownMenuItem(
+                                text = { Text(category.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                                onClick = {
+                                    selectedCategory = category
+                                    expandedCategory = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Frequency dropdown
+                ExposedDropdownMenuBox(
+                    expanded = expandedFrequency,
+                    onExpandedChange = { expandedFrequency = !expandedFrequency }
+                ) {
+                    OutlinedTextField(
+                        value = selectedFrequency.displayName,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Frequency") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedFrequency) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(MenuAnchorType.PrimaryNotEditable),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    ExposedDropdownMenu(
+                        expanded = expandedFrequency,
+                        onDismissRequest = { expandedFrequency = false }
+                    ) {
+                        HabitFrequency.entries.forEach { frequency ->
+                            DropdownMenuItem(
+                                text = { Text(frequency.displayName) },
+                                onClick = {
+                                    selectedFrequency = frequency
+                                    expandedFrequency = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                Button(
+                    onClick = {
+                        if (title.isNotBlank()) {
+                            onConfirm(
+                                habit.copy(
+                                    title = title,
+                                    description = description,
+                                    category = selectedCategory,
+                                    frequency = selectedFrequency
+                                )
+                            )
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    enabled = title.isNotBlank(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        "Save Changes",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
     }
 }

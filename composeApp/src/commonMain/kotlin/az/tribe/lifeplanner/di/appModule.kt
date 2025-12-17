@@ -54,6 +54,7 @@ import az.tribe.lifeplanner.usecases.habit.DeleteHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.GetAllHabitsUseCase
 import az.tribe.lifeplanner.usecases.habit.GetHabitsByGoalUseCase
 import az.tribe.lifeplanner.usecases.habit.GetHabitsWithTodayStatusUseCase
+import az.tribe.lifeplanner.usecases.habit.UncheckHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.UpdateHabitUseCase
 import az.tribe.lifeplanner.usecases.AddMilestoneUseCase
 import az.tribe.lifeplanner.usecases.ArchiveGoalUseCase
@@ -173,6 +174,7 @@ val appModule = module {
     factory { UpdateHabitUseCase(get()) }
     factory { DeleteHabitUseCase(get()) }
     factory { CheckInHabitUseCase(get()) }
+    factory { UncheckHabitUseCase(get()) }
     factory { GetHabitsWithTodayStatusUseCase(get()) }
     factory { GetHabitsByGoalUseCase(get()) }
 

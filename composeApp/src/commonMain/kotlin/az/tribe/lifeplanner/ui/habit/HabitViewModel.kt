@@ -11,6 +11,7 @@ import az.tribe.lifeplanner.usecases.habit.CreateHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.DeleteHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.GetAllHabitsUseCase
 import az.tribe.lifeplanner.usecases.habit.GetHabitsWithTodayStatusUseCase
+import az.tribe.lifeplanner.usecases.habit.UncheckHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.UpdateHabitUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +32,7 @@ class HabitViewModel(
     private val updateHabitUseCase: UpdateHabitUseCase,
     private val deleteHabitUseCase: DeleteHabitUseCase,
     private val checkInHabitUseCase: CheckInHabitUseCase,
+    private val uncheckHabitUseCase: UncheckHabitUseCase,
     private val getHabitsWithTodayStatusUseCase: GetHabitsWithTodayStatusUseCase
 ) : ViewModel() {
 
@@ -107,6 +109,29 @@ class HabitViewModel(
                 loadHabits()
             } catch (e: Exception) {
                 _error.value = "Failed to check in: ${e.message}"
+            }
+        }
+    }
+
+    fun uncheckInHabit(habitId: String) {
+        viewModelScope.launch {
+            try {
+                val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+                uncheckHabitUseCase(habitId, today)
+                loadHabits()
+            } catch (e: Exception) {
+                _error.value = "Failed to uncheck: ${e.message}"
+            }
+        }
+    }
+
+    fun toggleCheckIn(habitId: String) {
+        val habitWithStatus = _habits.value.find { it.habit.id == habitId }
+        if (habitWithStatus != null) {
+            if (habitWithStatus.isCompletedToday) {
+                uncheckInHabit(habitId)
+            } else {
+                checkInHabit(habitId)
             }
         }
     }
