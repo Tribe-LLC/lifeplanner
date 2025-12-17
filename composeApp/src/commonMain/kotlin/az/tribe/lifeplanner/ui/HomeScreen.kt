@@ -13,6 +13,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -99,9 +100,13 @@ fun HomeScreen(
         habitViewModel.loadHabits()
     }
 
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
+                scrollBehavior = scrollBehavior,
                 title = {
                     Text(
                         "Life Planner",
@@ -171,7 +176,7 @@ fun HomeScreen(
                 TodayHabitsSection(
                     habits = habits,
                     onCheckIn = { habitId ->
-                        habitViewModel.checkInHabit(habitId)
+                        habitViewModel.toggleCheckIn(habitId)
                     },
                     onSeeAllClick = onNavigateToHabits
                 )

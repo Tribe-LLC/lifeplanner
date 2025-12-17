@@ -27,6 +27,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -53,15 +54,16 @@ fun GoalsTopAppBar(
     showFilterMenu: Boolean,
     onFilterMenuDismiss: () -> Unit,
     onFilterSelected: (GoalFilter) -> Unit,
-    onTemplatesClick: () -> Unit
+    onTemplatesClick: () -> Unit,
+    scrollBehavior: TopAppBarScrollBehavior? = null
 ) {
     val animatedColor by animateColorAsState(
         targetValue = dynamicColor,
         animationSpec = tween(durationMillis = 300)
     )
 
-
         TopAppBar(
+            scrollBehavior = scrollBehavior,
             title = {
                 if (showSearchBar) {
                     TextField(
