@@ -139,7 +139,7 @@ fun JournalScreen(
         }
 
         if (showNewEntryDialog) {
-            NewJournalEntryDialog(
+            NewJournalEntryBottomSheet(
                 onDismiss = { viewModel.hideNewEntryDialog() },
                 onConfirm = { title, content, mood, tags ->
                     viewModel.createEntry(
@@ -433,7 +433,7 @@ private fun MoodButton(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun NewJournalEntryDialog(
+private fun NewJournalEntryBottomSheet(
     onDismiss: () -> Unit,
     onConfirm: (String, String, Mood, List<String>) -> Unit,
     initialPrompt: String
@@ -443,94 +443,158 @@ private fun NewJournalEntryDialog(
     var selectedMood by remember { mutableStateOf(Mood.NEUTRAL) }
     var tagsText by remember { mutableStateOf("") }
 
-    AlertDialog(
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                "New Journal Entry",
-                style = MaterialTheme.typography.titleLarge.copy(
+        sheetState = sheetState,
+        dragHandle = null,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+        ) {
+            // Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "New Journal Entry",
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
-            )
-        },
-        text = {
-            Column(
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = "Close"
+                    )
+                }
+            }
+
+            // Content
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // Mood Picker
-                Text(
-                    "How are you feeling?",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Medium
-                )
-                MoodPicker(
-                    selectedMood = selectedMood,
-                    onMoodSelected = { selectedMood = it }
-                )
-
-                // Prompt hint
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                item {
                     Text(
-                        text = initialPrompt,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(12.dp),
-                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                        "How are you feeling?",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    MoodPicker(
+                        selectedMood = selectedMood,
+                        onMoodSelected = { selectedMood = it }
                     )
                 }
 
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Title") },
-                    placeholder = { Text("Give your entry a title") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = content,
-                    onValueChange = { content = it },
-                    label = { Text("Your thoughts") },
-                    placeholder = { Text("Write your reflection...") },
-                    minLines = 4,
-                    maxLines = 6,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = tagsText,
-                    onValueChange = { tagsText = it },
-                    label = { Text("Tags (optional)") },
-                    placeholder = { Text("gratitude, goals, reflection") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (title.isNotBlank() && content.isNotBlank()) {
-                        val tags = tagsText.split(",").map { it.trim() }.filter { it.isNotBlank() }
-                        onConfirm(title, content, selectedMood, tags)
+                // Prompt hint
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.AutoAwesome,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = initialPrompt,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                            )
+                        }
                     }
-                },
-                enabled = title.isNotBlank() && content.isNotBlank()
-            ) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                }
+
+                // Title field
+                item {
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        label = { Text("Title") },
+                        placeholder = { Text("Give your entry a title") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                // Content field
+                item {
+                    OutlinedTextField(
+                        value = content,
+                        onValueChange = { content = it },
+                        label = { Text("Your thoughts") },
+                        placeholder = { Text("Write your reflection...") },
+                        minLines = 5,
+                        maxLines = 8,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                // Tags field
+                item {
+                    OutlinedTextField(
+                        value = tagsText,
+                        onValueChange = { tagsText = it },
+                        label = { Text("Tags (optional)") },
+                        placeholder = { Text("gratitude, goals, reflection") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                // Save button
+                item {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            if (title.isNotBlank() && content.isNotBlank()) {
+                                val tags = tagsText.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                                onConfirm(title, content, selectedMood, tags)
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        enabled = title.isNotBlank() && content.isNotBlank(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Rounded.Check, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Save Entry",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
             }
         }
-    )
+    }
 }
 
 private fun formatJournalDate(date: kotlinx.datetime.LocalDate): String {
