@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Assignment
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -195,7 +196,7 @@ object StatIcons {
     val Progress = Icons.Rounded.DonutLarge
     val Upcoming = Icons.Rounded.Event
     val Overdue = Icons.Rounded.Schedule
-    val Tasks = Icons.Rounded.Assignment
+    val Tasks = Icons.AutoMirrored.Rounded.Assignment
     val Streak = Icons.Rounded.LocalFireDepartment
     val Total = Icons.Rounded.Numbers
 }

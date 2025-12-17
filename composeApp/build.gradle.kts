@@ -53,9 +53,11 @@ kotlin {
 
             implementation(libs.accompanist.systemuicontroller)
 
-
-            implementation (libs.firebase.auth.ktx)
             implementation(libs.firebase.common.ktx)
+            implementation(libs.firebase.auth.ktx)
+
+            // Coroutines for Firebase Tasks
+            implementation(libs.kotlinx.coroutines.play.services)
 
         }
         commonMain.dependencies {
@@ -69,6 +71,8 @@ kotlin {
             implementation(libs.androidx.lifecycle.viewmodel)
             implementation(libs.androidx.lifecycle.runtime.compose)
             implementation(libs.navigation.compose)
+
+            implementation(libs.sqldelight.coroutines)
 
             //Ktor
             implementation(libs.ktor.client.core)
@@ -93,11 +97,10 @@ kotlin {
             implementation(libs.firebase.crashlytics)
             implementation(libs.firebase.perf)
             implementation(libs.gitlive.firebase.analytics)
+            implementation(libs.gitlive.firebase.auth)
             api(libs.kmpnotifier) // in iOS export this library
             //Kermit  for logging
             implementation(libs.kermit)
-
-
         }
 
         iosMain.dependencies {
@@ -105,6 +108,17 @@ kotlin {
             implementation(libs.sqldelight.ios)
             // ktor
             implementation(libs.ktor.client.darwin)
+        }
+
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.koin.test)
+            implementation(libs.turbine)
+        }
+
+        androidUnitTest.dependencies {
+            implementation(libs.sqldelight.test)
         }
     }
 }
@@ -114,7 +128,7 @@ sqldelight {
         create("LifePlannerDB") {
             packageName.set("az.tribe.lifeplanner.database")
             schemaOutputDirectory = file("src/commonMain/sqldelight/databases")
-            version = 3 // 👈 Update this
+            version = 6 // Updated to include Goal Dependencies
             generateAsync.set(true)
         }
     }
@@ -124,11 +138,14 @@ sqldelight {
 android {
 
     signingConfigs {
-        create("release") {
-            storeFile = file("${rootDir}/lifeplanner.jks")
-            storePassword = project.property("RELEASE_STORE_PASSWORD") as String
-            keyAlias = project.property("RELEASE_KEY_ALIAS") as String
-            keyPassword = project.property("RELEASE_KEY_PASSWORD") as String
+        val keystoreFile = file("${rootDir}/lifeplanner.jks")
+        if (keystoreFile.exists()) {
+            create("release") {
+                storeFile = keystoreFile
+                storePassword = project.findProperty("RELEASE_STORE_PASSWORD") as? String
+                keyAlias = project.findProperty("RELEASE_KEY_ALIAS") as? String
+                keyPassword = project.findProperty("RELEASE_KEY_PASSWORD") as? String
+            }
         }
     }
     namespace = "az.tribe.lifeplanner"
@@ -154,7 +171,10 @@ android {
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            val keystoreFile = file("${rootDir}/lifeplanner.jks")
+            if (keystoreFile.exists() && signingConfigs.findByName("release") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {
@@ -167,6 +187,9 @@ android {
 dependencies {
     debugImplementation(compose.uiTooling)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
+
+    // Firebase BOM
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
 }
 
 

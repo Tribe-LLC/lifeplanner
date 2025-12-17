@@ -10,7 +10,7 @@ import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Flag
@@ -55,14 +55,7 @@ fun AnalyticsDashboard(viewModel: GoalViewModel, onBackClick: () -> Unit) {
                     containerColor = MaterialTheme.colorScheme.surface,
                     scrolledContainerColor = MaterialTheme.colorScheme.surface
                 ),
-                title = {
-                    Text(
-                        "Analytics Dashboard",
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            fontWeight = FontWeight.Bold
-                        )
-                    )
-                },
+                title = { },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -198,7 +191,7 @@ fun HeroStatsSection(analytics: GoalAnalytics) {
                     HeroStatCard(
                         title = "Success Rate",
                         value = "${(analytics.completionRate * 100).toInt()}%",
-                        icon = Icons.Default.TrendingUp,
+                        icon = Icons.AutoMirrored.Filled.TrendingUp,
                         color = Color(0xFF10B981),
                         modifier = Modifier.weight(1f)
                     )

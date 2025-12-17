@@ -1,7 +1,6 @@
 package az.tribe.lifeplanner.ui
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandIn
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -10,11 +9,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -31,30 +30,34 @@ import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import az.tribe.lifeplanner.domain.enum.GoalFilter
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.model.Goal
-import az.tribe.lifeplanner.ui.components.CategoryHeader
-import az.tribe.lifeplanner.ui.components.EmptyGoalsView
-import az.tribe.lifeplanner.ui.components.GoalItem
-import az.tribe.lifeplanner.ui.components.ModernTopAppBar
-import az.tribe.lifeplanner.ui.components.QuickStatsSection
-import az.tribe.lifeplanner.ui.components.SearchResultsSummary
-import az.tribe.lifeplanner.ui.components.backgroundColor
+import az.tribe.lifeplanner.ui.components.DailyMotivationCard
+import az.tribe.lifeplanner.ui.components.DashboardStatsRow
+import az.tribe.lifeplanner.ui.components.QuickActionsRow
+import az.tribe.lifeplanner.ui.components.TodaysFocusSection
+import az.tribe.lifeplanner.ui.components.WelcomeHeader
+import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
+import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
+import az.tribe.lifeplanner.ui.viewmodel.AuthState
+import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
+import org.koin.compose.koinInject
+import org.koin.compose.viewmodel.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,101 +70,65 @@ fun HomeScreen(
 ) {
     val snackBarHostState = remember { SnackbarHostState() }
 
+    // Inject ViewModels
+    val authViewModel: AuthViewModel = koinInject()
+    val gamificationViewModel: GamificationViewModel = koinViewModel()
+
+    val authState by authViewModel.authState.collectAsState()
+    val userProgress by gamificationViewModel.userProgress.collectAsState()
     val goals by viewModel.goals.collectAsState()
-    var searchQuery by remember { mutableStateOf(TextFieldValue("")) }
-    var selectedFilter by remember { mutableStateOf(GoalFilter.ALL) }
-    var showSearchBar by remember { mutableStateOf(false) }
-    var showFilterMenu by remember { mutableStateOf(false) }
+    val analytics by viewModel.analytics.collectAsState()
 
-    val scrollState = rememberLazyListState()
+    // Extract current user
+    val currentUser = when (authState) {
+        is AuthState.Authenticated -> (authState as AuthState.Authenticated).user
+        is AuthState.Guest -> (authState as AuthState.Guest).user
+        else -> null
+    }
 
-    // Animation for FAB
+    // FAB state (simplified - only 2 options)
     var fabExpanded by remember { mutableStateOf(false) }
 
-    // Filter goals based on search and filter criteria
-    val filteredGoals = remember(goals, searchQuery.text, selectedFilter) {
-        goals.filter { goal ->
-            val matchesSearch = if (searchQuery.text.isBlank()) true
-            else goal.title.contains(searchQuery.text, ignoreCase = true) ||
-                    goal.description.contains(searchQuery.text, ignoreCase = true)
-            val matchesFilter = when (selectedFilter) {
-                GoalFilter.ALL -> true
-                GoalFilter.ACTIVE -> goal.status != GoalStatus.COMPLETED
-                GoalFilter.COMPLETED -> goal.status == GoalStatus.COMPLETED
-            }
-            matchesSearch && matchesFilter
-        }
-    }
+    // Calculate dashboard stats
+    val activeGoals = goals.filter { it.status != GoalStatus.COMPLETED }.size
+    val completedGoals = goals.filter { it.status == GoalStatus.COMPLETED }.size
+    val totalProgress = if (goals.isNotEmpty()) {
+        (goals.sumOf { it.progress ?: 0L } / goals.size).toInt()
+    } else 0
 
-    // Category expansion state
-    val categoryExpansionState = remember {
-        mutableStateMapOf<String, Boolean>().apply {
-            // Initialize all categories as expanded
-            goals.map { it.category.name }.distinct().forEach { categoryName ->
-                this[categoryName] = true
-            }
-        }
-    }
-    val defaultColor = MaterialTheme.colorScheme.primary
-
-    // Calculate dynamic color based on scroll position
-    val dynamicColor by remember {
-        derivedStateOf {
-            if (filteredGoals.isEmpty()) {
-                defaultColor // Default if empty
-            } else {
-                val visibleGoals = scrollState.layoutInfo.visibleItemsInfo
-                if (visibleGoals.isNotEmpty()) {
-                    val firstVisibleGoalId = visibleGoals.firstOrNull()?.key
-                    val firstVisibleGoal = filteredGoals.firstOrNull {
-                        it.id.toString() == firstVisibleGoalId.toString()
-                    }
-                    firstVisibleGoal?.category?.backgroundColor() ?: defaultColor
-                } else {
-                    defaultColor
-                }
-            }
-        }
-    }
+    // Get upcoming goals (due soon, not completed)
+    val upcomingGoals = goals
+        .filter { it.status != GoalStatus.COMPLETED }
+        .sortedBy { it.dueDate }
+        .take(5)
 
     LaunchedEffect(Unit) {
         viewModel.loadAllGoals()
         viewModel.loadAnalytics()
     }
 
-    // Update ViewModel search when local search changes
-    LaunchedEffect(searchQuery.text, selectedFilter) {
-        viewModel.updateSearchQuery(searchQuery.text)
-        viewModel.updateFilter(selectedFilter)
-    }
-
-    // Main content
     Scaffold(
         topBar = {
-            ModernTopAppBar(
-                title = { if (!showSearchBar) Text("Life Planner") },
-                dynamicColor = dynamicColor,
-                showSearchBar = showSearchBar,
-                searchQuery = searchQuery,
-                onSearchQueryChange = { searchQuery = it },
-                onSearchToggle = { showSearchBar = it },
-                onFilterClick = { showFilterMenu = true },
-                onAnalyticsClick = goToAnalytics,
-                selectedFilter = selectedFilter,
-                showFilterMenu = showFilterMenu,
-                onFilterMenuDismiss = { showFilterMenu = false },
-                onFilterSelected = {
-                    selectedFilter = it
-                    showFilterMenu = false
-                }
+            TopAppBar(
+                title = {
+                    Text(
+                        "Life Planner",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         },
         floatingActionButton = {
+            // Simplified FAB with only 2 options
             Column(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Extended FAB options
                 AnimatedVisibility(
                     visible = fabExpanded,
                     enter = fadeIn() + slideInVertically { it },
@@ -171,10 +138,9 @@ fun HomeScreen(
                         horizontalAlignment = Alignment.End,
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // AI Generation option
+                        // AI Suggest option
                         SmallFloatingActionButton(
                             onClick = {
-                                println("AI Generation option clicked")
                                 goToAiGeneration()
                                 fabExpanded = false
                             },
@@ -194,10 +160,9 @@ fun HomeScreen(
                             }
                         }
 
-                        // Manual creation option
+                        // Manual Add option
                         SmallFloatingActionButton(
                             onClick = {
-                                println("Manual creation option clicked")
                                 onAddGoalClick()
                                 fabExpanded = false
                             },
@@ -213,7 +178,7 @@ fun HomeScreen(
                                     imageVector = Icons.Rounded.Edit,
                                     contentDescription = null
                                 )
-                                Text("Manual", style = MaterialTheme.typography.labelLarge)
+                                Text("Add Goal", style = MaterialTheme.typography.labelLarge)
                             }
                         }
                     }
@@ -222,7 +187,7 @@ fun HomeScreen(
                 // Main FAB
                 FloatingActionButton(
                     onClick = { fabExpanded = !fabExpanded },
-                    containerColor = dynamicColor,
+                    containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = Color.White,
                     shape = CircleShape,
                     elevation = FloatingActionButtonDefaults.elevation(
@@ -238,78 +203,57 @@ fun HomeScreen(
             }
         },
         containerColor = MaterialTheme.colorScheme.background,
-        snackbarHost = { SnackbarHost(snackBarHostState) },
-
-        ) { innerPadding ->
+        snackbarHost = { SnackbarHost(snackBarHostState) }
+    ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            state = scrollState,
-            contentPadding = PaddingValues(bottom = 100.dp), // Extra padding for FAB
+            contentPadding = PaddingValues(horizontal = LifePlannerDesign.Padding.screenHorizontal),
+            verticalArrangement = Arrangement.spacedBy(LifePlannerDesign.Spacing.lg)
         ) {
-
-            // Search Results Summary
-            if (searchQuery.text.isNotEmpty() || selectedFilter != GoalFilter.ALL) {
-                item {
-                    SearchResultsSummary(
-                        resultCount = filteredGoals.size,
-                        searchQuery = searchQuery.text,
-                        selectedFilter = selectedFilter,
-                        onClear = {
-                            searchQuery = TextFieldValue("")
-                            selectedFilter = GoalFilter.ALL
-                            showSearchBar = false
-                        }
-                    )
-                }
+            // Welcome Header with streak
+            item {
+                WelcomeHeader(
+                    userName = currentUser?.displayName,
+                    streak = userProgress?.currentStreak ?: 0
+                )
             }
 
-            // Category headers and goals
-            val groupedGoals = filteredGoals.groupBy { it.category }
+            // Dashboard Stats Row
+            item {
+                DashboardStatsRow(
+                    activeGoals = activeGoals,
+                    completedGoals = completedGoals,
+                    totalProgress = totalProgress
+                )
+            }
 
-            if (groupedGoals.isEmpty()) {
-                item {
-                    EmptyGoalsView(
-                        isFiltered = searchQuery.text.isNotEmpty() || selectedFilter != GoalFilter.ALL
-                    )
-                }
-            } else {
-                // Category headers and goals with expansion
-                groupedGoals.keys.sortedBy { it.order }.forEach { category ->
-                    val categoryGoals = groupedGoals[category].orEmpty()
-                    val isCategoryExpanded = categoryExpansionState[category.name] ?: true
+            // Daily Motivation Card
+            item {
+                DailyMotivationCard()
+            }
 
-                    if (categoryGoals.isNotEmpty()) {
-                        // Sticky header for the category
-                        stickyHeader(key = "header_${category.name}") {
-                            CategoryHeader(
-                                category = category,
-                                goalCount = categoryGoals.size,
-                                expanded = isCategoryExpanded,
-                                onExpandChange = { isExpanded ->
-                                    categoryExpansionState[category.name] = isExpanded
-                                }
-                            )
-                        }
+            // Quick Actions
+            item {
+                QuickActionsRow(
+                    onAddGoalClick = onAddGoalClick,
+                    onAiSuggestClick = goToAiGeneration
+                )
+            }
 
-                        // Render goals if category is expanded
-                        if (isCategoryExpanded) {
-                            items(
-                                items = categoryGoals,
-                                key = { goal -> goal.id.toString() }
-                            ) { goal ->
-                                GoalItem(
-                                    goal = goal,
-                                    onClick = { onGoalClick(goal) },
-                                    scrollState = scrollState
-                                )
-                            }
-                        }
-                    }
-                }
+            // Today's Focus Section
+            item {
+                TodaysFocusSection(
+                    upcomingGoals = upcomingGoals,
+                    onGoalClick = onGoalClick
+                )
+            }
+
+            // Bottom spacing for FAB
+            item {
+                Spacer(modifier = Modifier.height(80.dp))
             }
         }
     }
-
 }

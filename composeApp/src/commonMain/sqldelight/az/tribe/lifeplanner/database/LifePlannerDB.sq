@@ -1,7 +1,3 @@
-import az.tribe.lifeplanner.domain.enum.GoalCategory;
-import az.tribe.lifeplanner.domain.enum.GoalTimeline;
-import kotlin.Boolean;
-
 -- Updated GoalEntity table with new fields
 CREATE TABLE GoalEntity (
     id TEXT NOT NULL PRIMARY KEY,
@@ -21,9 +17,9 @@ CREATE TABLE GoalEntity (
 selectAll:
 SELECT * FROM GoalEntity;
 
--- Updated insert query
+-- Updated insert query with conflict resolution
 insertGoal:
-INSERT INTO GoalEntity(id, category, title, description, status, timeline, dueDate, progress, notes, createdAt, completionRate, isArchived)
+INSERT OR REPLACE INTO GoalEntity(id, category, title, description, status, timeline, dueDate, progress, notes, createdAt, completionRate, isArchived)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectGoalsByTimeline:
@@ -155,7 +151,7 @@ CREATE TABLE IF NOT EXISTS MilestoneEntity (
 
 -- Milestone queries
 insertMilestone:
-INSERT INTO MilestoneEntity(id, goalId, title, isCompleted, dueDate, createdAt)
+INSERT OR REPLACE INTO MilestoneEntity(id, goalId, title, isCompleted, dueDate, createdAt)
 VALUES (?, ?, ?, ?, ?, ?);
 
 getMilestonesByGoalId:
@@ -188,7 +184,7 @@ CREATE TABLE GoalHistoryEntity (
 );
 
 insertGoalHistory:
-INSERT INTO GoalHistoryEntity(id, goalId, field, oldValue, newValue, changedAt)
+INSERT OR REPLACE INTO GoalHistoryEntity(id, goalId, field, oldValue, newValue, changedAt)
 VALUES (?, ?, ?, ?, ?, ?);
 
 getGoalHistory:
@@ -197,25 +193,95 @@ SELECT * FROM GoalHistoryEntity WHERE goalId = ? ORDER BY changedAt DESC;
 CREATE TABLE UserProgressEntity (
     id INTEGER PRIMARY KEY DEFAULT 1,
     currentStreak INTEGER NOT NULL DEFAULT 0,
-    lastCheckInDate TEXT
+    lastCheckInDate TEXT,
+    totalXp INTEGER NOT NULL DEFAULT 0,
+    currentLevel INTEGER NOT NULL DEFAULT 1,
+    goalsCompleted INTEGER NOT NULL DEFAULT 0,
+    habitsCompleted INTEGER NOT NULL DEFAULT 0,
+    journalEntriesCount INTEGER NOT NULL DEFAULT 0,
+    longestStreak INTEGER NOT NULL DEFAULT 0
 );
 
 getUserProgress:
 SELECT * FROM UserProgressEntity LIMIT 1;
 
 insertUserProgress:
-INSERT INTO UserProgressEntity(currentStreak, lastCheckInDate)
-VALUES ( ?, ?);
+INSERT OR REPLACE INTO UserProgressEntity(id, currentStreak, lastCheckInDate, totalXp, currentLevel, goalsCompleted, habitsCompleted, journalEntriesCount, longestStreak)
+VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?);
 
 updateUserStreak:
 UPDATE UserProgressEntity
-SET currentStreak = ?, lastCheckInDate = ?
+SET currentStreak = ?, lastCheckInDate = ?, longestStreak = MAX(longestStreak, ?)
+WHERE id = 1;
+
+updateUserXp:
+UPDATE UserProgressEntity
+SET totalXp = ?, currentLevel = ?
+WHERE id = 1;
+
+addXp:
+UPDATE UserProgressEntity
+SET totalXp = totalXp + ?
+WHERE id = 1;
+
+incrementGoalsCompleted:
+UPDATE UserProgressEntity
+SET goalsCompleted = goalsCompleted + 1
+WHERE id = 1;
+
+incrementHabitsCompleted:
+UPDATE UserProgressEntity
+SET habitsCompleted = habitsCompleted + 1
+WHERE id = 1;
+
+incrementJournalEntries:
+UPDATE UserProgressEntity
+SET journalEntriesCount = journalEntriesCount + 1
 WHERE id = 1;
 
 countActiveGoalsByCategory:
 SELECT COUNT(*)
 FROM GoalEntity
 WHERE category = ? AND timeline = ? AND status != 'COMPLETED' AND isArchived = 0;
+
+-- User table for storing user profile and onboarding data
+CREATE TABLE IF NOT EXISTS UserEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    firebaseUid TEXT UNIQUE,
+    email TEXT,
+    displayName TEXT,
+    isGuest INTEGER NOT NULL DEFAULT 0,
+    selectedSymbol TEXT,
+    priorities TEXT,
+    ageRange TEXT,
+    profession TEXT,
+    relationshipStatus TEXT,
+    mindset TEXT,
+    hasCompletedOnboarding INTEGER NOT NULL DEFAULT 0,
+    createdAt TEXT NOT NULL,
+    lastSyncedAt TEXT
+);
+
+-- User queries
+insertUser:
+INSERT OR REPLACE INTO UserEntity(id, firebaseUid, email, displayName, isGuest, selectedSymbol, priorities, ageRange, profession, relationshipStatus, mindset, hasCompletedOnboarding, createdAt, lastSyncedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getCurrentUser:
+SELECT * FROM UserEntity LIMIT 1;
+
+updateUser:
+UPDATE UserEntity
+SET firebaseUid = ?, email = ?, displayName = ?, isGuest = ?, selectedSymbol = ?, priorities = ?, ageRange = ?, profession = ?, relationshipStatus = ?, mindset = ?, hasCompletedOnboarding = ?, lastSyncedAt = ?
+WHERE id = ?;
+
+updateOnboardingData:
+UPDATE UserEntity
+SET selectedSymbol = ?, priorities = ?, ageRange = ?, profession = ?, relationshipStatus = ?, mindset = ?, hasCompletedOnboarding = 1
+WHERE id = ?;
+
+deleteUser:
+DELETE FROM UserEntity WHERE id = ?;
 
 -- Indexes for better performance (already in your schema)
 CREATE INDEX IF NOT EXISTS idx_goals_title ON GoalEntity(title);
@@ -225,3 +291,695 @@ CREATE INDEX IF NOT EXISTS idx_goals_timeline ON GoalEntity(timeline);
 CREATE INDEX IF NOT EXISTS idx_goals_duedate ON GoalEntity(dueDate);
 CREATE INDEX IF NOT EXISTS idx_goals_archived ON GoalEntity(isArchived);
 CREATE INDEX IF NOT EXISTS idx_milestones_goalid ON MilestoneEntity(goalId);
+CREATE INDEX IF NOT EXISTS idx_user_firebase_uid ON UserEntity(firebaseUid);
+
+-- Habit Tracking Tables
+CREATE TABLE IF NOT EXISTS HabitEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL,
+    frequency TEXT NOT NULL DEFAULT 'DAILY',
+    targetCount INTEGER NOT NULL DEFAULT 1,
+    currentStreak INTEGER NOT NULL DEFAULT 0,
+    longestStreak INTEGER NOT NULL DEFAULT 0,
+    totalCompletions INTEGER NOT NULL DEFAULT 0,
+    lastCompletedDate TEXT,
+    linkedGoalId TEXT,
+    correlationScore REAL NOT NULL DEFAULT 0.0,
+    isActive INTEGER NOT NULL DEFAULT 1,
+    createdAt TEXT NOT NULL,
+    reminderTime TEXT,
+    FOREIGN KEY (linkedGoalId) REFERENCES GoalEntity(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS HabitCheckInEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    habitId TEXT NOT NULL,
+    date TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 1,
+    notes TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY (habitId) REFERENCES HabitEntity(id) ON DELETE CASCADE
+);
+
+-- Habit queries
+insertHabit:
+INSERT OR REPLACE INTO HabitEntity(id, title, description, category, frequency, targetCount, currentStreak, longestStreak, totalCompletions, lastCompletedDate, linkedGoalId, correlationScore, isActive, createdAt, reminderTime)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getAllHabits:
+SELECT * FROM HabitEntity WHERE isActive = 1 ORDER BY createdAt DESC;
+
+getHabitById:
+SELECT * FROM HabitEntity WHERE id = ?;
+
+getHabitsByCategory:
+SELECT * FROM HabitEntity WHERE category = ? AND isActive = 1;
+
+getHabitsByGoalId:
+SELECT * FROM HabitEntity WHERE linkedGoalId = ? AND isActive = 1;
+
+updateHabit:
+UPDATE HabitEntity
+SET title = ?, description = ?, category = ?, frequency = ?, targetCount = ?, linkedGoalId = ?, reminderTime = ?
+WHERE id = ?;
+
+updateHabitStreak:
+UPDATE HabitEntity
+SET currentStreak = ?, longestStreak = ?, totalCompletions = ?, lastCompletedDate = ?
+WHERE id = ?;
+
+updateHabitCorrelation:
+UPDATE HabitEntity
+SET correlationScore = ?
+WHERE id = ?;
+
+deactivateHabit:
+UPDATE HabitEntity SET isActive = 0 WHERE id = ?;
+
+deleteHabit:
+DELETE FROM HabitEntity WHERE id = ?;
+
+-- Habit check-in queries
+insertHabitCheckIn:
+INSERT OR REPLACE INTO HabitCheckInEntity(id, habitId, date, completed, notes)
+VALUES (?, ?, ?, ?, ?);
+
+getCheckInsByHabitId:
+SELECT * FROM HabitCheckInEntity WHERE habitId = ? ORDER BY date DESC;
+
+getCheckInsByDate:
+SELECT * FROM HabitCheckInEntity WHERE date = ?;
+
+getCheckInByHabitAndDate:
+SELECT * FROM HabitCheckInEntity WHERE habitId = ? AND date = ?;
+
+deleteCheckIn:
+DELETE FROM HabitCheckInEntity WHERE id = ?;
+
+getCheckInsInRange:
+SELECT * FROM HabitCheckInEntity WHERE habitId = ? AND date >= ? AND date <= ? ORDER BY date ASC;
+
+getTodayCheckIns:
+SELECT h.id, h.title, h.description, h.category, h.frequency, h.targetCount,
+       h.currentStreak, h.longestStreak, h.totalCompletions, h.lastCompletedDate,
+       h.linkedGoalId, h.correlationScore, h.isActive, h.createdAt, h.reminderTime,
+       c.completed
+FROM HabitEntity h
+LEFT JOIN HabitCheckInEntity c ON h.id = c.habitId AND c.date = ?
+WHERE h.isActive = 1;
+
+getHabitCompletionStats:
+SELECT habitId, COUNT(*)
+FROM HabitCheckInEntity
+WHERE completed = 1 AND date >= ? AND date <= ?
+GROUP BY habitId;
+
+-- Indexes for habits
+CREATE INDEX IF NOT EXISTS idx_habits_category ON HabitEntity(category);
+CREATE INDEX IF NOT EXISTS idx_habits_linked_goal ON HabitEntity(linkedGoalId);
+CREATE INDEX IF NOT EXISTS idx_habits_active ON HabitEntity(isActive);
+CREATE INDEX IF NOT EXISTS idx_checkins_habit ON HabitCheckInEntity(habitId);
+CREATE INDEX IF NOT EXISTS idx_checkins_date ON HabitCheckInEntity(date);
+
+-- Journal Entry Table
+CREATE TABLE IF NOT EXISTS JournalEntryEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    mood TEXT NOT NULL DEFAULT 'NEUTRAL',
+    linkedGoalId TEXT,
+    promptUsed TEXT,
+    tags TEXT NOT NULL DEFAULT '',
+    date TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT,
+    FOREIGN KEY (linkedGoalId) REFERENCES GoalEntity(id) ON DELETE SET NULL
+);
+
+-- Journal queries
+insertJournalEntry:
+INSERT OR REPLACE INTO JournalEntryEntity(id, title, content, mood, linkedGoalId, promptUsed, tags, date, createdAt, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getAllJournalEntries:
+SELECT * FROM JournalEntryEntity ORDER BY date DESC, createdAt DESC;
+
+getJournalEntryById:
+SELECT * FROM JournalEntryEntity WHERE id = ?;
+
+getJournalEntriesByDate:
+SELECT * FROM JournalEntryEntity WHERE date = ? ORDER BY createdAt DESC;
+
+getJournalEntriesByGoalId:
+SELECT * FROM JournalEntryEntity WHERE linkedGoalId = ? ORDER BY date DESC;
+
+getJournalEntriesByMood:
+SELECT * FROM JournalEntryEntity WHERE mood = ? ORDER BY date DESC;
+
+getJournalEntriesInRange:
+SELECT * FROM JournalEntryEntity WHERE date >= ? AND date <= ? ORDER BY date DESC;
+
+updateJournalEntry:
+UPDATE JournalEntryEntity
+SET title = ?, content = ?, mood = ?, linkedGoalId = ?, promptUsed = ?, tags = ?, updatedAt = ?
+WHERE id = ?;
+
+deleteJournalEntry:
+DELETE FROM JournalEntryEntity WHERE id = ?;
+
+searchJournalEntries:
+SELECT * FROM JournalEntryEntity
+WHERE title LIKE '%' || ? || '%' OR content LIKE '%' || ? || '%'
+ORDER BY date DESC;
+
+getRecentJournalEntries:
+SELECT * FROM JournalEntryEntity ORDER BY date DESC, createdAt DESC LIMIT ?;
+
+getMoodCountInRange:
+SELECT mood, COUNT(*)
+FROM JournalEntryEntity
+WHERE date >= ? AND date <= ?
+GROUP BY mood;
+
+-- Indexes for journal
+CREATE INDEX IF NOT EXISTS idx_journal_date ON JournalEntryEntity(date);
+CREATE INDEX IF NOT EXISTS idx_journal_mood ON JournalEntryEntity(mood);
+CREATE INDEX IF NOT EXISTS idx_journal_goal ON JournalEntryEntity(linkedGoalId);
+
+-- Badge Table for earned achievements
+CREATE TABLE IF NOT EXISTS BadgeEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    badgeType TEXT NOT NULL,
+    earnedAt TEXT NOT NULL,
+    isNew INTEGER NOT NULL DEFAULT 1
+);
+
+-- Challenge Table for active/completed challenges
+CREATE TABLE IF NOT EXISTS ChallengeEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    challengeType TEXT NOT NULL,
+    startDate TEXT NOT NULL,
+    endDate TEXT NOT NULL,
+    currentProgress INTEGER NOT NULL DEFAULT 0,
+    targetProgress INTEGER NOT NULL,
+    isCompleted INTEGER NOT NULL DEFAULT 0,
+    completedAt TEXT,
+    xpEarned INTEGER NOT NULL DEFAULT 0
+);
+
+-- Badge queries
+insertBadge:
+INSERT OR REPLACE INTO BadgeEntity(id, badgeType, earnedAt, isNew)
+VALUES (?, ?, ?, ?);
+
+getAllBadges:
+SELECT * FROM BadgeEntity ORDER BY earnedAt DESC;
+
+getBadgeByType:
+SELECT * FROM BadgeEntity WHERE badgeType = ?;
+
+hasBadge:
+SELECT COUNT(*) FROM BadgeEntity WHERE badgeType = ?;
+
+markBadgeAsSeen:
+UPDATE BadgeEntity SET isNew = 0 WHERE id = ?;
+
+markAllBadgesAsSeen:
+UPDATE BadgeEntity SET isNew = 0;
+
+getNewBadges:
+SELECT * FROM BadgeEntity WHERE isNew = 1;
+
+getBadgeCount:
+SELECT COUNT(*) FROM BadgeEntity;
+
+-- Challenge queries
+insertChallenge:
+INSERT OR REPLACE INTO ChallengeEntity(id, challengeType, startDate, endDate, currentProgress, targetProgress, isCompleted, completedAt, xpEarned)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getAllChallenges:
+SELECT * FROM ChallengeEntity ORDER BY startDate DESC;
+
+getActiveChallenges:
+SELECT * FROM ChallengeEntity WHERE isCompleted = 0 AND endDate >= ? ORDER BY endDate ASC;
+
+getCompletedChallenges:
+SELECT * FROM ChallengeEntity WHERE isCompleted = 1 ORDER BY completedAt DESC;
+
+getChallengeById:
+SELECT * FROM ChallengeEntity WHERE id = ?;
+
+getChallengeByType:
+SELECT * FROM ChallengeEntity WHERE challengeType = ? AND isCompleted = 0;
+
+updateChallengeProgress:
+UPDATE ChallengeEntity
+SET currentProgress = ?
+WHERE id = ?;
+
+completeChallenge:
+UPDATE ChallengeEntity
+SET isCompleted = 1, completedAt = ?, xpEarned = ?
+WHERE id = ?;
+
+deleteChallenge:
+DELETE FROM ChallengeEntity WHERE id = ?;
+
+deleteExpiredChallenges:
+DELETE FROM ChallengeEntity WHERE isCompleted = 0 AND endDate < ?;
+
+-- Indexes for gamification
+CREATE INDEX IF NOT EXISTS idx_badge_type ON BadgeEntity(badgeType);
+CREATE INDEX IF NOT EXISTS idx_badge_new ON BadgeEntity(isNew);
+CREATE INDEX IF NOT EXISTS idx_challenge_type ON ChallengeEntity(challengeType);
+CREATE INDEX IF NOT EXISTS idx_challenge_completed ON ChallengeEntity(isCompleted);
+CREATE INDEX IF NOT EXISTS idx_challenge_end_date ON ChallengeEntity(endDate);
+
+-- Goal Dependency Table for tracking relationships between goals
+CREATE TABLE IF NOT EXISTS GoalDependencyEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    sourceGoalId TEXT NOT NULL,
+    targetGoalId TEXT NOT NULL,
+    dependencyType TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (sourceGoalId) REFERENCES GoalEntity(id) ON DELETE CASCADE,
+    FOREIGN KEY (targetGoalId) REFERENCES GoalEntity(id) ON DELETE CASCADE
+);
+
+-- Goal Dependency queries
+insertGoalDependency:
+INSERT OR REPLACE INTO GoalDependencyEntity(id, sourceGoalId, targetGoalId, dependencyType, createdAt)
+VALUES (?, ?, ?, ?, ?);
+
+getAllDependencies:
+SELECT * FROM GoalDependencyEntity;
+
+getDependenciesBySourceGoal:
+SELECT * FROM GoalDependencyEntity WHERE sourceGoalId = ?;
+
+getDependenciesByTargetGoal:
+SELECT * FROM GoalDependencyEntity WHERE targetGoalId = ?;
+
+getDependenciesForGoal:
+SELECT * FROM GoalDependencyEntity WHERE sourceGoalId = ? OR targetGoalId = ?;
+
+getDependencyById:
+SELECT * FROM GoalDependencyEntity WHERE id = ?;
+
+getDependencyBetweenGoals:
+SELECT * FROM GoalDependencyEntity
+WHERE (sourceGoalId = ? AND targetGoalId = ?) OR (sourceGoalId = ? AND targetGoalId = ?);
+
+deleteDependency:
+DELETE FROM GoalDependencyEntity WHERE id = ?;
+
+deleteDependenciesByGoal:
+DELETE FROM GoalDependencyEntity WHERE sourceGoalId = ? OR targetGoalId = ?;
+
+getDependencyCount:
+SELECT COUNT(*) FROM GoalDependencyEntity;
+
+getBlockingGoals:
+SELECT DISTINCT g.*
+FROM GoalEntity g
+INNER JOIN GoalDependencyEntity d ON g.id = d.targetGoalId
+WHERE d.sourceGoalId = ? AND d.dependencyType = 'BLOCKED_BY';
+
+getBlockedGoals:
+SELECT DISTINCT g.*
+FROM GoalEntity g
+INNER JOIN GoalDependencyEntity d ON g.id = d.targetGoalId
+WHERE d.sourceGoalId = ? AND d.dependencyType = 'BLOCKS';
+
+getChildGoals:
+SELECT DISTINCT g.*
+FROM GoalEntity g
+INNER JOIN GoalDependencyEntity d ON g.id = d.targetGoalId
+WHERE d.sourceGoalId = ? AND d.dependencyType = 'PARENT_OF';
+
+getParentGoals:
+SELECT DISTINCT g.*
+FROM GoalEntity g
+INNER JOIN GoalDependencyEntity d ON g.id = d.targetGoalId
+WHERE d.sourceGoalId = ? AND d.dependencyType = 'CHILD_OF';
+
+getRelatedGoals:
+SELECT DISTINCT g.*
+FROM GoalEntity g
+INNER JOIN GoalDependencyEntity d ON g.id = d.targetGoalId
+WHERE d.sourceGoalId = ? AND (d.dependencyType = 'RELATED' OR d.dependencyType = 'SUPPORTS');
+
+-- Indexes for goal dependencies
+CREATE INDEX IF NOT EXISTS idx_dependency_source ON GoalDependencyEntity(sourceGoalId);
+CREATE INDEX IF NOT EXISTS idx_dependency_target ON GoalDependencyEntity(targetGoalId);
+CREATE INDEX IF NOT EXISTS idx_dependency_type ON GoalDependencyEntity(dependencyType);
+
+-- AI Coach Chat Tables
+CREATE TABLE IF NOT EXISTS ChatSessionEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    title TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    lastMessageAt TEXT NOT NULL,
+    summary TEXT
+);
+
+CREATE TABLE IF NOT EXISTS ChatMessageEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    sessionId TEXT NOT NULL,
+    content TEXT NOT NULL,
+    role TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    relatedGoalId TEXT,
+    metadata TEXT,
+    FOREIGN KEY (sessionId) REFERENCES ChatSessionEntity(id) ON DELETE CASCADE
+);
+
+-- Chat Session queries
+insertChatSession:
+INSERT OR REPLACE INTO ChatSessionEntity(id, title, createdAt, lastMessageAt, summary)
+VALUES (?, ?, ?, ?, ?);
+
+getAllChatSessions:
+SELECT * FROM ChatSessionEntity ORDER BY lastMessageAt DESC;
+
+getChatSessionById:
+SELECT * FROM ChatSessionEntity WHERE id = ?;
+
+updateChatSessionLastMessage:
+UPDATE ChatSessionEntity
+SET lastMessageAt = ?, title = ?
+WHERE id = ?;
+
+updateChatSessionSummary:
+UPDATE ChatSessionEntity
+SET summary = ?
+WHERE id = ?;
+
+deleteChatSession:
+DELETE FROM ChatSessionEntity WHERE id = ?;
+
+deleteOldChatSessions:
+DELETE FROM ChatSessionEntity WHERE lastMessageAt < ?;
+
+getChatSessionCount:
+SELECT COUNT(*) FROM ChatSessionEntity;
+
+-- Chat Message queries
+insertChatMessage:
+INSERT OR REPLACE INTO ChatMessageEntity(id, sessionId, content, role, timestamp, relatedGoalId, metadata)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+getMessagesBySessionId:
+SELECT * FROM ChatMessageEntity WHERE sessionId = ? ORDER BY timestamp ASC;
+
+getRecentMessages:
+SELECT * FROM ChatMessageEntity WHERE sessionId = ? ORDER BY timestamp DESC LIMIT ?;
+
+getMessageById:
+SELECT * FROM ChatMessageEntity WHERE id = ?;
+
+deleteMessage:
+DELETE FROM ChatMessageEntity WHERE id = ?;
+
+deleteMessagesBySession:
+DELETE FROM ChatMessageEntity WHERE sessionId = ?;
+
+getMessageCountBySession:
+SELECT COUNT(*) FROM ChatMessageEntity WHERE sessionId = ?;
+
+getLastMessageBySession:
+SELECT * FROM ChatMessageEntity WHERE sessionId = ? ORDER BY timestamp DESC LIMIT 1;
+
+-- Indexes for chat
+CREATE INDEX IF NOT EXISTS idx_chat_session_last_message ON ChatSessionEntity(lastMessageAt);
+CREATE INDEX IF NOT EXISTS idx_chat_message_session ON ChatMessageEntity(sessionId);
+CREATE INDEX IF NOT EXISTS idx_chat_message_timestamp ON ChatMessageEntity(timestamp);
+
+-- AI Review Tables
+CREATE TABLE IF NOT EXISTS ReviewReportEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    type TEXT NOT NULL,
+    periodStart TEXT NOT NULL,
+    periodEnd TEXT NOT NULL,
+    generatedAt TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    highlightsJson TEXT NOT NULL,
+    insightsJson TEXT NOT NULL,
+    recommendationsJson TEXT NOT NULL,
+    statsJson TEXT NOT NULL,
+    feedbackRating TEXT,
+    feedbackComment TEXT,
+    feedbackAt TEXT,
+    isRead INTEGER NOT NULL DEFAULT 0
+);
+
+-- Review queries
+insertReview:
+INSERT OR REPLACE INTO ReviewReportEntity(
+    id, type, periodStart, periodEnd, generatedAt, summary,
+    highlightsJson, insightsJson, recommendationsJson, statsJson,
+    feedbackRating, feedbackComment, feedbackAt, isRead
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getAllReviews:
+SELECT * FROM ReviewReportEntity ORDER BY generatedAt DESC;
+
+getReviewById:
+SELECT * FROM ReviewReportEntity WHERE id = ?;
+
+getReviewsByType:
+SELECT * FROM ReviewReportEntity WHERE type = ? ORDER BY generatedAt DESC;
+
+getLatestReviewByType:
+SELECT * FROM ReviewReportEntity WHERE type = ? ORDER BY generatedAt DESC LIMIT 1;
+
+getUnreadReviews:
+SELECT * FROM ReviewReportEntity WHERE isRead = 0 ORDER BY generatedAt DESC;
+
+markReviewAsRead:
+UPDATE ReviewReportEntity SET isRead = 1 WHERE id = ?;
+
+updateReviewFeedback:
+UPDATE ReviewReportEntity
+SET feedbackRating = ?, feedbackComment = ?, feedbackAt = ?
+WHERE id = ?;
+
+deleteReview:
+DELETE FROM ReviewReportEntity WHERE id = ?;
+
+deleteOldReviews:
+DELETE FROM ReviewReportEntity WHERE generatedAt < ?;
+
+getReviewCount:
+SELECT COUNT(*) FROM ReviewReportEntity;
+
+getUnreadReviewCount:
+SELECT COUNT(*) FROM ReviewReportEntity WHERE isRead = 0;
+
+-- Index for reviews
+CREATE INDEX IF NOT EXISTS idx_review_type ON ReviewReportEntity(type);
+CREATE INDEX IF NOT EXISTS idx_review_generated ON ReviewReportEntity(generatedAt);
+CREATE INDEX IF NOT EXISTS idx_review_unread ON ReviewReportEntity(isRead);
+
+-- Smart Reminders Tables
+CREATE TABLE IF NOT EXISTS ReminderEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    type TEXT NOT NULL,
+    frequency TEXT NOT NULL,
+    scheduledTime TEXT NOT NULL,
+    scheduledDays TEXT NOT NULL DEFAULT '',
+    linkedGoalId TEXT,
+    linkedHabitId TEXT,
+    isEnabled INTEGER NOT NULL DEFAULT 1,
+    isSmartTiming INTEGER NOT NULL DEFAULT 0,
+    lastTriggeredAt TEXT,
+    snoozedUntil TEXT,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT,
+    FOREIGN KEY (linkedGoalId) REFERENCES GoalEntity(id) ON DELETE SET NULL,
+    FOREIGN KEY (linkedHabitId) REFERENCES HabitEntity(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS ReminderSettingsEntity (
+    id TEXT PRIMARY KEY NOT NULL DEFAULT 'default',
+    isEnabled INTEGER NOT NULL DEFAULT 1,
+    quietHoursStart TEXT NOT NULL DEFAULT '22:00',
+    quietHoursEnd TEXT NOT NULL DEFAULT '07:00',
+    preferredMorningTime TEXT NOT NULL DEFAULT '08:00',
+    preferredEveningTime TEXT NOT NULL DEFAULT '20:00',
+    smartTimingEnabled INTEGER NOT NULL DEFAULT 1,
+    maxRemindersPerDay INTEGER NOT NULL DEFAULT 5,
+    weeklyReviewDay TEXT NOT NULL DEFAULT 'SUNDAY',
+    weeklyReviewTime TEXT NOT NULL DEFAULT '10:00'
+);
+
+CREATE TABLE IF NOT EXISTS UserActivityPatternEntity (
+    id TEXT PRIMARY KEY NOT NULL DEFAULT 'default',
+    mostActiveHours TEXT NOT NULL DEFAULT '',
+    mostActiveDays TEXT NOT NULL DEFAULT '',
+    averageResponseTime INTEGER NOT NULL DEFAULT 0,
+    bestCheckInTimes TEXT NOT NULL DEFAULT '',
+    lastUpdated TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ScheduledNotificationEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    reminderId TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    scheduledAt TEXT NOT NULL,
+    isDelivered INTEGER NOT NULL DEFAULT 0,
+    deliveredAt TEXT,
+    isSnoozed INTEGER NOT NULL DEFAULT 0,
+    isDismissed INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (reminderId) REFERENCES ReminderEntity(id) ON DELETE CASCADE
+);
+
+-- Reminder queries
+insertReminder:
+INSERT OR REPLACE INTO ReminderEntity(
+    id, title, message, type, frequency, scheduledTime, scheduledDays,
+    linkedGoalId, linkedHabitId, isEnabled, isSmartTiming, lastTriggeredAt,
+    snoozedUntil, createdAt, updatedAt
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getAllReminders:
+SELECT * FROM ReminderEntity ORDER BY createdAt DESC;
+
+getEnabledReminders:
+SELECT * FROM ReminderEntity WHERE isEnabled = 1 ORDER BY scheduledTime ASC;
+
+getReminderById:
+SELECT * FROM ReminderEntity WHERE id = ?;
+
+getRemindersByGoalId:
+SELECT * FROM ReminderEntity WHERE linkedGoalId = ? AND isEnabled = 1;
+
+getRemindersByHabitId:
+SELECT * FROM ReminderEntity WHERE linkedHabitId = ? AND isEnabled = 1;
+
+getRemindersByType:
+SELECT * FROM ReminderEntity WHERE type = ? AND isEnabled = 1;
+
+updateReminder:
+UPDATE ReminderEntity
+SET title = ?, message = ?, type = ?, frequency = ?, scheduledTime = ?,
+    scheduledDays = ?, linkedGoalId = ?, linkedHabitId = ?, isEnabled = ?,
+    isSmartTiming = ?, updatedAt = ?
+WHERE id = ?;
+
+updateReminderLastTriggered:
+UPDATE ReminderEntity
+SET lastTriggeredAt = ?
+WHERE id = ?;
+
+snoozeReminder:
+UPDATE ReminderEntity
+SET snoozedUntil = ?
+WHERE id = ?;
+
+enableReminder:
+UPDATE ReminderEntity SET isEnabled = 1 WHERE id = ?;
+
+disableReminder:
+UPDATE ReminderEntity SET isEnabled = 0 WHERE id = ?;
+
+enableAllReminders:
+UPDATE ReminderEntity SET isEnabled = 1;
+
+disableAllReminders:
+UPDATE ReminderEntity SET isEnabled = 0;
+
+deleteReminder:
+DELETE FROM ReminderEntity WHERE id = ?;
+
+getReminderCount:
+SELECT COUNT(*) FROM ReminderEntity WHERE isEnabled = 1;
+
+-- Reminder Settings queries
+getReminderSettings:
+SELECT * FROM ReminderSettingsEntity WHERE id = 'default';
+
+insertReminderSettings:
+INSERT OR REPLACE INTO ReminderSettingsEntity(
+    id, isEnabled, quietHoursStart, quietHoursEnd, preferredMorningTime,
+    preferredEveningTime, smartTimingEnabled, maxRemindersPerDay,
+    weeklyReviewDay, weeklyReviewTime
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateReminderSettings:
+UPDATE ReminderSettingsEntity
+SET isEnabled = ?, quietHoursStart = ?, quietHoursEnd = ?, preferredMorningTime = ?,
+    preferredEveningTime = ?, smartTimingEnabled = ?, maxRemindersPerDay = ?,
+    weeklyReviewDay = ?, weeklyReviewTime = ?
+WHERE id = 'default';
+
+-- User Activity Pattern queries
+getUserActivityPattern:
+SELECT * FROM UserActivityPatternEntity WHERE id = 'default';
+
+insertUserActivityPattern:
+INSERT OR REPLACE INTO UserActivityPatternEntity(
+    id, mostActiveHours, mostActiveDays, averageResponseTime, bestCheckInTimes, lastUpdated
+) VALUES (?, ?, ?, ?, ?, ?);
+
+updateUserActivityPattern:
+UPDATE UserActivityPatternEntity
+SET mostActiveHours = ?, mostActiveDays = ?, averageResponseTime = ?,
+    bestCheckInTimes = ?, lastUpdated = ?
+WHERE id = 'default';
+
+-- Scheduled Notification queries
+insertScheduledNotification:
+INSERT OR REPLACE INTO ScheduledNotificationEntity(
+    id, reminderId, title, message, scheduledAt, isDelivered, deliveredAt, isSnoozed, isDismissed
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getScheduledNotifications:
+SELECT * FROM ScheduledNotificationEntity WHERE isDelivered = 0 AND isDismissed = 0 ORDER BY scheduledAt ASC;
+
+getScheduledNotificationById:
+SELECT * FROM ScheduledNotificationEntity WHERE id = ?;
+
+getScheduledNotificationsByReminder:
+SELECT * FROM ScheduledNotificationEntity WHERE reminderId = ? ORDER BY scheduledAt ASC;
+
+markNotificationDelivered:
+UPDATE ScheduledNotificationEntity
+SET isDelivered = 1, deliveredAt = ?
+WHERE id = ?;
+
+markNotificationSnoozed:
+UPDATE ScheduledNotificationEntity
+SET isSnoozed = 1
+WHERE id = ?;
+
+dismissNotification:
+UPDATE ScheduledNotificationEntity
+SET isDismissed = 1
+WHERE id = ?;
+
+deleteScheduledNotification:
+DELETE FROM ScheduledNotificationEntity WHERE id = ?;
+
+deleteScheduledNotificationsByReminder:
+DELETE FROM ScheduledNotificationEntity WHERE reminderId = ?;
+
+deleteDeliveredNotifications:
+DELETE FROM ScheduledNotificationEntity WHERE isDelivered = 1 AND deliveredAt < ?;
+
+getPendingNotificationCount:
+SELECT COUNT(*) FROM ScheduledNotificationEntity WHERE isDelivered = 0 AND isDismissed = 0;
+
+-- Indexes for reminders
+CREATE INDEX IF NOT EXISTS idx_reminder_type ON ReminderEntity(type);
+CREATE INDEX IF NOT EXISTS idx_reminder_enabled ON ReminderEntity(isEnabled);
+CREATE INDEX IF NOT EXISTS idx_reminder_goal ON ReminderEntity(linkedGoalId);
+CREATE INDEX IF NOT EXISTS idx_reminder_habit ON ReminderEntity(linkedHabitId);
+CREATE INDEX IF NOT EXISTS idx_scheduled_reminder ON ScheduledNotificationEntity(reminderId);
+CREATE INDEX IF NOT EXISTS idx_scheduled_time ON ScheduledNotificationEntity(scheduledAt);
+CREATE INDEX IF NOT EXISTS idx_scheduled_delivered ON ScheduledNotificationEntity(isDelivered);

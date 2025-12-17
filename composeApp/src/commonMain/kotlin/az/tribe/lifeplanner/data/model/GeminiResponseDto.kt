@@ -36,11 +36,11 @@ data class GoalGenerationResponse(
 data class GoalDto(
     val title: String,
     val description: String,
-    val notes: String,
+    val notes: String = "",
     val category: GoalCategory,
     val timeline: GoalTimeline,
-    val dueDate: String, // Will be parsed to LocalDate
-    val milestones: List<MilestoneDto>
+    val dueDate: String? = null, // Will be parsed to LocalDate, optional from AI
+    val milestones: List<MilestoneDto> = emptyList()
 )
 
 @Serializable

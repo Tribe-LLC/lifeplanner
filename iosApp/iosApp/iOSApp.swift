@@ -1,6 +1,6 @@
 import SwiftUI
 import FirebaseCore
-import FirebasePerformance
+//import FirebasePerformance
 import FirebaseMessaging
 import ComposeApp
 
@@ -11,7 +11,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         FirebaseApp.configure()
         AppInitializer.shared.onApplicationStart()
-        let _ = Performance.sharedInstance()
+//        let _ = Performance.sharedInstance()
 
         return true
     }

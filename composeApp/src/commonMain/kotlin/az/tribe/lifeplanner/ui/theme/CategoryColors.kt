@@ -52,7 +52,6 @@ fun GoalCategory.gradientColors(): List<Color> {
         GoalCategory.EMOTIONAL -> CategoryColors.EMOTIONAL_GRADIENT
         GoalCategory.SPIRITUAL -> CategoryColors.SPIRITUAL_GRADIENT
         GoalCategory.FAMILY -> CategoryColors.FAMILY_GRADIENT
-        else -> CategoryColors.OTHER_GRADIENT
     }
 }
 
@@ -66,7 +65,6 @@ fun GoalCategory.containerColor(): Color {
         GoalCategory.EMOTIONAL -> CategoryColors.EMOTIONAL_CONTAINER
         GoalCategory.SPIRITUAL -> CategoryColors.SPIRITUAL_CONTAINER
         GoalCategory.FAMILY -> CategoryColors.FAMILY_CONTAINER
-        else -> CategoryColors.OTHER_CONTAINER
     }
 }
 
@@ -80,7 +78,6 @@ fun GoalCategory.backgroundColor(): Color {
         GoalCategory.EMOTIONAL -> CategoryColors.EMOTIONAL
         GoalCategory.SPIRITUAL -> CategoryColors.SPIRITUAL
         GoalCategory.FAMILY -> CategoryColors.FAMILY
-        else -> CategoryColors.OTHER
     }
 }
 

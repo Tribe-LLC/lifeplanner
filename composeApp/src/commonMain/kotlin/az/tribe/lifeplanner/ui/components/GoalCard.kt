@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.automirrored.rounded.ListAlt
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -187,7 +188,7 @@ private fun MilestoneIndicator(
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Icon(
-            imageVector = Icons.Rounded.ListAlt,
+            imageVector = Icons.AutoMirrored.Rounded.ListAlt,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
             modifier = Modifier.size(16.dp)
@@ -292,7 +293,6 @@ fun GoalCategory.backgroundColor(): Color {
         GoalCategory.EMOTIONAL -> Color(0xFF009688)
         GoalCategory.SPIRITUAL -> Color(0xFFE91E63)
         GoalCategory.FAMILY -> Color(0xFF3F51B5)
-        else -> Color(0xFF757575)
     }
 }
 

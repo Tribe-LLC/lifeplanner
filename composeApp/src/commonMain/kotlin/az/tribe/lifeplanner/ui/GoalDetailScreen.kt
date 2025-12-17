@@ -38,7 +38,7 @@ import androidx.compose.material.icons.rounded.Event
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.History
-import androidx.compose.material.icons.rounded.Notes
+import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Refresh
@@ -79,25 +79,35 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import az.tribe.lifeplanner.domain.enum.DependencyType
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.model.Goal
+import az.tribe.lifeplanner.domain.model.GoalDependency
 import az.tribe.lifeplanner.domain.model.Milestone
+import az.tribe.lifeplanner.ui.components.AddDependencyBottomSheet
+import az.tribe.lifeplanner.ui.components.DependenciesCard
 import az.tribe.lifeplanner.ui.components.GoalDetailDialogs
 import az.tribe.lifeplanner.ui.components.StatusChip
 import az.tribe.lifeplanner.ui.components.backgroundColor
+import az.tribe.lifeplanner.ui.dependency.GoalDependencyViewModel
 import az.tribe.lifeplanner.ui.theme.gradientColors
 import kotlinx.datetime.LocalDate
+import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GoalDetailScreen(
     goalId: String,
     viewModel: GoalViewModel,
+    dependencyViewModel: GoalDependencyViewModel = koinInject(),
     onBackClick: () -> Unit,
-    onEditClick: () -> Unit
+    onEditClick: () -> Unit,
+    onViewDependencyGraph: (String) -> Unit = {},
+    onNavigateToGoal: (String) -> Unit = {}
 ) {
     val goals by viewModel.goals.collectAsState()
     val goal = goals.find { it.id == goalId }
+    val dependencyUiState by dependencyViewModel.uiState.collectAsState()
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showProgressDialog by remember { mutableStateOf(false) }
@@ -106,11 +116,18 @@ fun GoalDetailScreen(
     var showCompleteConfirmDialog by remember { mutableStateOf(false) }
     var fabExpanded by remember { mutableStateOf(false) }
     var showHistoryModal by remember { mutableStateOf(false) }
+    var showAddDependencySheet by remember { mutableStateOf(false) }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     LaunchedEffect(Unit) {
         viewModel.loadAllGoals()
+        dependencyViewModel.loadData()
+    }
+
+    // Load dependencies for current goal when goal changes
+    LaunchedEffect(goalId) {
+        goal?.let { dependencyViewModel.selectGoal(it) }
     }
 
     if (goal == null) {
@@ -202,8 +219,37 @@ fun GoalDetailScreen(
                     )
                 }
             }
+
+            // Dependencies section
+            item {
+                DependenciesCard(
+                    dependencies = dependencyUiState.selectedGoalDependencies,
+                    goals = dependencyUiState.allGoals,
+                    currentGoalId = goalId,
+                    suggestedDependencies = dependencyUiState.suggestedDependencies,
+                    onAddDependency = { showAddDependencySheet = true },
+                    onRemoveDependency = { dependencyId ->
+                        dependencyViewModel.removeDependency(dependencyId)
+                    },
+                    onViewDependencyGraph = { onViewDependencyGraph(goalId) },
+                    onGoalClick = { linkedGoalId ->
+                        onNavigateToGoal(linkedGoalId)
+                    }
+                )
+            }
         }
     }
+
+    // Add Dependency Bottom Sheet
+    AddDependencyBottomSheet(
+        isVisible = showAddDependencySheet,
+        currentGoal = goal,
+        availableGoals = dependencyUiState.allGoals.filter { it.id != goalId },
+        onDismiss = { showAddDependencySheet = false },
+        onAddDependency = { targetGoalId, dependencyType ->
+            dependencyViewModel.addDependency(goalId, targetGoalId, dependencyType)
+        }
+    )
 
 
     GoalHistoryModal(
@@ -499,7 +545,7 @@ fun NotesCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Icon(
-                        Icons.Rounded.Notes,
+                        Icons.AutoMirrored.Rounded.Notes,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary
                     )

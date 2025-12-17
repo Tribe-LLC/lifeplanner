@@ -18,10 +18,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.domain.model.Goal
+import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
+import az.tribe.lifeplanner.ui.theme.gradientColors
 
 @Composable
 fun GoalItem(
@@ -47,13 +50,16 @@ fun GoalItem(
         label = "scale"
     )
 
+    // Get category gradient colors
+    val categoryGradientColors = goal.category.gradientColors()
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        // Main card with goal information
-        Card(
+        // Modern glass-style card with gradient accent
+        GlassCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .graphicsLayer {
@@ -62,9 +68,10 @@ fun GoalItem(
                     scaleY = scale
                 }
                 .shadow(
-                    elevation = 4.dp,
-                    shape = RoundedCornerShape(16.dp),
-                    spotColor = goal.category.backgroundColor().copy(alpha = 0.5f)
+                    elevation = 8.dp,
+                    shape = RoundedCornerShape(LifePlannerDesign.CornerRadius.large),
+                    spotColor = categoryGradientColors.first().copy(alpha = 0.3f),
+                    ambientColor = categoryGradientColors.first().copy(alpha = 0.1f)
                 )
                 .clickable {
                     if (showDeleteConfirm) {
@@ -73,32 +80,42 @@ fun GoalItem(
                         onClick()
                     }
                 },
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            )
+            cornerRadius = LifePlannerDesign.CornerRadius.large
         ) {
-            Box {
-                // Category indicator - thin colorful line at the top
+            Row(modifier = Modifier.fillMaxWidth()) {
+                // Gradient accent bar on the left
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
+                        .width(5.dp)
+                        .fillMaxHeight()
                         .background(
-                            color = goal.category.backgroundColor(),
-                            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+                            brush = Brush.verticalGradient(categoryGradientColors)
                         )
                 )
 
-                // Goal content
-                Column(
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 16.dp)
-                ) {
-                    // Main content
-                    GoalCard(goal = goal)
+                Column(modifier = Modifier.weight(1f)) {
+                    // Category indicator - gradient line at the top
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .background(
+                                brush = Brush.horizontalGradient(
+                                    colors = listOf(
+                                        categoryGradientColors.first(),
+                                        categoryGradientColors.last().copy(alpha = 0.5f)
+                                    )
+                                )
+                            )
+                    )
 
+                    // Goal content
+                    Column(
+                        modifier = Modifier.padding(LifePlannerDesign.Padding.standard)
+                    ) {
+                        GoalCard(goal = goal)
+                    }
                 }
-
             }
         }
     }

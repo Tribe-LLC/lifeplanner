@@ -1,0 +1,1031 @@
+package az.tribe.lifeplanner.ui
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontWeight
+import kotlin.math.min
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import az.tribe.lifeplanner.domain.model.BalanceInsight
+import az.tribe.lifeplanner.domain.model.BalanceRating
+import az.tribe.lifeplanner.domain.model.BalanceRecommendation
+import az.tribe.lifeplanner.domain.model.BalanceTrend
+import az.tribe.lifeplanner.domain.model.InsightPriority
+import az.tribe.lifeplanner.domain.model.LifeArea
+import az.tribe.lifeplanner.domain.model.LifeAreaScore
+import az.tribe.lifeplanner.domain.model.LifeBalanceReport
+import az.tribe.lifeplanner.domain.model.BalanceRecommendationAction
+import az.tribe.lifeplanner.ui.balance.LifeBalanceViewModel
+import org.koin.compose.viewmodel.koinViewModel
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LifeBalanceScreen(
+    viewModel: LifeBalanceViewModel = koinViewModel(),
+    onNavigateBack: () -> Unit,
+    onCreateGoal: (LifeArea) -> Unit = {},
+    onCreateHabit: (LifeArea) -> Unit = {}
+) {
+    val uiState by viewModel.uiState.collectAsState()
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        "Life Balance",
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = "Back"
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { viewModel.loadBalance() }) {
+                        Icon(
+                            imageVector = Icons.Rounded.Refresh,
+                            contentDescription = "Refresh"
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            )
+        }
+    ) { padding ->
+        if (uiState.isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator()
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        "Analyzing your life balance...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else if (uiState.error != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(32.dp)
+                ) {
+                    Text(
+                        uiState.error ?: "Unknown error",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(onClick = { viewModel.loadBalance() }) {
+                        Text("Try Again")
+                    }
+                }
+            }
+        } else {
+            uiState.report?.let { report ->
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Overall Score Card
+                    item {
+                        OverallScoreCard(report)
+                    }
+
+                    // Balance Wheel
+                    item {
+                        BalanceWheelCard(
+                            areaScores = report.areaScores,
+                            selectedArea = uiState.selectedArea,
+                            onAreaSelected = { viewModel.selectArea(it) }
+                        )
+                    }
+
+                    // Selected Area Details
+                    uiState.selectedArea?.let { area ->
+                        val areaScore = report.areaScores.find { it.area == area }
+                        if (areaScore != null) {
+                            item {
+                                AreaDetailCard(
+                                    areaScore = areaScore,
+                                    onAssess = { viewModel.showAssessmentDialog(area) }
+                                )
+                            }
+                        }
+                    }
+
+                    // Area Scores List
+                    item {
+                        Text(
+                            "Area Breakdown",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
+
+                    items(report.areaScores.sortedByDescending { it.score }) { areaScore ->
+                        AreaScoreRow(
+                            areaScore = areaScore,
+                            isSelected = areaScore.area == uiState.selectedArea,
+                            onClick = {
+                                viewModel.selectArea(
+                                    if (uiState.selectedArea == areaScore.area) null
+                                    else areaScore.area
+                                )
+                            }
+                        )
+                    }
+
+                    // AI Insights
+                    if (report.aiInsights.isNotEmpty()) {
+                        item {
+                            Text(
+                                "Insights",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        }
+
+                        items(report.aiInsights) { insight ->
+                            InsightCard(insight)
+                        }
+                    }
+
+                    // Recommendations
+                    if (report.recommendations.isNotEmpty()) {
+                        item {
+                            Text(
+                                "Recommendations",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        }
+
+                        items(report.recommendations) { recommendation ->
+                            RecommendationCard(
+                                recommendation = recommendation,
+                                onAction = {
+                                    when (recommendation.actionType) {
+                                        BalanceRecommendationAction.CREATE_GOAL -> onCreateGoal(recommendation.targetArea)
+                                        BalanceRecommendationAction.CREATE_HABIT -> onCreateHabit(recommendation.targetArea)
+                                        else -> {}
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                    // Bottom spacing
+                    item {
+                        Spacer(modifier = Modifier.height(32.dp))
+                    }
+                }
+            }
+        }
+    }
+
+    // Assessment Dialog
+    if (uiState.showAssessmentDialog && uiState.assessmentArea != null) {
+        ManualAssessmentDialog(
+            area = uiState.assessmentArea!!,
+            onDismiss = { viewModel.hideAssessmentDialog() },
+            onSave = { score, notes ->
+                viewModel.saveManualAssessment(uiState.assessmentArea!!, score, notes)
+            }
+        )
+    }
+}
+
+@Composable
+private fun OverallScoreCard(report: LifeBalanceReport) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        ),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                "Overall Balance",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                "${report.overallScore}",
+                style = MaterialTheme.typography.displayLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+
+            Text(
+                "/ 100",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f)
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Rating Badge
+            val ratingColor = when (report.balanceRating) {
+                BalanceRating.EXCELLENT -> Color(0xFF4CAF50)
+                BalanceRating.GOOD -> Color(0xFF8BC34A)
+                BalanceRating.MODERATE -> Color(0xFFFFC107)
+                BalanceRating.NEEDS_ATTENTION -> Color(0xFFFF9800)
+                BalanceRating.CRITICAL -> Color(0xFFF44336)
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(ratingColor.copy(alpha = 0.2f))
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    report.balanceRating.displayName,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = ratingColor
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                report.balanceRating.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun BalanceWheelCard(
+    areaScores: List<LifeAreaScore>,
+    selectedArea: LifeArea?,
+    onAreaSelected: (LifeArea?) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        shape = RoundedCornerShape(20.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                "Balance Wheel",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Donut Chart with center score
+            Box(
+                modifier = Modifier.size(280.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                BalanceWheel(
+                    areaScores = areaScores,
+                    selectedArea = selectedArea,
+                    onAreaClick = onAreaSelected,
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                // Center score display
+                val averageScore = if (areaScores.isNotEmpty()) {
+                    areaScores.sumOf { it.score } / areaScores.size
+                } else 0
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "$averageScore",
+                        style = MaterialTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        "avg",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Legend
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(areaScores) { score ->
+                    FilterChip(
+                        selected = selectedArea == score.area,
+                        onClick = {
+                            onAreaSelected(if (selectedArea == score.area) null else score.area)
+                        },
+                        label = {
+                            Text(
+                                "${score.area.icon} ${score.score}",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = getAreaColor(score.area).copy(alpha = 0.2f)
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BalanceWheel(
+    areaScores: List<LifeAreaScore>,
+    selectedArea: LifeArea?,
+    onAreaClick: (LifeArea?) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+
+    Canvas(modifier = modifier) {
+        val centerX = size.width / 2
+        val centerY = size.height / 2
+        val outerRadius = min(size.width, size.height) / 2 * 0.9f
+        val innerRadius = outerRadius * 0.5f
+        val donutThickness = outerRadius - innerRadius
+
+        val numberOfAreas = areaScores.size
+        if (numberOfAreas == 0) return@Canvas
+
+        val sweepAngle = 360f / numberOfAreas
+        val gapAngle = 3f // Small gap between segments
+        val actualSweep = sweepAngle - gapAngle
+
+        // Start from top (-90 degrees)
+        var currentAngle = -90f
+
+        areaScores.forEach { areaScore ->
+            val areaColor = getAreaColor(areaScore.area)
+            val normalizedScore = areaScore.score / 100f
+            val isSelected = areaScore.area == selectedArea
+
+            // Calculate the filled thickness based on score
+            // Score determines how much of the donut segment is filled (from outer edge inward)
+            val filledThickness = donutThickness * normalizedScore
+            val unfilledThickness = donutThickness - filledThickness
+
+            // Draw background (unfilled) arc
+            drawArc(
+                color = surfaceVariant,
+                startAngle = currentAngle + gapAngle / 2,
+                sweepAngle = actualSweep,
+                useCenter = false,
+                topLeft = Offset(
+                    centerX - outerRadius + unfilledThickness / 2,
+                    centerY - outerRadius + unfilledThickness / 2
+                ),
+                size = androidx.compose.ui.geometry.Size(
+                    (outerRadius - unfilledThickness / 2) * 2,
+                    (outerRadius - unfilledThickness / 2) * 2
+                ),
+                style = Stroke(
+                    width = filledThickness,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Butt
+                )
+            )
+
+            // Draw filled arc (from outer edge)
+            if (normalizedScore > 0) {
+                drawArc(
+                    color = if (isSelected) areaColor else areaColor.copy(alpha = 0.85f),
+                    startAngle = currentAngle + gapAngle / 2,
+                    sweepAngle = actualSweep,
+                    useCenter = false,
+                    topLeft = Offset(
+                        centerX - outerRadius + filledThickness / 2,
+                        centerY - outerRadius + filledThickness / 2
+                    ),
+                    size = androidx.compose.ui.geometry.Size(
+                        (outerRadius - filledThickness / 2) * 2,
+                        (outerRadius - filledThickness / 2) * 2
+                    ),
+                    style = Stroke(
+                        width = filledThickness,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Butt
+                    )
+                )
+            }
+
+            // Draw selection highlight
+            if (isSelected) {
+                drawArc(
+                    color = areaColor,
+                    startAngle = currentAngle + gapAngle / 2,
+                    sweepAngle = actualSweep,
+                    useCenter = false,
+                    topLeft = Offset(
+                        centerX - outerRadius - 4,
+                        centerY - outerRadius - 4
+                    ),
+                    size = androidx.compose.ui.geometry.Size(
+                        (outerRadius + 4) * 2,
+                        (outerRadius + 4) * 2
+                    ),
+                    style = Stroke(width = 3f)
+                )
+            }
+
+            currentAngle += sweepAngle
+        }
+
+        // Draw inner circle (hole of the donut) for cleaner look
+        drawCircle(
+            color = Color.Transparent,
+            radius = innerRadius,
+            center = Offset(centerX, centerY)
+        )
+    }
+}
+
+@Composable
+private fun AreaScoreRow(
+    areaScore: LifeAreaScore,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val backgroundColor by animateColorAsState(
+        targetValue = if (isSelected) {
+            getAreaColor(areaScore.area).copy(alpha = 0.1f)
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        label = "bg_color"
+    )
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = backgroundColor),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Icon
+            Text(
+                areaScore.area.icon,
+                fontSize = 28.sp
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Name and stats
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        areaScore.area.displayName,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // Trend indicator
+                    when (areaScore.trend) {
+                        BalanceTrend.IMPROVING -> Icon(
+                            imageVector = Icons.Rounded.KeyboardArrowUp,
+                            contentDescription = "Improving",
+                            tint = Color(0xFF4CAF50),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        BalanceTrend.DECLINING -> Icon(
+                            imageVector = Icons.Rounded.KeyboardArrowDown,
+                            contentDescription = "Declining",
+                            tint = Color(0xFFF44336),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        BalanceTrend.STABLE -> {}
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    "${areaScore.goalCount} goals • ${areaScore.habitCount} habits",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Progress bar
+                LinearProgressIndicator(
+                    progress = { areaScore.score / 100f },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp)),
+                    color = getAreaColor(areaScore.area),
+                    trackColor = getAreaColor(areaScore.area).copy(alpha = 0.2f)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Score
+            Text(
+                "${areaScore.score}",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = getScoreColor(areaScore.score)
+            )
+        }
+    }
+}
+
+@Composable
+private fun AreaDetailCard(
+    areaScore: LifeAreaScore,
+    onAssess: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = getAreaColor(areaScore.area).copy(alpha = 0.1f)
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(areaScore.area.icon, fontSize = 32.sp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            areaScore.area.displayName,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            areaScore.area.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                TextButton(onClick = onAssess) {
+                    Text("Self-Assess")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Stats Grid
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                StatItem("Score", "${areaScore.score}/100")
+                StatItem("Goals", "${areaScore.goalCount}")
+                StatItem("Completed", "${areaScore.completedGoals}")
+                StatItem("Habits", "${areaScore.habitCount}")
+            }
+
+            if (areaScore.habitCount > 0) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Habit Completion",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                        "${(areaScore.habitCompletionRate * 100).toInt()}%",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                LinearProgressIndicator(
+                    progress = { areaScore.habitCompletionRate },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                    color = getAreaColor(areaScore.area)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatItem(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            value,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun InsightCard(insight: BalanceInsight) {
+    val priorityColor = when (insight.priority) {
+        InsightPriority.HIGH -> Color(0xFFF44336)
+        InsightPriority.MEDIUM -> Color(0xFFFFC107)
+        InsightPriority.LOW -> Color(0xFF4CAF50)
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(priorityColor)
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    insight.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    insight.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                if (insight.relatedAreas.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        insight.relatedAreas.forEach { area ->
+                            Text(
+                                area.icon,
+                                fontSize = 16.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecommendationCard(
+    recommendation: BalanceRecommendation,
+    onAction: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    recommendation.targetArea.icon,
+                    fontSize = 24.sp
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        recommendation.title,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        recommendation.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Suggested action
+            if (recommendation.suggestedGoal != null || recommendation.suggestedHabit != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                val suggestionText = recommendation.suggestedGoal ?: recommendation.suggestedHabit ?: ""
+                val actionLabel = when (recommendation.actionType) {
+                    BalanceRecommendationAction.CREATE_GOAL -> "Create Goal"
+                    BalanceRecommendationAction.CREATE_HABIT -> "Create Habit"
+                    else -> null
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            suggestionText,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        if (actionLabel != null) {
+                            TextButton(
+                                onClick = onAction,
+                                contentPadding = PaddingValues(horizontal = 8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(actionLabel, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManualAssessmentDialog(
+    area: LifeArea,
+    onDismiss: () -> Unit,
+    onSave: (Int, String?) -> Unit
+) {
+    var score by remember { mutableFloatStateOf(5f) }
+    var notes by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(area.icon, fontSize = 24.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Assess ${area.displayName}")
+            }
+        },
+        text = {
+            Column {
+                Text(
+                    "How satisfied are you with this area of your life?",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text(
+                    "${score.toInt()}/10",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+
+                Slider(
+                    value = score,
+                    onValueChange = { score = it },
+                    valueRange = 1f..10f,
+                    steps = 8,
+                    colors = SliderDefaults.colors(
+                        thumbColor = getAreaColor(area),
+                        activeTrackColor = getAreaColor(area)
+                    )
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Needs work", style = MaterialTheme.typography.labelSmall)
+                    Text("Excellent", style = MaterialTheme.typography.labelSmall)
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("Notes (optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 3
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSave(score.toInt(), notes.ifBlank { null }) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = getAreaColor(area)
+                )
+            ) {
+                Icon(Icons.Rounded.Check, contentDescription = null)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+// Helper functions
+
+private fun getAreaColor(area: LifeArea): Color {
+    return when (area) {
+        LifeArea.CAREER -> Color(0xFF5E35B1)
+        LifeArea.FINANCIAL -> Color(0xFF43A047)
+        LifeArea.PHYSICAL -> Color(0xFFE53935)
+        LifeArea.SOCIAL -> Color(0xFF1E88E5)
+        LifeArea.EMOTIONAL -> Color(0xFFFF9800)
+        LifeArea.SPIRITUAL -> Color(0xFF8E24AA)
+        LifeArea.FAMILY -> Color(0xFFE91E63)
+        LifeArea.PERSONAL_GROWTH -> Color(0xFF00ACC1)
+    }
+}
+
+private fun getScoreColor(score: Int): Color {
+    return when {
+        score >= 70 -> Color(0xFF4CAF50)
+        score >= 50 -> Color(0xFF8BC34A)
+        score >= 30 -> Color(0xFFFFC107)
+        score >= 15 -> Color(0xFFFF9800)
+        else -> Color(0xFFF44336)
+    }
+}

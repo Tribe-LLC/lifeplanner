@@ -13,7 +13,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.FilterList
-import androidx.compose.material.icons.rounded.FormatListBulleted
+import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.DropdownMenu
@@ -29,6 +29,10 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -53,7 +57,11 @@ import az.tribe.lifeplanner.ui.theme.modernColors
     selectedFilter: GoalFilter,
     showFilterMenu: Boolean,
     onFilterMenuDismiss: () -> Unit,
-    onFilterSelected: (GoalFilter) -> Unit
+    onFilterSelected: (GoalFilter) -> Unit,
+    currentUser: az.tribe.lifeplanner.domain.model.User? = null,
+    onProfileClick: () -> Unit = {},
+    onSignInClick: () -> Unit = {},
+    onSignOutClick: () -> Unit = {}
 ) {
     Box(
         modifier = Modifier
@@ -132,6 +140,25 @@ import az.tribe.lifeplanner.ui.theme.modernColors
                 scrolledContainerColor = MaterialTheme.colorScheme.surface
             ),
             actions = {
+                // Profile Button
+                var showProfileMenu by remember { mutableStateOf(false) }
+                Box {
+                    UserProfileButton(
+                        user = currentUser,
+                        onProfileClick = { showProfileMenu = true },
+                        onSignInClick = onSignInClick
+                    )
+
+                    UserProfileMenu(
+                        user = currentUser,
+                        expanded = showProfileMenu,
+                        onDismiss = { showProfileMenu = false },
+                        onViewProfile = onProfileClick,
+                        onSignOut = onSignOutClick
+                    )
+                }
+
+
                 if (!showSearchBar) {
                     IconButton(
                         onClick = { onSearchToggle(true) }
@@ -168,7 +195,7 @@ import az.tribe.lifeplanner.ui.theme.modernColors
                                 leadingIcon = {
                                     Icon(
                                         imageVector = when (filter) {
-                                            GoalFilter.ALL -> Icons.Rounded.FormatListBulleted
+                                            GoalFilter.ALL -> Icons.AutoMirrored.Rounded.FormatListBulleted
                                             GoalFilter.ACTIVE -> Icons.Rounded.PlayArrow
                                             GoalFilter.COMPLETED -> Icons.Rounded.CheckCircle
                                         },

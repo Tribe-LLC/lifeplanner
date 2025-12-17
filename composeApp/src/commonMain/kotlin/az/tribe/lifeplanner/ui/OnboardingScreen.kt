@@ -22,6 +22,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,11 +38,41 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import az.tribe.lifeplanner.domain.model.OnboardingData
+import az.tribe.lifeplanner.domain.repository.UserRepository
 import az.tribe.lifeplanner.ui.theme.modernColors
+import az.tribe.lifeplanner.ui.viewmodel.AuthState
+import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
 import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
 
 @Composable
-fun OnboardingScreen() {
+fun OnboardingScreen(
+    onOnboardingComplete: () -> Unit = {}
+) {
+    val authViewModel: AuthViewModel = koinInject()
+    val userRepository: UserRepository = koinInject()
+    val authState by authViewModel.authState.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
+
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Handle auth state changes
+    LaunchedEffect(authState) {
+        when (authState) {
+            is AuthState.Guest, is AuthState.Authenticated -> {
+                isLoading = false
+                onOnboardingComplete()
+            }
+            is AuthState.Error -> {
+                isLoading = false
+                errorMessage = (authState as AuthState.Error).message
+            }
+            else -> {}
+        }
+    }
+
     val pages = listOf(
         OnboardingPage(
             "Welcome to Lean Life Planner",
@@ -70,13 +102,48 @@ fun OnboardingScreen() {
         initialPage = 0,
         pageCount = { pages.size }
     )
-    val coroutineScope = rememberCoroutineScope()
+
     var selectedCategoryList by remember { mutableStateOf(listOf<String>()) }
     var age by remember { mutableStateOf("") }
     var profession by remember { mutableStateOf("") }
     var relationshipStatus by remember { mutableStateOf("") }
     var selectedSymbol by remember { mutableStateOf("") }
     var selectedMindset by remember { mutableStateOf("") }
+
+    // Function to handle onboarding completion
+    fun handleOnboardingComplete() {
+        isLoading = true
+        coroutineScope.launch {
+            try {
+                // Sign in as guest
+                authViewModel.signInAsGuest()
+
+                // Wait for auth to complete and get user
+                kotlinx.coroutines.delay(500) // Small delay to ensure user is created
+                val currentUser = userRepository.getCurrentUser()
+
+                if (currentUser != null) {
+                    // Save onboarding data
+                    val onboardingData = OnboardingData(
+                        selectedSymbol = selectedSymbol,
+                        priorities = selectedCategoryList,
+                        ageRange = age,
+                        profession = profession,
+                        relationshipStatus = relationshipStatus,
+                        mindset = selectedMindset
+                    )
+
+                    userRepository.saveOnboardingData(currentUser.id, onboardingData)
+                } else {
+                    errorMessage = "Failed to create user"
+                    isLoading = false
+                }
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Unknown error"
+                isLoading = false
+            }
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.modernColors.background
@@ -139,14 +206,28 @@ fun OnboardingScreen() {
                             if (pagerState.currentPage < pages.lastIndex) {
                                 pagerState.animateScrollToPage(pagerState.currentPage + 1)
                             } else {
-                                // Navigate to the main app
+                                handleOnboardingComplete()
                             }
                         }
                     },
-                    enabled = canProceed
+                    enabled = canProceed && !isLoading
                 ) {
-                    Text(if (pagerState.currentPage == pages.lastIndex) "Start" else "Next")
+                    Text(
+                        if (isLoading) "Loading..."
+                        else if (pagerState.currentPage == pages.lastIndex) "Continue as Guest"
+                        else "Next"
+                    )
                 }
+            }
+
+            // Error message display
+            errorMessage?.let { error ->
+                Text(
+                    text = error,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(16.dp),
+                    textAlign = TextAlign.Center
+                )
             }
         }
     }

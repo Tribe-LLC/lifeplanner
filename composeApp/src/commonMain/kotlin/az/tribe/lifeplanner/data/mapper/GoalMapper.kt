@@ -80,7 +80,7 @@ fun GeminiResponseDto.toDomain(): List<Goal> {
                     description = goalDto.description,
                     status = GoalStatus.NOT_STARTED, // New goals start as not started
                     timeline = goalDto.timeline,
-                    dueDate = parseDueDate(goalDto.dueDate),
+                    dueDate = goalDto.dueDate?.let { parseDueDate(it) } ?: getDefaultDueDate(),
                     progress = 0,
                     milestones = goalDto.milestones.map { milestoneDto ->
                         Milestone(
