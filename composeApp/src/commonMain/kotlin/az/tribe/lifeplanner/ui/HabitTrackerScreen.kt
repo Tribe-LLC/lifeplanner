@@ -559,35 +559,49 @@ private fun AddHabitBottomSheet(
     var description by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf(GoalCategory.PHYSICAL) }
     var selectedFrequency by remember { mutableStateOf(HabitFrequency.DAILY) }
-    var expandedCategory by remember { mutableStateOf(false) }
-    var expandedFrequency by remember { mutableStateOf(false) }
+    var showCustomForm by remember { mutableStateOf(false) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        dragHandle = null, // No drag handle as requested
+        dragHandle = null,
         containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp)
                 .navigationBarsPadding()
         ) {
             // Header
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "New Habit",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
+                if (showCustomForm) {
+                    IconButton(onClick = { showCustomForm = false }) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = "Back"
+                        )
+                    }
+                    Text(
+                        "Custom Habit",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                } else {
+                    Text(
+                        "New Habit",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 IconButton(onClick = onDismiss) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
@@ -596,124 +610,309 @@ private fun AddHabitBottomSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Form fields
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                label = { Text("Habit name") },
-                placeholder = { Text("e.g., Morning meditation") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            OutlinedTextField(
-                value = description,
-                onValueChange = { description = it },
-                label = { Text("Description (optional)") },
-                placeholder = { Text("e.g., 10 minutes of mindfulness") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Category dropdown
-            ExposedDropdownMenuBox(
-                expanded = expandedCategory,
-                onExpandedChange = { expandedCategory = !expandedCategory }
-            ) {
-                OutlinedTextField(
-                    value = selectedCategory.name.lowercase().replaceFirstChar { it.uppercase() },
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Category") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedCategory) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor(MenuAnchorType.PrimaryNotEditable),
-                    shape = RoundedCornerShape(12.dp)
+            if (showCustomForm) {
+                // Custom form
+                CustomHabitForm(
+                    title = title,
+                    onTitleChange = { title = it },
+                    description = description,
+                    onDescriptionChange = { description = it },
+                    selectedCategory = selectedCategory,
+                    onCategoryChange = { selectedCategory = it },
+                    selectedFrequency = selectedFrequency,
+                    onFrequencyChange = { selectedFrequency = it },
+                    onConfirm = {
+                        if (title.isNotBlank()) {
+                            onConfirm(title, description, selectedCategory, selectedFrequency)
+                        }
+                    }
                 )
+            } else {
+                // Template selection
+                TemplateSelectionContent(
+                    onTemplateClick = { template ->
+                        onConfirm(template.title, template.description, template.category, template.frequency)
+                    },
+                    onCustomClick = { showCustomForm = true }
+                )
+            }
+        }
+    }
+}
 
-                ExposedDropdownMenu(
-                    expanded = expandedCategory,
-                    onDismissRequest = { expandedCategory = false }
-                ) {
-                    GoalCategory.entries.forEach { category ->
-                        DropdownMenuItem(
-                            text = { Text(category.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                            onClick = {
-                                selectedCategory = category
-                                expandedCategory = false
-                            }
-                        )
+@Composable
+private fun TemplateSelectionContent(
+    onTemplateClick: (HabitTemplate) -> Unit,
+    onCustomClick: () -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Quick pick section
+        item {
+            Text(
+                "Quick Pick",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        // Template grid (2 columns)
+        item {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                habitTemplates.chunked(2).forEach { rowTemplates ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        rowTemplates.forEach { template ->
+                            CompactTemplateCard(
+                                template = template,
+                                onClick = { onTemplateClick(template) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        if (rowTemplates.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
                     }
                 }
             }
+        }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Frequency dropdown
-            ExposedDropdownMenuBox(
-                expanded = expandedFrequency,
-                onExpandedChange = { expandedFrequency = !expandedFrequency }
+        // Divider
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedTextField(
-                    value = selectedFrequency.displayName,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Frequency") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedFrequency) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor(MenuAnchorType.PrimaryNotEditable),
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                ExposedDropdownMenu(
-                    expanded = expandedFrequency,
-                    onDismissRequest = { expandedFrequency = false }
-                ) {
-                    HabitFrequency.entries.forEach { frequency ->
-                        DropdownMenuItem(
-                            text = { Text(frequency.displayName) },
-                            onClick = {
-                                selectedFrequency = frequency
-                                expandedFrequency = false
-                            }
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Create button
-            Button(
-                onClick = {
-                    if (title.isNotBlank()) {
-                        onConfirm(title, description, selectedCategory, selectedFrequency)
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                enabled = title.isNotBlank(),
-                shape = RoundedCornerShape(12.dp)
-            ) {
+                HorizontalDivider(modifier = Modifier.weight(1f))
                 Text(
-                    "Create Habit",
-                    style = MaterialTheme.typography.titleMedium,
+                    "or",
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                HorizontalDivider(modifier = Modifier.weight(1f))
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        // Custom button
+        item {
+            OutlinedButton(
+                onClick = onCustomClick,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(16.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Edit,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "Create Custom Habit",
+                    style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold
                 )
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+private fun CompactTemplateCard(
+    template: HabitTemplate,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Icon with gradient background
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(
+                        Brush.linearGradient(template.gradientColors)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = template.icon,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = template.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
+                )
+                Text(
+                    text = template.frequency.displayName,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CustomHabitForm(
+    title: String,
+    onTitleChange: (String) -> Unit,
+    description: String,
+    onDescriptionChange: (String) -> Unit,
+    selectedCategory: GoalCategory,
+    onCategoryChange: (GoalCategory) -> Unit,
+    selectedFrequency: HabitFrequency,
+    onFrequencyChange: (HabitFrequency) -> Unit,
+    onConfirm: () -> Unit
+) {
+    var expandedCategory by remember { mutableStateOf(false) }
+    var expandedFrequency by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+    ) {
+        OutlinedTextField(
+            value = title,
+            onValueChange = onTitleChange,
+            label = { Text("Habit name") },
+            placeholder = { Text("e.g., Morning meditation") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedTextField(
+            value = description,
+            onValueChange = onDescriptionChange,
+            label = { Text("Description (optional)") },
+            placeholder = { Text("e.g., 10 minutes of mindfulness") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Category dropdown
+        ExposedDropdownMenuBox(
+            expanded = expandedCategory,
+            onExpandedChange = { expandedCategory = !expandedCategory }
+        ) {
+            OutlinedTextField(
+                value = selectedCategory.name.lowercase().replaceFirstChar { it.uppercase() },
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Category") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedCategory) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor(MenuAnchorType.PrimaryNotEditable),
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            ExposedDropdownMenu(
+                expanded = expandedCategory,
+                onDismissRequest = { expandedCategory = false }
+            ) {
+                GoalCategory.entries.forEach { category ->
+                    DropdownMenuItem(
+                        text = { Text(category.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                        onClick = {
+                            onCategoryChange(category)
+                            expandedCategory = false
+                        }
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Frequency dropdown
+        ExposedDropdownMenuBox(
+            expanded = expandedFrequency,
+            onExpandedChange = { expandedFrequency = !expandedFrequency }
+        ) {
+            OutlinedTextField(
+                value = selectedFrequency.displayName,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Frequency") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedFrequency) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor(MenuAnchorType.PrimaryNotEditable),
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            ExposedDropdownMenu(
+                expanded = expandedFrequency,
+                onDismissRequest = { expandedFrequency = false }
+            ) {
+                HabitFrequency.entries.forEach { frequency ->
+                    DropdownMenuItem(
+                        text = { Text(frequency.displayName) },
+                        onClick = {
+                            onFrequencyChange(frequency)
+                            expandedFrequency = false
+                        }
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Button(
+            onClick = onConfirm,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            enabled = title.isNotBlank(),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text(
+                "Create Habit",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }
