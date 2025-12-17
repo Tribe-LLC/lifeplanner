@@ -258,7 +258,7 @@ fun GoalsScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .padding(paddingValues = PaddingValues(top = innerPadding.calculateTopPadding())),
             state = scrollState
         ) {
             // Search Results Summary

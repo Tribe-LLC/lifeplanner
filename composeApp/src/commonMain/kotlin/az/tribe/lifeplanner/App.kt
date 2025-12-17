@@ -1,6 +1,7 @@
 package az.tribe.lifeplanner
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -104,7 +105,7 @@ fun App(
 //        ) { innerPadding ->
 
 
-        Column {
+        Column(modifier = Modifier.fillMaxSize()) {
 
 
         NavHost(

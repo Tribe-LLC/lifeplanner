@@ -82,7 +82,7 @@ fun JournalScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(paddingValues = PaddingValues(top = padding.calculateTopPadding()))
         ) {
             // Daily Prompt Card
             DailyPromptCard(

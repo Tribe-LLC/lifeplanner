@@ -108,8 +108,8 @@ fun ProfileScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
-            contentPadding = PaddingValues(LifePlannerDesign.Padding.screenHorizontal),
+                .padding(paddingValues = PaddingValues(top = padding.calculateTopPadding())),
+            contentPadding = PaddingValues(horizontal = LifePlannerDesign.Padding.screenHorizontal),
             verticalArrangement = Arrangement.spacedBy(LifePlannerDesign.Spacing.md)
         ) {
             // User Profile Header Card

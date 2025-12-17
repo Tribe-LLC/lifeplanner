@@ -83,7 +83,7 @@ fun HabitTrackerScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(paddingValues = PaddingValues(top = padding.calculateTopPadding()))
         ) {
             // Stats Header
             HabitStatsHeader(
