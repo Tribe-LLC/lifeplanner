@@ -26,13 +26,22 @@ import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.model.Goal
+import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 
 @Composable
 fun GoalCard(
     goal: Goal,
     modifier: Modifier = Modifier
 ) {
+    // Check if goal was created today
+    val today = remember {
+        Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+    }
+    val isNew = goal.createdAt.date == today
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -58,7 +67,15 @@ fun GoalCard(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            StatusChip(status = goal.status)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (isNew) {
+                    NewBadge()
+                }
+                StatusChip(status = goal.status)
+            }
         }
 
         // Description
@@ -219,6 +236,35 @@ private fun MilestoneIndicator(
                 text = "$completed/$total",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f)
+            )
+        }
+    }
+}
+
+@Composable
+fun NewBadge() {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = Color(0xFF4CAF50),
+        modifier = Modifier.height(20.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.FiberNew,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(12.dp)
+            )
+            Text(
+                text = "NEW",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold
+                ),
+                color = Color.White
             )
         }
     }
