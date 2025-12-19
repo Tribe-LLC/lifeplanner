@@ -250,6 +250,7 @@ class AuthViewModel(
 
     /**
      * Sign in as guest using Firebase Anonymous Authentication
+     * Falls back to local-only guest if Firebase fails
      */
     @OptIn(ExperimentalUuidApi::class)
     fun signInAsGuest() {
@@ -262,23 +263,24 @@ class AuthViewModel(
                     is AuthResult.Success -> {
                         println("AuthViewModel: Anonymous sign-in successful, UID: ${result.user.uid}")
 
-                        // Get Firebase ID token
-                        val firebaseToken = authService.getIdToken(forceRefresh = true)
-
-                        if (firebaseToken != null) {
-                            try {
-                                // Send token to backend
-                                val response = apiService.authenticateWithToken(
-                                    AuthTokenRequest(
-                                        firebaseToken = firebaseToken,
-                                        deviceInfo = "mobile"
+                        // Get Firebase ID token (optional - don't block on this)
+                        try {
+                            val firebaseToken = authService.getIdToken(forceRefresh = true)
+                            if (firebaseToken != null) {
+                                try {
+                                    val response = apiService.authenticateWithToken(
+                                        AuthTokenRequest(
+                                            firebaseToken = firebaseToken,
+                                            deviceInfo = "mobile"
+                                        )
                                     )
-                                )
-                                println("Backend authentication successful: ${response.message}")
-                            } catch (e: Exception) {
-                                println("Backend authentication failed: ${e.message}")
-                                // Continue with local flow even if backend fails
+                                    println("Backend authentication successful: ${response.message}")
+                                } catch (e: Exception) {
+                                    println("Backend authentication failed: ${e.message}")
+                                }
                             }
+                        } catch (e: Exception) {
+                            println("Token retrieval failed: ${e.message}")
                         }
 
                         // Create guest user in local database
@@ -297,14 +299,40 @@ class AuthViewModel(
                         println("AuthViewModel: Guest user created successfully")
                     }
                     is AuthResult.Error -> {
-                        _authState.value = AuthState.Error(result.message)
-                        println("AuthViewModel: Anonymous sign-in failed - ${result.message}")
+                        // Fallback: Create local-only guest user without Firebase
+                        println("AuthViewModel: Firebase anonymous sign-in failed, using local guest - ${result.message}")
+                        createLocalGuestUser()
                     }
                 }
             } catch (e: Exception) {
-                _authState.value = AuthState.Error(e.message ?: "Unknown error")
-                println("AuthViewModel: Exception during anonymous sign-in - ${e.message}")
+                // Fallback: Create local-only guest user without Firebase
+                println("AuthViewModel: Exception during anonymous sign-in, using local guest - ${e.message}")
+                createLocalGuestUser()
             }
+        }
+    }
+
+    /**
+     * Create a local-only guest user (fallback when Firebase is unavailable)
+     */
+    @OptIn(ExperimentalUuidApi::class)
+    private suspend fun createLocalGuestUser() {
+        try {
+            val guestUser = User(
+                id = Uuid.random().toString(),
+                firebaseUid = "local_guest_${Uuid.random()}",
+                email = null,
+                displayName = "Guest User",
+                isGuest = true,
+                hasCompletedOnboarding = false,
+                createdAt = Clock.System.now()
+            )
+            userRepository.createUser(guestUser)
+            _authState.value = AuthState.Guest(guestUser)
+            println("AuthViewModel: Local guest user created successfully")
+        } catch (e: Exception) {
+            _authState.value = AuthState.Error("Failed to create guest user: ${e.message}")
+            println("AuthViewModel: Failed to create local guest user - ${e.message}")
         }
     }
 

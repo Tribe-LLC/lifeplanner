@@ -42,13 +42,19 @@ fun SignInScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var showResetPasswordDialog by remember { mutableStateOf(false) }
 
+    // Track if we've already navigated to prevent double navigation
+    var hasNavigated by remember { mutableStateOf(false) }
+
     // Handle auth state changes
     LaunchedEffect(authState) {
-        when (authState) {
-            is AuthState.Authenticated, is AuthState.Guest -> {
-                onSignInSuccess()
+        if (!hasNavigated) {
+            when (authState) {
+                is AuthState.Authenticated, is AuthState.Guest -> {
+                    hasNavigated = true
+                    onSignInSuccess()
+                }
+                else -> {}
             }
-            else -> {}
         }
     }
 
