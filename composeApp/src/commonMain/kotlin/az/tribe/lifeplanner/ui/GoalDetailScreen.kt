@@ -1,11 +1,6 @@
 // GoalDetailScreen.kt
 package az.tribe.lifeplanner.ui
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,7 +9,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,41 +20,32 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.Event
 import androidx.compose.material.icons.rounded.Flag
-import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.History
-import androidx.compose.material.icons.automirrored.rounded.Notes
-import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
-import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Schedule
-import androidx.compose.material.icons.rounded.Timeline
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -73,23 +58,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import az.tribe.lifeplanner.domain.enum.DependencyType
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.model.Goal
-import az.tribe.lifeplanner.domain.model.GoalDependency
 import az.tribe.lifeplanner.domain.model.Milestone
 import az.tribe.lifeplanner.ui.components.AddDependencyBottomSheet
 import az.tribe.lifeplanner.ui.components.DependenciesCard
+import az.tribe.lifeplanner.ui.components.GlassCard
+import az.tribe.lifeplanner.ui.components.GoalDetailActionSheet
 import az.tribe.lifeplanner.ui.components.GoalDetailDialogs
-import az.tribe.lifeplanner.ui.components.StatusChip
+import az.tribe.lifeplanner.ui.components.GoalDetailHeroHeader
+import az.tribe.lifeplanner.ui.components.StatusToggleButtons
 import az.tribe.lifeplanner.ui.components.backgroundColor
 import az.tribe.lifeplanner.ui.dependency.GoalDependencyViewModel
+import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
 import az.tribe.lifeplanner.ui.theme.gradientColors
 import kotlinx.datetime.LocalDate
 import org.koin.compose.koinInject
@@ -110,15 +97,24 @@ fun GoalDetailScreen(
     val dependencyUiState by dependencyViewModel.uiState.collectAsState()
 
     var showDeleteDialog by remember { mutableStateOf(false) }
-    var showProgressDialog by remember { mutableStateOf(false) }
     var showNotesDialog by remember { mutableStateOf(false) }
     var showAddMilestoneDialog by remember { mutableStateOf(false) }
     var showCompleteConfirmDialog by remember { mutableStateOf(false) }
-    var fabExpanded by remember { mutableStateOf(false) }
+    var showAllMilestonesCompletedDialog by remember { mutableStateOf(false) }
     var showHistoryModal by remember { mutableStateOf(false) }
     var showAddDependencySheet by remember { mutableStateOf(false) }
-
+    var showActionSheet by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+
+    // Watch for prompt to complete goal when all milestones are done
+    val promptCompleteGoalId by viewModel.promptCompleteGoal.collectAsState()
+    LaunchedEffect(promptCompleteGoalId) {
+        if (promptCompleteGoalId == goalId) {
+            showAllMilestonesCompletedDialog = true
+            viewModel.clearCompleteGoalPrompt()
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.loadAllGoals()
@@ -137,83 +133,156 @@ fun GoalDetailScreen(
 
     val primaryColor = goal.category.backgroundColor()
 
-
+    val gradientColors = goal.category.gradientColors()
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            GoalDetailTopBar(
-                goal = goal,
-                primaryColor = primaryColor,
+            TopAppBar(
                 scrollBehavior = scrollBehavior,
-                onBackClick = onBackClick,
-                onEditClick = onEditClick,
-                onDeleteClick = { showDeleteDialog = true },
-                onHistoryClick = { showHistoryModal = true
-
-                println("Goal model $showHistoryModal")} // Update to trigger modal visibility
+                title = {
+                    Text(
+                        text = goal.title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back"
+                        )
+                    }
+                },
+                actions = {
+                    // Overflow menu
+                    Box {
+                        IconButton(onClick = { showOverflowMenu = true }) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "More options"
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showOverflowMenu,
+                            onDismissRequest = { showOverflowMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Edit") },
+                                leadingIcon = { Icon(Icons.Rounded.Edit, null) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    onEditClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("History") },
+                                leadingIcon = { Icon(Icons.Rounded.History, null) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    showHistoryModal = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Rounded.Delete,
+                                        null,
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    showDeleteDialog = true
+                                }
+                            )
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = gradientColors.first(),
+                    scrolledContainerColor = gradientColors.first(),
+                    navigationIconContentColor = Color.White,
+                    titleContentColor = Color.White,
+                    actionIconContentColor = Color.White
+                )
             )
         },
         floatingActionButton = {
-            QuickActionsFAB(
-                goal = goal,
-                expanded = fabExpanded,
-                onExpandedChange = { fabExpanded = it },
-                onMarkCompleted = { showCompleteConfirmDialog = true },
-                onMarkInProgress = {
-                    viewModel.updateGoalStatus(goalId, GoalStatus.IN_PROGRESS)
-                    viewModel.loadAllGoals()
-                },
-                onMarkNotStarted = {
-                    viewModel.updateGoalStatus(goalId, GoalStatus.NOT_STARTED)
-                    viewModel.loadAllGoals()
-                },
-                onUpdateProgress = { showProgressDialog = true },
-                onAddMilestone = { showAddMilestoneDialog = true }
-            )
+            // Simple FAB that opens action sheet
+            FloatingActionButton(
+                onClick = { showActionSheet = true },
+                containerColor = primaryColor,
+                contentColor = Color.White,
+                shape = CircleShape,
+                elevation = FloatingActionButtonDefaults.elevation(
+                    defaultElevation = 6.dp,
+                    pressedElevation = 8.dp
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Add,
+                    contentDescription = "Actions"
+                )
+            }
         },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = goal.category.gradientColors().first(),
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
+                .padding(top = innerPadding.calculateTopPadding())
+                .background(color = MaterialTheme.colorScheme.background)
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(bottom = 80.dp)
+            contentPadding = PaddingValues(bottom = 100.dp)
         ) {
-
+            // Hero Header with Progress (auto-calculated from milestones)
             item {
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            item {
-                GoalHeaderCard(
-                    goal = goal,
-                    primaryColor = primaryColor,
-                    onProgressClick = { showProgressDialog = true }
+                GoalDetailHeroHeader(
+                    modifier = Modifier,
+                    goal = goal
                 )
             }
 
-
+            // Status Toggle Buttons
             item {
-                NotesCard(
+                StatusToggleButtons(
+                    currentStatus = goal.status,
+                    onStatusChange = { newStatus ->
+                        if (newStatus == GoalStatus.COMPLETED && goal.status != GoalStatus.COMPLETED) {
+                            showCompleteConfirmDialog = true
+                        } else {
+                            viewModel.updateGoalStatus(goalId, newStatus)
+                            viewModel.loadAllGoals()
+                        }
+                    }
+                )
+            }
+
+            // Notes Card
+            item {
+                ModernNotesCard(
                     notes = goal.notes,
                     onNotesClick = { showNotesDialog = true }
                 )
             }
 
-            if (goal.milestones.isNotEmpty()) {
-                item {
-                    MilestonesCard(
+            // Milestones Card
+            item {
+                if (goal.milestones.isNotEmpty()) {
+                    ModernMilestonesCard(
                         milestones = goal.milestones,
                         onMilestoneToggle = { milestoneId ->
                             viewModel.toggleMilestoneCompletion(goalId, milestoneId)
                             viewModel.loadAllGoals()
-                        }
+                        },
+                        onAddMilestone = { showAddMilestoneDialog = true }
                     )
-                }
-            } else {
-                item {
+                } else {
                     EmptyMilestonesCard(
                         onAddMilestone = { showAddMilestoneDialog = true }
                     )
@@ -240,6 +309,17 @@ fun GoalDetailScreen(
         }
     }
 
+    // Action Sheet
+    GoalDetailActionSheet(
+        isVisible = showActionSheet,
+        goal = goal,
+        onDismiss = { showActionSheet = false },
+        onEditClick = onEditClick,
+        onAddMilestoneClick = { showAddMilestoneDialog = true },
+        onHistoryClick = { showHistoryModal = true },
+        onDeleteClick = { showDeleteDialog = true }
+    )
+
     // Add Dependency Bottom Sheet
     AddDependencyBottomSheet(
         isVisible = showAddDependencySheet,
@@ -251,7 +331,7 @@ fun GoalDetailScreen(
         }
     )
 
-
+    // History Modal
     GoalHistoryModal(
         isVisible = showHistoryModal,
         goalId = goalId,
@@ -265,19 +345,18 @@ fun GoalDetailScreen(
         goalId = goalId,
         viewModel = viewModel,
         showDeleteDialog = showDeleteDialog,
-        showProgressDialog = showProgressDialog,
         showNotesDialog = showNotesDialog,
         showAddMilestoneDialog = showAddMilestoneDialog,
         showCompleteConfirmDialog = showCompleteConfirmDialog,
+        showAllMilestonesCompletedDialog = showAllMilestonesCompletedDialog,
         onDismissDelete = { showDeleteDialog = false },
-        onDismissProgress = { showProgressDialog = false },
         onDismissNotes = { showNotesDialog = false },
         onDismissAddMilestone = { showAddMilestoneDialog = false },
         onDismissComplete = { showCompleteConfirmDialog = false },
+        onDismissAllMilestonesCompleted = { showAllMilestonesCompletedDialog = false },
         onBackClick = onBackClick
     )
 }
-
 
 @Composable
 fun GoalNotFoundState(
@@ -309,230 +388,19 @@ fun GoalNotFoundState(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GoalDetailTopBar(
-    goal: Goal,
-    primaryColor: Color,
-    scrollBehavior: TopAppBarScrollBehavior,
-    onBackClick: () -> Unit,
-    onEditClick: () -> Unit,
-    onDeleteClick: () -> Unit,
-    onHistoryClick: () -> Unit
-) {
-    LargeTopAppBar(
-        title = {
-            Column {
-                Text(
-                    text = goal.title,
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontWeight = FontWeight.Bold
-                    ),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-            }
-        },
-        navigationIcon = {
-            IconButton(onClick = onBackClick) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back"
-                )
-            }
-        },
-        actions = {
-            IconButton(onClick = onHistoryClick) {
-                Icon(
-                    Icons.Rounded.History,
-                    contentDescription = "View History"
-                )
-            }
-            IconButton(onClick = onDeleteClick) {
-                Icon(
-                    Icons.Rounded.Delete,
-                    contentDescription = "Delete Goal",
-                    tint = MaterialTheme.colorScheme.error
-                )
-            }
-            IconButton(onClick = onEditClick) {
-                Icon(
-                    Icons.Rounded.Edit,
-                    contentDescription = "Edit Goal"
-                )
-            }
-        },
-        scrollBehavior = scrollBehavior,
-        colors = TopAppBarDefaults.largeTopAppBarColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-            scrolledContainerColor = MaterialTheme.colorScheme.surface
-        )
-    )
-}
-
-@Composable
-fun GoalHeaderCard(
-    goal: Goal,
-    primaryColor: Color,
-    onProgressClick: () -> Unit
-) {
-    val progressAnimation by animateFloatAsState(
-        targetValue = (goal.progress?.toFloat() ?: 0f) / 100f,
-        animationSpec = tween(1000),
-        label = "progress"
-    )
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 4.dp
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Status and Description
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    if (goal.description.isNotBlank()) {
-                        Text(
-                            text = goal.description,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                StatusChip(status = goal.status)
-            }
-
-            // Progress section
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "Progress (${goal.progress ?: 0}%)",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                // Animated progress bar
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(12.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .clickable { onProgressClick() }
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(progressAnimation)
-                            .fillMaxHeight()
-                            .background(
-                                brush = Brush.horizontalGradient(
-                                    colors = goal.category.gradientColors()
-                                ),
-                                shape = RoundedCornerShape(6.dp)
-                            )
-                    )
-                }
-            }
-
-            // Details row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                DetailItem(
-                    icon = Icons.Rounded.Category,
-                    label = "Category",
-                    value = goal.category.name.lowercase().replaceFirstChar { it.uppercase() },
-                    color = primaryColor
-                )
-
-                DetailItem(
-                    icon = Icons.Rounded.Schedule,
-                    label = "Timeline",
-                    value = goal.timeline.name.lowercase().replaceFirstChar { it.uppercase() },
-                    color = primaryColor
-                )
-
-                DetailItem(
-                    icon = Icons.Rounded.Event,
-                    label = "Due Date",
-                    value = formatDate(goal.dueDate),
-                    color = primaryColor
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun DetailItem(
-    icon: ImageVector,
-    label: String,
-    value: String,
-    color: Color
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = color,
-            modifier = Modifier.size(20.dp)
-        )
-
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-            color = MaterialTheme.colorScheme.onSurface
-        )
-    }
-}
-
-@Composable
-fun NotesCard(
+private fun ModernNotesCard(
     notes: String,
     onNotesClick: () -> Unit
 ) {
-    Card(
+    GlassCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .clickable { onNotesClick() },
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 2.dp
-        )
+            .clickable { onNotesClick() }
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(LifePlannerDesign.Padding.standard),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
@@ -547,12 +415,13 @@ fun NotesCard(
                     Icon(
                         Icons.AutoMirrored.Rounded.Notes,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
                     )
                     Text(
                         text = "Notes",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
                     )
                 }
 
@@ -590,40 +459,73 @@ fun NotesCard(
 }
 
 @Composable
-fun MilestonesCard(
+private fun ModernMilestonesCard(
     milestones: List<Milestone>,
-    onMilestoneToggle: (String) -> Unit
+    onMilestoneToggle: (String) -> Unit,
+    onAddMilestone: () -> Unit
 ) {
-    Card(
+    GlassCard(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 2.dp
-        )
+            .padding(horizontal = 16.dp)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(LifePlannerDesign.Padding.standard),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    Icons.Rounded.Flag,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = "Milestones (${milestones.count { it.isCompleted }}/${milestones.size})",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.Flag,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = "Milestones",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    // Progress badge
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "${milestones.count { it.isCompleted }}/${milestones.size}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = onAddMilestone,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .background(
+                            MaterialTheme.colorScheme.primaryContainer,
+                            CircleShape
+                        )
+                ) {
+                    Icon(
+                        Icons.Rounded.Add,
+                        contentDescription = "Add Milestone",
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
 
             milestones.forEach { milestone ->
@@ -637,7 +539,7 @@ fun MilestonesCard(
 }
 
 @Composable
-fun MilestoneItem(
+private fun MilestoneItem(
     milestone: Milestone,
     onClick: () -> Unit
 ) {
@@ -685,20 +587,15 @@ fun MilestoneItem(
 fun EmptyMilestonesCard(
     onAddMilestone: () -> Unit
 ) {
-    Card(
+    GlassCard(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 2.dp
-        )
+            .padding(horizontal = 16.dp)
     ) {
         Column(
-            modifier = Modifier.padding(32.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -711,8 +608,8 @@ fun EmptyMilestonesCard(
 
             Text(
                 text = "No milestones yet",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onSurface
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
             )
 
             Text(
@@ -734,203 +631,13 @@ fun EmptyMilestonesCard(
                     contentDescription = null,
                     modifier = Modifier.size(16.dp)
                 )
-
                 Spacer(modifier = Modifier.width(8.dp))
-
                 Text("Add First Milestone")
             }
         }
     }
 }
 
-@Composable
-fun QuickActionsFAB(
-    goal: Goal,
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
-    onMarkCompleted: () -> Unit,
-    onMarkInProgress: () -> Unit,
-    onMarkNotStarted: () -> Unit,
-    onUpdateProgress: () -> Unit,
-    onAddMilestone: () -> Unit
-) {
-    val primaryColor = goal.category.backgroundColor()
-
-    Column(
-        horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        // Extended FAB options
-        AnimatedVisibility(
-            visible = expanded,
-            enter = fadeIn() + androidx.compose.animation.slideInVertically { it },
-            exit = fadeOut() + androidx.compose.animation.slideOutVertically { it }
-        ) {
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Add Milestone
-                SmallFloatingActionButton(
-                    onClick = {
-                        onAddMilestone()
-                        onExpandedChange(false)
-                    },
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Add,
-                            contentDescription = null
-                        )
-                        Text("Add Milestone", style = MaterialTheme.typography.labelLarge)
-                    }
-                }
-
-                // Update Progress (always show unless completed)
-                if (goal.status != GoalStatus.COMPLETED) {
-                    SmallFloatingActionButton(
-                        onClick = {
-                            onUpdateProgress()
-                            onExpandedChange(false)
-                        },
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Timeline,
-                                contentDescription = null
-                            )
-                            Text("Update Progress", style = MaterialTheme.typography.labelLarge)
-                        }
-                    }
-                }
-
-                // Status-based action - suggest next status
-                when (goal.status) {
-                    GoalStatus.NOT_STARTED -> {
-                        SmallFloatingActionButton(
-                            onClick = {
-                                onMarkInProgress()
-                                onExpandedChange(false)
-                            },
-                            containerColor = Color(0xFFFFA726),
-                            contentColor = Color.White
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.PlayArrow,
-                                    contentDescription = null
-                                )
-                                Text("Start Goal", style = MaterialTheme.typography.labelLarge)
-                            }
-                        }
-                    }
-                    GoalStatus.IN_PROGRESS -> {
-                        SmallFloatingActionButton(
-                            onClick = {
-                                onMarkCompleted()
-                                onExpandedChange(false)
-                            },
-                            containerColor = Color(0xFF66BB6A),
-                            contentColor = Color.White
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.CheckCircle,
-                                    contentDescription = null
-                                )
-                                Text("Complete Goal", style = MaterialTheme.typography.labelLarge)
-                            }
-                        }
-                    }
-                    GoalStatus.COMPLETED -> {
-                        // For completed goals, show reset option
-                        SmallFloatingActionButton(
-                            onClick = {
-                                onMarkNotStarted()
-                                onExpandedChange(false)
-                            },
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Refresh,
-                                    contentDescription = null
-                                )
-                                Text("Reset Goal", style = MaterialTheme.typography.labelLarge)
-                            }
-                        }
-                    }
-                }
-
-                // Reset option (always available except for NOT_STARTED goals)
-                if (goal.status != GoalStatus.NOT_STARTED) {
-                    SmallFloatingActionButton(
-                        onClick = {
-                            onMarkNotStarted()
-                            onExpandedChange(false)
-                        },
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Refresh,
-                                contentDescription = null
-                            )
-                            Text("Reset", style = MaterialTheme.typography.labelLarge)
-                        }
-                    }
-                }
-            }
-        }
-
-        // Main FAB
-        FloatingActionButton(
-            onClick = { onExpandedChange(!expanded) },
-            containerColor = primaryColor,
-            contentColor = Color.White,
-            shape = CircleShape,
-            elevation = FloatingActionButtonDefaults.elevation(
-                defaultElevation = 6.dp,
-                pressedElevation = 8.dp
-            )
-        ) {
-            Icon(
-                imageVector = if (expanded) Icons.Rounded.Close else Icons.Filled.Add,
-                contentDescription = if (expanded) "Close menu" else "Quick Actions"
-            )
-        }
-    }
-}
 // Helper function to format dates
 private fun formatDate(date: LocalDate): String {
     val months = listOf(

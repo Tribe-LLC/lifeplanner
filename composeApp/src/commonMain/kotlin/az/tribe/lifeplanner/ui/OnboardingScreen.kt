@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -58,11 +59,26 @@ fun OnboardingScreen(
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
+    // Store pending onboarding data to save after auth succeeds
+    var pendingOnboardingData by remember { mutableStateOf<OnboardingData?>(null) }
+
     // Handle auth state changes
     LaunchedEffect(authState) {
         when (authState) {
             is AuthState.Guest, is AuthState.Authenticated -> {
                 isLoading = false
+                // Save onboarding data if we have any pending
+                pendingOnboardingData?.let { data ->
+                    try {
+                        val currentUser = userRepository.getCurrentUser()
+                        if (currentUser != null) {
+                            userRepository.saveOnboardingData(currentUser.id, data)
+                        }
+                    } catch (e: Exception) {
+                        println("Failed to save onboarding data: ${e.message}")
+                    }
+                    pendingOnboardingData = null
+                }
                 onOnboardingComplete()
             }
             is AuthState.Error -> {
@@ -112,37 +128,32 @@ fun OnboardingScreen(
 
     // Function to handle onboarding completion
     fun handleOnboardingComplete() {
+        if (isLoading) return // Prevent double-clicks
         isLoading = true
-        coroutineScope.launch {
-            try {
-                // Sign in as guest
-                authViewModel.signInAsGuest()
+        errorMessage = null
 
-                // Wait for auth to complete and get user
-                kotlinx.coroutines.delay(500) // Small delay to ensure user is created
-                val currentUser = userRepository.getCurrentUser()
+        // Store onboarding data to be saved after auth succeeds
+        pendingOnboardingData = OnboardingData(
+            selectedSymbol = selectedSymbol,
+            priorities = selectedCategoryList,
+            ageRange = age,
+            profession = profession,
+            relationshipStatus = relationshipStatus,
+            mindset = selectedMindset
+        )
 
-                if (currentUser != null) {
-                    // Save onboarding data
-                    val onboardingData = OnboardingData(
-                        selectedSymbol = selectedSymbol,
-                        priorities = selectedCategoryList,
-                        ageRange = age,
-                        profession = profession,
-                        relationshipStatus = relationshipStatus,
-                        mindset = selectedMindset
-                    )
+        // Sign in as guest - LaunchedEffect will handle navigation when auth completes
+        authViewModel.signInAsGuest()
+    }
 
-                    userRepository.saveOnboardingData(currentUser.id, onboardingData)
-                } else {
-                    errorMessage = "Failed to create user"
-                    isLoading = false
-                }
-            } catch (e: Exception) {
-                errorMessage = e.message ?: "Unknown error"
-                isLoading = false
-            }
-        }
+    // Function to skip onboarding entirely
+    fun handleSkip() {
+        if (isLoading) return
+        isLoading = true
+        errorMessage = null
+        // No onboarding data to save
+        pendingOnboardingData = null
+        authViewModel.signInAsGuest()
     }
 
     Scaffold(
@@ -155,6 +166,26 @@ fun OnboardingScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            // Skip button at the top
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                if (pagerState.currentPage < pages.lastIndex) {
+                    TextButton(
+                        onClick = { handleSkip() },
+                        enabled = !isLoading
+                    ) {
+                        Text(
+                            text = if (isLoading) "Loading..." else "Skip",
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.weight(1f),
@@ -181,14 +212,20 @@ fun OnboardingScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 if (pagerState.currentPage > 0) {
-                    TextButton(onClick = {
-                        coroutineScope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
-                    }) {
+                    TextButton(
+                        onClick = {
+                            coroutineScope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
+                        },
+                        enabled = !isLoading
+                    ) {
                         Text("Back")
                     }
+                } else {
+                    Spacer(modifier = Modifier.width(64.dp))
                 }
                 val currentTitle = pages[pagerState.currentPage].title
                 val canProceed = when (currentTitle) {
@@ -202,12 +239,12 @@ fun OnboardingScreen(
                 }
                 Button(
                     onClick = {
-                        coroutineScope.launch {
-                            if (pagerState.currentPage < pages.lastIndex) {
+                        if (pagerState.currentPage < pages.lastIndex) {
+                            coroutineScope.launch {
                                 pagerState.animateScrollToPage(pagerState.currentPage + 1)
-                            } else {
-                                handleOnboardingComplete()
                             }
+                        } else {
+                            handleOnboardingComplete()
                         }
                     },
                     enabled = canProceed && !isLoading

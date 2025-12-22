@@ -52,7 +52,7 @@ fun CompleteGoalDialog(
                     color = MaterialTheme.modernColors.textSecondary
                 )
                 Text(
-                    text = "🎉 Congratulations on achieving your goal!",
+                    text = "Congratulations on achieving your goal!",
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                     color = Color(0xFF4CAF50)
                 )
@@ -66,7 +66,7 @@ fun CompleteGoalDialog(
                 ),
                 border = BorderStroke(2.dp, MaterialTheme.colorScheme.outline)
             ) {
-                Text("🎉 Complete Goal!", color = Color.White)
+                Text("Complete Goal!", color = Color.White)
             }
         },
         dismissButton = {
@@ -75,6 +75,67 @@ fun CompleteGoalDialog(
                 border = BorderStroke(2.dp, MaterialTheme.colorScheme.outline)
             ) {
                 Text("Not Yet")
+            }
+        }
+    )
+}
+
+@Composable
+fun AllMilestonesCompletedDialog(
+    goalTitle: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                Icons.Default.EmojiEvents,
+                contentDescription = null,
+                tint = Color(0xFFFFD700),
+                modifier = Modifier.size(40.dp)
+            )
+        },
+        title = {
+            Text(
+                text = "All Milestones Done!",
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.modernColors.textPrimary
+            )
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "You've completed all milestones for \"$goalTitle\"!",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.modernColors.textSecondary
+                )
+                Text(
+                    text = "Would you like to mark this goal as completed?",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    color = Color(0xFF4CAF50)
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF4CAF50)
+                ),
+                border = BorderStroke(2.dp, MaterialTheme.colorScheme.outline)
+            ) {
+                Text("Complete Goal!", color = Color.White)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                border = BorderStroke(2.dp, MaterialTheme.colorScheme.outline)
+            ) {
+                Text("Keep Working")
             }
         }
     )

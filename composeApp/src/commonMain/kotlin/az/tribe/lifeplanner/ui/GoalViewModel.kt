@@ -11,8 +11,10 @@ import az.tribe.lifeplanner.data.model.onSuccess
 import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.domain.model.GoalAnalytics
 import az.tribe.lifeplanner.domain.model.GoalChange
+import az.tribe.lifeplanner.domain.model.XpRewards
 import az.tribe.lifeplanner.domain.enum.GoalFilter
 import az.tribe.lifeplanner.domain.enum.GoalStatus
+import az.tribe.lifeplanner.domain.repository.GamificationRepository
 import az.tribe.lifeplanner.usecases.*
 import dev.gitlive.firebase.Firebase
 import dev.gitlive.firebase.remoteconfig.FirebaseRemoteConfig
@@ -53,6 +55,7 @@ class GoalViewModel(
 
     private val generateAiQuestionnaireUseCase: GenerateAiQuestionnaireUseCase,
     private val generateAiGoalsUseCase: GenerateAiGoalsUseCase,
+    private val gamificationRepository: GamificationRepository
 ) : ViewModel() {
 
     // State Management
@@ -100,6 +103,14 @@ class GoalViewModel(
 
     private val _generatedGoalsFromAI = MutableStateFlow<List<Goal>>(emptyList())
     val generatedGoalsFromAI: StateFlow<List<Goal>> = _generatedGoalsFromAI.asStateFlow()
+
+    // Event to prompt user to complete goal when all milestones are done
+    private val _promptCompleteGoal = MutableStateFlow<String?>(null)
+    val promptCompleteGoal: StateFlow<String?> = _promptCompleteGoal.asStateFlow()
+
+    fun clearCompleteGoalPrompt() {
+        _promptCompleteGoal.value = null
+    }
 
     init {
         checkConfig()
@@ -158,9 +169,12 @@ class GoalViewModel(
         viewModelScope.launch {
             try {
                 _isLoading.value = true
-                    createGoalUseCase(goal)
-                    loadAllGoals()
-                    _error.value = null
+                createGoalUseCase(goal)
+                loadAllGoals()
+                _error.value = null
+
+                // Award XP for creating a goal
+                gamificationRepository.addXp(XpRewards.GOAL_CREATED)
             } catch (e: Exception) {
                 _error.value = "Failed to create goal: ${e.message}"
             } finally {
@@ -239,6 +253,14 @@ class GoalViewModel(
                     }
                     loadAllGoals()
                     _error.value = null
+
+                    // Update gamification if goal is completed
+                    if (newStatus == GoalStatus.COMPLETED && oldGoal?.status != GoalStatus.COMPLETED) {
+                        gamificationRepository.incrementGoalsCompleted()
+                        gamificationRepository.addXp(XpRewards.GOAL_COMPLETED)
+                        gamificationRepository.onGoalCompleted()
+                        gamificationRepository.checkAndAwardBadges()
+                    }
                 } else {
                     _error.value = result.exceptionOrNull()?.message ?: "Failed to update status"
                 }
@@ -289,6 +311,11 @@ class GoalViewModel(
                         oldValue = null,
                         newValue = milestoneTitle
                     )
+
+                    // Recalculate progress with new milestone
+                    val updatedGoal = getGoalByIdUseCase(goalId)
+                    updatedGoal?.let { recalculateAndUpdateProgress(it) }
+
                     loadAllGoals()
                     _error.value = null
                 } else {
@@ -306,20 +333,54 @@ class GoalViewModel(
                 val goal = getGoalByIdUseCase(goalId)
                 val milestone = goal?.milestones?.find { it.id == milestoneId }
 
-                if (milestone != null) {
-                    val result =
-                        toggleMilestoneCompletionUseCase(milestoneId, !milestone.isCompleted)
+                if (milestone != null && goal != null) {
+                    val wasCompleted = milestone.isCompleted
+                    val willBeCompleted = !milestone.isCompleted
+                    val result = toggleMilestoneCompletionUseCase(milestoneId, willBeCompleted)
 
                     if (result.isSuccess) {
                         logGoalChangeUseCase(
                             goalId = goalId,
                             field = "milestone_completed",
                             oldValue = milestone.isCompleted.toString(),
-                            newValue = (!milestone.isCompleted).toString()
+                            newValue = willBeCompleted.toString()
                         )
+
+                        // Auto-calculate progress based on milestones
+                        val updatedGoal = getGoalByIdUseCase(goalId)
+                        updatedGoal?.let { recalculateAndUpdateProgress(it) }
+
+                        // Auto-set status to IN_PROGRESS when first milestone is completed
+                        // and goal is still NOT_STARTED
+                        if (willBeCompleted && goal.status == GoalStatus.NOT_STARTED) {
+                            updateGoalStatusUseCase(goalId, GoalStatus.IN_PROGRESS)
+                            logGoalChangeUseCase(
+                                goalId = goalId,
+                                field = "status",
+                                oldValue = GoalStatus.NOT_STARTED.name,
+                                newValue = GoalStatus.IN_PROGRESS.name
+                            )
+                        }
+
+                        // Check if all milestones are now completed
+                        val refreshedGoal = getGoalByIdUseCase(goalId)
+                        if (refreshedGoal != null &&
+                            refreshedGoal.milestones.isNotEmpty() &&
+                            refreshedGoal.milestones.all { it.isCompleted } &&
+                            refreshedGoal.status != GoalStatus.COMPLETED) {
+                            // Prompt user to complete the goal
+                            _promptCompleteGoal.value = goalId
+                        }
+
                         // Force reload all goals to get updated milestone data
                         loadAllGoals()
                         _error.value = null
+
+                        // Update gamification if milestone is newly completed
+                        if (!wasCompleted && willBeCompleted) {
+                            gamificationRepository.addXp(XpRewards.MILESTONE_COMPLETED)
+                            gamificationRepository.onMilestoneCompleted()
+                        }
                     } else {
                         _error.value =
                             result.exceptionOrNull()?.message ?: "Failed to toggle milestone"
@@ -328,6 +389,28 @@ class GoalViewModel(
             } catch (e: Exception) {
                 _error.value = "Failed to toggle milestone: ${e.message}"
             }
+        }
+    }
+
+    /**
+     * Recalculates goal progress based on completed milestones
+     * Progress = (completedMilestones / totalMilestones) * 100
+     */
+    private suspend fun recalculateAndUpdateProgress(goal: Goal) {
+        if (goal.milestones.isEmpty()) return
+
+        val completedCount = goal.milestones.count { it.isCompleted }
+        val totalCount = goal.milestones.size
+        val newProgress = ((completedCount.toFloat() / totalCount.toFloat()) * 100).toInt()
+
+        if (goal.progress?.toInt() != newProgress) {
+            updateGoalProgressUseCase(goal.id, newProgress)
+            logGoalChangeUseCase(
+                goalId = goal.id,
+                field = "progress",
+                oldValue = goal.progress?.toString() ?: "0",
+                newValue = newProgress.toString()
+            )
         }
     }
 

@@ -4,11 +4,11 @@ import androidx.compose.runtime.Composable
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.ui.AddMilestoneDialog
+import az.tribe.lifeplanner.ui.AllMilestonesCompletedDialog
 import az.tribe.lifeplanner.ui.CompleteGoalDialog
 import az.tribe.lifeplanner.ui.DeleteGoalDialog
 import az.tribe.lifeplanner.ui.GoalViewModel
 import az.tribe.lifeplanner.ui.NotesDialog
-import az.tribe.lifeplanner.ui.UpdateProgressDialog
 
 @Composable
 fun GoalDetailDialogs(
@@ -16,15 +16,15 @@ fun GoalDetailDialogs(
     goalId: String,
     viewModel: GoalViewModel,
     showDeleteDialog: Boolean,
-    showProgressDialog: Boolean,
     showNotesDialog: Boolean,
     showAddMilestoneDialog: Boolean,
     showCompleteConfirmDialog: Boolean,
+    showAllMilestonesCompletedDialog: Boolean,
     onDismissDelete: () -> Unit,
-    onDismissProgress: () -> Unit,
     onDismissNotes: () -> Unit,
     onDismissAddMilestone: () -> Unit,
     onDismissComplete: () -> Unit,
+    onDismissAllMilestonesCompleted: () -> Unit,
     onBackClick: () -> Unit
 ) {
     if (showDeleteDialog) {
@@ -35,18 +35,6 @@ fun GoalDetailDialogs(
                 onBackClick()
             },
             onDismiss = onDismissDelete
-        )
-    }
-
-    if (showProgressDialog) {
-        UpdateProgressDialog(
-            currentProgress = goal.progress?.toInt() ?: 0,
-            onConfirm = { newProgress ->
-                viewModel.updateGoalProgress(goalId, newProgress)
-                viewModel.loadAllGoals()
-                onDismissProgress()
-            },
-            onDismiss = onDismissProgress
         )
     }
 
@@ -82,6 +70,18 @@ fun GoalDetailDialogs(
                 onDismissComplete()
             },
             onDismiss = onDismissComplete
+        )
+    }
+
+    if (showAllMilestonesCompletedDialog) {
+        AllMilestonesCompletedDialog(
+            goalTitle = goal.title,
+            onConfirm = {
+                viewModel.updateGoalStatus(goalId, GoalStatus.COMPLETED)
+                viewModel.loadAllGoals()
+                onDismissAllMilestonesCompleted()
+            },
+            onDismiss = onDismissAllMilestonesCompleted
         )
     }
 }

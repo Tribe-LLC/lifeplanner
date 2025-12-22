@@ -23,6 +23,7 @@ import androidx.navigation.navArgument
 import az.tribe.lifeplanner.ui.AchievementsScreen
 import az.tribe.lifeplanner.ui.AddGoalFromTemplateScreen
 import az.tribe.lifeplanner.ui.AddGoalScreen
+import az.tribe.lifeplanner.ui.EditGoalScreen
 import az.tribe.lifeplanner.ui.AIChatScreen
 import az.tribe.lifeplanner.ui.AiGoalGenerationScreen
 import az.tribe.lifeplanner.ui.AnalyticsDashboard
@@ -168,8 +169,10 @@ fun App(
                             launchSingleTop = true
                         }
                     },
-                    goToAnalytics = {
-                        navController.navigate(Screen.Analytics.route)
+                    onTemplateSelected = { templateId ->
+                        navController.navigate("add_goal_from_template/$templateId") {
+                            launchSingleTop = true
+                        }
                     }
                 )
             }
@@ -419,7 +422,12 @@ fun App(
                 arguments = listOf(navArgument("goalId") { type = NavType.StringType })
             ) { backStackEntry ->
                 val goalId = backStackEntry.arguments?.getString("goalId") ?: return@composable
-                // TODO: Implement EditGoalScreen
+                EditGoalScreen(
+                    goalId = goalId,
+                    viewModel = viewModel,
+                    onGoalSaved = { navController.popBackStack() },
+                    onBackClick = { navController.popBackStack() }
+                )
             }
         }
 

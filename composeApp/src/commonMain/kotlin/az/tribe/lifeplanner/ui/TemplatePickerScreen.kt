@@ -1,28 +1,16 @@
 package az.tribe.lifeplanner.ui
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Star
-import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,7 +18,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.data.repository.GoalTemplateProvider
 import az.tribe.lifeplanner.domain.enum.GoalCategory
@@ -47,7 +34,6 @@ fun TemplatePickerScreen(
     onTemplateSelected: (GoalTemplate) -> Unit
 ) {
     var selectedCategory by remember { mutableStateOf<GoalCategory?>(null) }
-    var selectedTemplate by remember { mutableStateOf<GoalTemplate?>(null) }
 
     val templates = remember(selectedCategory) {
         if (selectedCategory == null) {
@@ -57,12 +43,16 @@ fun TemplatePickerScreen(
         }
     }
 
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+
     Scaffold(
         containerColor = MaterialTheme.modernColors.background,
         topBar = {
             LargeTopAppBar(
+                scrollBehavior = scrollBehavior,
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.modernColors.background,
+                    scrolledContainerColor = MaterialTheme.modernColors.background,
                     titleContentColor = MaterialTheme.modernColors.textPrimary
                 ),
                 title = {
@@ -107,7 +97,7 @@ fun TemplatePickerScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Templates List
+            // Templates Grid
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -115,15 +105,27 @@ fun TemplatePickerScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(vertical = 8.dp)
             ) {
-                items(templates, key = { it.id }) { template ->
-                    TemplateCard(
-                        template = template,
-                        isSelected = selectedTemplate?.id == template.id,
-                        onClick = {
-                            selectedTemplate = if (selectedTemplate?.id == template.id) null else template
-                        },
-                        onUseTemplate = { onTemplateSelected(template) }
-                    )
+                // Group templates into rows of 2
+                val chunkedTemplates = templates.chunked(2)
+
+                items(chunkedTemplates.size) { rowIndex ->
+                    val rowTemplates = chunkedTemplates[rowIndex]
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        rowTemplates.forEach { template ->
+                            ModernTemplateCard(
+                                template = template,
+                                onClick = { onTemplateSelected(template) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        // Fill empty space if odd number
+                        if (rowTemplates.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
                 }
 
                 item { Spacer(modifier = Modifier.height(16.dp)) }
@@ -144,16 +146,26 @@ private fun CategoryFilterRow(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        // "All" chip
+        FilterChip(
+            selected = selectedCategory == null,
+            onClick = { onCategorySelected(selectedCategory ?: GoalCategory.CAREER) },
+            label = {
+                Text(
+                    "All",
+                    fontWeight = if (selectedCategory == null) FontWeight.SemiBold else FontWeight.Normal
+                )
+            },
+            colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = MaterialTheme.colorScheme.primary,
+                selectedLabelColor = Color.White,
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        )
+
         GoalCategory.entries.forEach { category ->
             val isSelected = selectedCategory == category
-            val backgroundColor by animateColorAsState(
-                targetValue = if (isSelected) category.backgroundColor() else Color.Transparent,
-                label = "chipBg"
-            )
-            val contentColor by animateColorAsState(
-                targetValue = if (isSelected) Color.White else category.backgroundColor(),
-                label = "chipContent"
-            )
 
             FilterChip(
                 selected = isSelected,
@@ -182,82 +194,41 @@ private fun CategoryFilterRow(
 }
 
 @Composable
-private fun TemplateCard(
+private fun ModernTemplateCard(
     template: GoalTemplate,
-    isSelected: Boolean,
     onClick: () -> Unit,
-    onUseTemplate: () -> Unit
+    modifier: Modifier = Modifier
 ) {
     val categoryColor = template.category.backgroundColor()
-    val elevation by animateFloatAsState(
-        targetValue = if (isSelected) 8f else 0f,
-        label = "elevation"
-    )
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+    Surface(
+        modifier = modifier,
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = elevation.dp),
-        border = if (isSelected) {
-            androidx.compose.foundation.BorderStroke(2.dp, categoryColor)
-        } else {
-            androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-        }
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 2.dp,
+        onClick = onClick
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
+            modifier = Modifier.padding(16.dp)
         ) {
-            // Header Row
+            // Header row with icon and difficulty
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
-                // Icon and Title
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
+                // Icon with category color background
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(categoryColor.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    // Emoji Icon
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(template.category.containerColor()),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = template.icon.ifEmpty { getCategoryEmoji(template.category) },
-                            style = MaterialTheme.typography.headlineSmall
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Column {
-                        Text(
-                            text = template.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.modernColors.textPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-
-                        Text(
-                            text = template.category.name.lowercase().replaceFirstChar { it.uppercase() },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = categoryColor,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                    Text(
+                        text = template.icon.ifEmpty { getCategoryEmoji(template.category) },
+                        style = MaterialTheme.typography.titleLarge
+                    )
                 }
 
                 // Difficulty Badge
@@ -266,112 +237,72 @@ private fun TemplateCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Description
             Text(
-                text = template.description,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.modernColors.textSecondary,
-                maxLines = if (isSelected) 4 else 2,
-                overflow = TextOverflow.Ellipsis
+                text = template.title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                color = MaterialTheme.modernColors.textPrimary
             )
 
-            // Expanded Content
-            AnimatedVisibility(
-                visible = isSelected,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = template.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Bottom row with category and timeline
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Timeline Badge
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    ) {
-                        Text(
-                            text = "Timeline: ",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.modernColors.textSecondary
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer
-                        ) {
-                            Text(
-                                text = template.suggestedTimeline.name
-                                    .replace("_", " ")
-                                    .lowercase()
-                                    .replaceFirstChar { it.uppercase() },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
-
-                    // Milestones Preview
+                // Category chip
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = categoryColor.copy(alpha = 0.1f)
+                ) {
                     Text(
-                        text = "Suggested Milestones:",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.modernColors.textPrimary,
-                        fontWeight = FontWeight.SemiBold
+                        text = template.category.name.lowercase().replaceFirstChar { it.uppercase() },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = categoryColor,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
+                }
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    template.suggestedMilestones.take(3).forEachIndexed { index, milestone ->
-                        Row(
-                            modifier = Modifier.padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(categoryColor)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = milestone,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.modernColors.textSecondary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-
-                    if (template.suggestedMilestones.size > 3) {
-                        Text(
-                            text = "+${template.suggestedMilestones.size - 3} more",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = categoryColor,
-                            modifier = Modifier.padding(start = 14.dp, top = 4.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Use Template Button
-                    Button(
-                        onClick = onUseTemplate,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = categoryColor
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Add,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Use This Template")
-                    }
+                // Timeline chip
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Text(
+                        text = template.suggestedTimeline.name
+                            .replace("_", " ")
+                            .lowercase()
+                            .split(" ")
+                            .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
                 }
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Milestones count hint
+            Text(
+                text = "${template.suggestedMilestones.size} milestones included",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            )
         }
     }
 }
@@ -389,14 +320,14 @@ private fun DifficultyBadge(difficulty: TemplateDifficulty) {
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(color.copy(alpha = 0.1f))
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .padding(horizontal = 6.dp, vertical = 3.dp)
     ) {
         repeat(3) { index ->
             Icon(
                 imageVector = if (index < stars) Icons.Filled.Star else Icons.Outlined.Star,
                 contentDescription = null,
                 tint = if (index < stars) color else color.copy(alpha = 0.3f),
-                modifier = Modifier.size(12.dp)
+                modifier = Modifier.size(10.dp)
             )
         }
     }
