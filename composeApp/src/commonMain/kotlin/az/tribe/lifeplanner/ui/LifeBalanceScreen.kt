@@ -44,6 +44,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -190,10 +191,7 @@ fun LifeBalanceScreen(
                         val areaScore = report.areaScores.find { it.area == area }
                         if (areaScore != null) {
                             item {
-                                AreaDetailCard(
-                                    areaScore = areaScore,
-                                    onAssess = { viewModel.showAssessmentDialog(area) }
-                                )
+                                AreaDetailCard(areaScore = areaScore)
                             }
                         }
                     }
@@ -271,16 +269,6 @@ fun LifeBalanceScreen(
         }
     }
 
-    // Assessment Dialog
-    if (uiState.showAssessmentDialog && uiState.assessmentArea != null) {
-        ManualAssessmentDialog(
-            area = uiState.assessmentArea!!,
-            onDismiss = { viewModel.hideAssessmentDialog() },
-            onSave = { score, notes ->
-                viewModel.saveManualAssessment(uiState.assessmentArea!!, score, notes)
-            }
-        )
-    }
 }
 
 @Composable
@@ -657,13 +645,14 @@ private fun AreaScoreRow(
 
 @Composable
 private fun AreaDetailCard(
-    areaScore: LifeAreaScore,
-    onAssess: () -> Unit
+    areaScore: LifeAreaScore
 ) {
+    val areaColor = getAreaColor(areaScore.area)
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = getAreaColor(areaScore.area).copy(alpha = 0.1f)
+            containerColor = areaColor.copy(alpha = 0.08f)
         ),
         shape = RoundedCornerShape(16.dp)
     ) {
@@ -672,93 +661,155 @@ private fun AreaDetailCard(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
+            // Header with icon and title
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.Top
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(areaScore.area.icon, fontSize = 32.sp)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            areaScore.area.displayName,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            areaScore.area.description,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                // Icon with colored background
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(areaColor.copy(alpha = 0.2f), RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(areaScore.area.icon, fontSize = 24.sp)
                 }
 
-                TextButton(onClick = onAssess) {
-                    Text("Self-Assess")
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        areaScore.area.displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        areaScore.area.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Score badge
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = areaColor.copy(alpha = 0.2f)
+                ) {
+                    Text(
+                        "${areaScore.score}",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = areaColor,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Stats Grid
+            // Stats Row - 2x2 grid style
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                StatItem("Score", "${areaScore.score}/100")
-                StatItem("Goals", "${areaScore.goalCount}")
-                StatItem("Completed", "${areaScore.completedGoals}")
-                StatItem("Habits", "${areaScore.habitCount}")
+                StatChip(
+                    label = "Goals",
+                    value = "${areaScore.goalCount}",
+                    modifier = Modifier.weight(1f)
+                )
+                StatChip(
+                    label = "Completed",
+                    value = "${areaScore.completedGoals}",
+                    modifier = Modifier.weight(1f)
+                )
+                StatChip(
+                    label = "Habits",
+                    value = "${areaScore.habitCount}",
+                    modifier = Modifier.weight(1f)
+                )
             }
 
+            // Habit completion progress
             if (areaScore.habitCount > 0) {
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Row(
+                Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surface
                 ) {
-                    Text(
-                        "Habit Completion",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    Text(
-                        "${(areaScore.habitCompletionRate * 100).toInt()}%",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column(
+                        modifier = Modifier.padding(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "Habit Completion",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                "${(areaScore.habitCompletionRate * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = areaColor
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        LinearProgressIndicator(
+                            progress = { areaScore.habitCompletionRate },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp)),
+                            color = areaColor,
+                            trackColor = areaColor.copy(alpha = 0.2f)
+                        )
+                    }
                 }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                LinearProgressIndicator(
-                    progress = { areaScore.habitCompletionRate },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    color = getAreaColor(areaScore.area)
-                )
             }
+
         }
     }
 }
 
 @Composable
-private fun StatItem(label: String, value: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            value,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+private fun StatChip(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp, horizontal = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                value,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
     }
 }
 
@@ -919,90 +970,6 @@ private fun RecommendationCard(
             }
         }
     }
-}
-
-@Composable
-private fun ManualAssessmentDialog(
-    area: LifeArea,
-    onDismiss: () -> Unit,
-    onSave: (Int, String?) -> Unit
-) {
-    var score by remember { mutableFloatStateOf(5f) }
-    var notes by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(area.icon, fontSize = 24.sp)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Assess ${area.displayName}")
-            }
-        },
-        text = {
-            Column {
-                Text(
-                    "How satisfied are you with this area of your life?",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Text(
-                    "${score.toInt()}/10",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-
-                Slider(
-                    value = score,
-                    onValueChange = { score = it },
-                    valueRange = 1f..10f,
-                    steps = 8,
-                    colors = SliderDefaults.colors(
-                        thumbColor = getAreaColor(area),
-                        activeTrackColor = getAreaColor(area)
-                    )
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Needs work", style = MaterialTheme.typography.labelSmall)
-                    Text("Excellent", style = MaterialTheme.typography.labelSmall)
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                OutlinedTextField(
-                    value = notes,
-                    onValueChange = { notes = it },
-                    label = { Text("Notes (optional)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    maxLines = 3
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onSave(score.toInt(), notes.ifBlank { null }) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = getAreaColor(area)
-                )
-            ) {
-                Icon(Icons.Rounded.Check, contentDescription = null)
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
 }
 
 // Helper functions

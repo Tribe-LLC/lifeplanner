@@ -10,6 +10,7 @@ data class JournalEntry(
     val content: String,
     val mood: Mood,
     val linkedGoalId: String? = null,
+    val linkedHabitId: String? = null,
     val promptUsed: String? = null,
     val tags: List<String> = emptyList(),
     val date: LocalDate,

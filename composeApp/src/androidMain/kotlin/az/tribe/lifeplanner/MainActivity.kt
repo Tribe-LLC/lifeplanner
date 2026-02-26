@@ -12,7 +12,6 @@ import az.tribe.lifeplanner.ui.GoalViewModel
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
 import com.mmk.kmpnotifier.extensions.onCreateOrOnNewIntent
 import com.mmk.kmpnotifier.notification.NotifierManager
-import com.mmk.kmpnotifier.permission.permissionUtil
 import org.koin.compose.koinInject
 
 class MainActivity : ComponentActivity() {
@@ -23,10 +22,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-
-
-        val permissionUtil by permissionUtil()
-        permissionUtil.askNotificationPermission()
         NotifierManager.onCreateOrOnNewIntent(intent)
 
         setContent {

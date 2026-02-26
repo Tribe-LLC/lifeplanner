@@ -25,7 +25,7 @@ import org.koin.dsl.module
 
 const val BASE_URL = "https://generativelanguage.googleapis.com"
 const val BACKEND_BASE_URL = "https://pufpuf-app-3m2r2.ondigitalocean.app/"
-const val GEMINI_PRO = "gemini-flash-latest"
+const val GEMINI_PRO = "gemini-2.0-flash"
 
 val networkModule = module {
 

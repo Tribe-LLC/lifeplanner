@@ -416,18 +416,20 @@ CREATE TABLE IF NOT EXISTS JournalEntryEntity (
     content TEXT NOT NULL,
     mood TEXT NOT NULL DEFAULT 'NEUTRAL',
     linkedGoalId TEXT,
+    linkedHabitId TEXT,
     promptUsed TEXT,
     tags TEXT NOT NULL DEFAULT '',
     date TEXT NOT NULL,
     createdAt TEXT NOT NULL,
     updatedAt TEXT,
-    FOREIGN KEY (linkedGoalId) REFERENCES GoalEntity(id) ON DELETE SET NULL
+    FOREIGN KEY (linkedGoalId) REFERENCES GoalEntity(id) ON DELETE SET NULL,
+    FOREIGN KEY (linkedHabitId) REFERENCES HabitEntity(id) ON DELETE SET NULL
 );
 
 -- Journal queries
 insertJournalEntry:
-INSERT OR REPLACE INTO JournalEntryEntity(id, title, content, mood, linkedGoalId, promptUsed, tags, date, createdAt, updatedAt)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO JournalEntryEntity(id, title, content, mood, linkedGoalId, linkedHabitId, promptUsed, tags, date, createdAt, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getAllJournalEntries:
 SELECT * FROM JournalEntryEntity ORDER BY date DESC, createdAt DESC;
@@ -449,8 +451,11 @@ SELECT * FROM JournalEntryEntity WHERE date >= ? AND date <= ? ORDER BY date DES
 
 updateJournalEntry:
 UPDATE JournalEntryEntity
-SET title = ?, content = ?, mood = ?, linkedGoalId = ?, promptUsed = ?, tags = ?, updatedAt = ?
+SET title = ?, content = ?, mood = ?, linkedGoalId = ?, linkedHabitId = ?, promptUsed = ?, tags = ?, updatedAt = ?
 WHERE id = ?;
+
+getJournalEntriesByHabitId:
+SELECT * FROM JournalEntryEntity WHERE linkedHabitId = ? ORDER BY date DESC;
 
 deleteJournalEntry:
 DELETE FROM JournalEntryEntity WHERE id = ?;
@@ -473,6 +478,7 @@ GROUP BY mood;
 CREATE INDEX IF NOT EXISTS idx_journal_date ON JournalEntryEntity(date);
 CREATE INDEX IF NOT EXISTS idx_journal_mood ON JournalEntryEntity(mood);
 CREATE INDEX IF NOT EXISTS idx_journal_goal ON JournalEntryEntity(linkedGoalId);
+CREATE INDEX IF NOT EXISTS idx_journal_habit ON JournalEntryEntity(linkedHabitId);
 
 -- Badge Table for earned achievements
 CREATE TABLE IF NOT EXISTS BadgeEntity (
@@ -649,7 +655,8 @@ CREATE TABLE IF NOT EXISTS ChatSessionEntity (
     title TEXT NOT NULL,
     createdAt TEXT NOT NULL,
     lastMessageAt TEXT NOT NULL,
-    summary TEXT
+    summary TEXT,
+    coachId TEXT NOT NULL DEFAULT 'luna_general'
 );
 
 CREATE TABLE IF NOT EXISTS ChatMessageEntity (
@@ -665,14 +672,17 @@ CREATE TABLE IF NOT EXISTS ChatMessageEntity (
 
 -- Chat Session queries
 insertChatSession:
-INSERT OR REPLACE INTO ChatSessionEntity(id, title, createdAt, lastMessageAt, summary)
-VALUES (?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO ChatSessionEntity(id, title, createdAt, lastMessageAt, summary, coachId)
+VALUES (?, ?, ?, ?, ?, ?);
 
 getAllChatSessions:
 SELECT * FROM ChatSessionEntity ORDER BY lastMessageAt DESC;
 
 getChatSessionById:
 SELECT * FROM ChatSessionEntity WHERE id = ?;
+
+getChatSessionByCoachId:
+SELECT * FROM ChatSessionEntity WHERE coachId = ? LIMIT 1;
 
 updateChatSessionLastMessage:
 UPDATE ChatSessionEntity
@@ -697,6 +707,9 @@ SELECT COUNT(*) FROM ChatSessionEntity;
 insertChatMessage:
 INSERT OR REPLACE INTO ChatMessageEntity(id, sessionId, content, role, timestamp, relatedGoalId, metadata)
 VALUES (?, ?, ?, ?, ?, ?, ?);
+
+updateChatMessageMetadata:
+UPDATE ChatMessageEntity SET metadata = ? WHERE id = ?;
 
 getMessagesBySessionId:
 SELECT * FROM ChatMessageEntity WHERE sessionId = ? ORDER BY timestamp ASC;
@@ -990,3 +1003,102 @@ CREATE INDEX IF NOT EXISTS idx_reminder_habit ON ReminderEntity(linkedHabitId);
 CREATE INDEX IF NOT EXISTS idx_scheduled_reminder ON ScheduledNotificationEntity(reminderId);
 CREATE INDEX IF NOT EXISTS idx_scheduled_time ON ScheduledNotificationEntity(scheduledAt);
 CREATE INDEX IF NOT EXISTS idx_scheduled_delivered ON ScheduledNotificationEntity(isDelivered);
+
+-- Custom Coach Tables
+CREATE TABLE IF NOT EXISTS CustomCoachEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    icon TEXT NOT NULL,
+    iconBackgroundColor TEXT NOT NULL DEFAULT '#6366F1',
+    iconAccentColor TEXT NOT NULL DEFAULT '#818CF8',
+    systemPrompt TEXT NOT NULL,
+    characteristics TEXT NOT NULL DEFAULT '',
+    isFromTemplate INTEGER NOT NULL DEFAULT 0,
+    templateId TEXT,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT
+);
+
+CREATE TABLE IF NOT EXISTS CoachGroupEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    icon TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT
+);
+
+CREATE TABLE IF NOT EXISTS CoachGroupMemberEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    groupId TEXT NOT NULL,
+    coachType TEXT NOT NULL,
+    coachId TEXT NOT NULL,
+    displayOrder INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (groupId) REFERENCES CoachGroupEntity(id) ON DELETE CASCADE
+);
+
+-- Custom Coach queries
+insertCustomCoach:
+INSERT OR REPLACE INTO CustomCoachEntity(id, name, icon, iconBackgroundColor, iconAccentColor, systemPrompt, characteristics, isFromTemplate, templateId, createdAt, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getAllCustomCoaches:
+SELECT * FROM CustomCoachEntity ORDER BY createdAt DESC;
+
+getCustomCoachById:
+SELECT * FROM CustomCoachEntity WHERE id = ?;
+
+updateCustomCoach:
+UPDATE CustomCoachEntity
+SET name = ?, icon = ?, iconBackgroundColor = ?, iconAccentColor = ?, systemPrompt = ?, characteristics = ?, updatedAt = ?
+WHERE id = ?;
+
+deleteCustomCoach:
+DELETE FROM CustomCoachEntity WHERE id = ?;
+
+getCustomCoachCount:
+SELECT COUNT(*) FROM CustomCoachEntity;
+
+-- Coach Group queries
+insertCoachGroup:
+INSERT OR REPLACE INTO CoachGroupEntity(id, name, icon, description, createdAt, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?);
+
+getAllCoachGroups:
+SELECT * FROM CoachGroupEntity ORDER BY createdAt DESC;
+
+getCoachGroupById:
+SELECT * FROM CoachGroupEntity WHERE id = ?;
+
+updateCoachGroup:
+UPDATE CoachGroupEntity
+SET name = ?, icon = ?, description = ?, updatedAt = ?
+WHERE id = ?;
+
+deleteCoachGroup:
+DELETE FROM CoachGroupEntity WHERE id = ?;
+
+getCoachGroupCount:
+SELECT COUNT(*) FROM CoachGroupEntity;
+
+-- Coach Group Member queries
+insertCoachGroupMember:
+INSERT OR REPLACE INTO CoachGroupMemberEntity(id, groupId, coachType, coachId, displayOrder)
+VALUES (?, ?, ?, ?, ?);
+
+getCoachGroupMembers:
+SELECT * FROM CoachGroupMemberEntity WHERE groupId = ? ORDER BY displayOrder ASC;
+
+deleteCoachGroupMember:
+DELETE FROM CoachGroupMemberEntity WHERE id = ?;
+
+deleteCoachGroupMembersByGroup:
+DELETE FROM CoachGroupMemberEntity WHERE groupId = ?;
+
+updateCoachGroupMemberOrder:
+UPDATE CoachGroupMemberEntity SET displayOrder = ? WHERE id = ?;
+
+-- Indexes for custom coaches
+CREATE INDEX IF NOT EXISTS idx_custom_coach_template ON CustomCoachEntity(templateId);
+CREATE INDEX IF NOT EXISTS idx_coach_group_member_group ON CoachGroupMemberEntity(groupId);
+CREATE INDEX IF NOT EXISTS idx_coach_group_member_coach ON CoachGroupMemberEntity(coachId);

@@ -2,31 +2,69 @@ package az.tribe.lifeplanner.ui.chat
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import az.tribe.lifeplanner.domain.enum.GoalCategory
+import az.tribe.lifeplanner.domain.enum.GoalStatus
+import az.tribe.lifeplanner.domain.enum.GoalTimeline
+import az.tribe.lifeplanner.domain.enum.HabitFrequency
+import az.tribe.lifeplanner.domain.enum.Mood
+import az.tribe.lifeplanner.data.repository.ChatRepositoryImpl
 import az.tribe.lifeplanner.domain.model.ChatMessage
 import az.tribe.lifeplanner.domain.model.ChatSession
+import az.tribe.lifeplanner.domain.model.CoachGroup
+import az.tribe.lifeplanner.domain.model.CoachPersona
+import az.tribe.lifeplanner.domain.model.CoachSuggestion
+import az.tribe.lifeplanner.domain.model.CustomCoach
+import az.tribe.lifeplanner.domain.model.Goal
+import az.tribe.lifeplanner.domain.model.Habit
+import az.tribe.lifeplanner.domain.model.JournalEntry
+import az.tribe.lifeplanner.domain.model.Milestone
 import az.tribe.lifeplanner.domain.model.UserContext
 import az.tribe.lifeplanner.domain.repository.ChatRepository
+import az.tribe.lifeplanner.domain.repository.CoachRepository
+import az.tribe.lifeplanner.domain.repository.GoalRepository
+import az.tribe.lifeplanner.domain.repository.HabitRepository
+import az.tribe.lifeplanner.domain.repository.JournalRepository
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
+import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 
 data class ChatUiState(
     val isLoading: Boolean = false,
     val isSending: Boolean = false,
     val sessions: List<ChatSession> = emptyList(),
+    val sessionsByCoach: Map<String, ChatSession?> = emptyMap(),
     val currentSession: ChatSession? = null,
+    val currentCoach: CoachPersona? = null,
+    val currentCustomCoach: CustomCoach? = null,
+    val currentCoachGroup: CoachGroup? = null,
+    val isCouncilMode: Boolean = false,
+    val isCustomCoachMode: Boolean = false,
+    val isCustomGroupMode: Boolean = false,
+    val customCoaches: List<CustomCoach> = emptyList(),
+    val coachGroups: List<CoachGroup> = emptyList(),
     val messages: List<ChatMessage> = emptyList(),
     val userContext: UserContext? = null,
     val error: String? = null,
-    val showSessionList: Boolean = true
+    val showSessionList: Boolean = true,
+    val actionFeedback: String? = null,
+    val executingAction: Boolean = false,
+    val executedSuggestionIds: Set<String> = emptySet()
 )
 
 class ChatViewModel(
-    private val chatRepository: ChatRepository
+    private val chatRepository: ChatRepository,
+    private val goalRepository: GoalRepository,
+    private val habitRepository: HabitRepository,
+    private val journalRepository: JournalRepository,
+    private val coachRepository: CoachRepository? = null  // Optional for backward compatibility
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -35,6 +73,7 @@ class ChatViewModel(
     init {
         loadSessions()
         loadUserContext()
+        loadCustomCoachesAndGroups()
     }
 
     fun loadSessions() {
@@ -42,9 +81,19 @@ class ChatViewModel(
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
                 val sessions = chatRepository.getAllSessions()
+
+                // Build sessions by coach map
+                val sessionsByCoach = mutableMapOf<String, ChatSession?>()
+                CoachPersona.ALL_COACHES.forEach { coach ->
+                    sessionsByCoach[coach.id] = sessions.find { it.coachId == coach.id }
+                }
+                // Add council session
+                sessionsByCoach[CoachPersona.COUNCIL_ID] = sessions.find { it.coachId == CoachPersona.COUNCIL_ID }
+
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    sessions = sessions
+                    sessions = sessions,
+                    sessionsByCoach = sessionsByCoach
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
@@ -66,6 +115,30 @@ class ChatViewModel(
         }
     }
 
+    private fun loadCustomCoachesAndGroups() {
+        viewModelScope.launch {
+            try {
+                val customCoaches = coachRepository?.getAllCustomCoaches() ?: emptyList()
+                val coachGroups = coachRepository?.getAllCoachGroups() ?: emptyList()
+
+                _uiState.value = _uiState.value.copy(
+                    customCoaches = customCoaches,
+                    coachGroups = coachGroups
+                )
+            } catch (e: Exception) {
+                // Silently fail
+            }
+        }
+    }
+
+    /**
+     * Refresh custom coaches and groups (call after creating/editing)
+     */
+    fun refreshCustomCoaches() {
+        loadCustomCoachesAndGroups()
+        loadSessions()
+    }
+
     fun createNewSession() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
@@ -75,7 +148,8 @@ class ChatViewModel(
                     isLoading = false,
                     currentSession = session,
                     messages = emptyList(),
-                    showSessionList = false
+                    showSessionList = false,
+                    executedSuggestionIds = emptySet()
                 )
                 // Refresh sessions list
                 loadSessions()
@@ -88,17 +162,215 @@ class ChatViewModel(
         }
     }
 
-    fun selectSession(session: ChatSession) {
+    /**
+     * Select a specific coach to chat with (one session per coach)
+     */
+    fun selectCoach(coach: CoachPersona) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
-                val fullSession = chatRepository.getSessionById(session.id)
+                val session = chatRepository.getOrCreateSessionForCoach(coach.id)
                 val messages = chatRepository.getMessages(session.id)
+
+                // Collect executed suggestion IDs from message metadata
+                val executedIds = messages
+                    .mapNotNull { it.metadata?.executedSuggestionIds }
+                    .flatten()
+                    .toSet()
+
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    currentSession = session,
+                    currentCoach = coach,
+                    isCouncilMode = false,
+                    messages = messages,
+                    showSessionList = false,
+                    executedSuggestionIds = executedIds
+                )
+
+                // Refresh sessions list
+                loadSessions()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message
+                )
+            }
+        }
+    }
+
+    /**
+     * Select The Council group chat where all coaches can participate
+     */
+    fun selectCouncil() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            try {
+                val session = chatRepository.getOrCreateSessionForCoach(CoachPersona.COUNCIL_ID)
+                val messages = chatRepository.getMessages(session.id)
+
+                // Collect executed suggestion IDs from message metadata
+                val executedIds = messages
+                    .mapNotNull { it.metadata?.executedSuggestionIds }
+                    .flatten()
+                    .toSet()
+
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    currentSession = session,
+                    currentCoach = null,
+                    isCouncilMode = true,
+                    messages = messages,
+                    showSessionList = false,
+                    executedSuggestionIds = executedIds
+                )
+
+                // Refresh sessions list
+                loadSessions()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message
+                )
+            }
+        }
+    }
+
+    /**
+     * Select a user-created custom coach
+     */
+    fun selectCustomCoach(customCoach: CustomCoach) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            try {
+                val coachId = ChatRepositoryImpl.makeCustomCoachId(customCoach.id)
+                val session = chatRepository.getOrCreateSessionForCoach(coachId)
+                val messages = chatRepository.getMessages(session.id)
+
+                val executedIds = messages
+                    .mapNotNull { it.metadata?.executedSuggestionIds }
+                    .flatten()
+                    .toSet()
+
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    currentSession = session,
+                    currentCoach = null,
+                    currentCustomCoach = customCoach,
+                    currentCoachGroup = null,
+                    isCouncilMode = false,
+                    isCustomCoachMode = true,
+                    isCustomGroupMode = false,
+                    messages = messages,
+                    showSessionList = false,
+                    executedSuggestionIds = executedIds
+                )
+
+                loadSessions()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message
+                )
+            }
+        }
+    }
+
+    /**
+     * Select a user-created coach group
+     */
+    fun selectCoachGroup(coachGroup: CoachGroup) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            try {
+                val groupId = ChatRepositoryImpl.makeGroupId(coachGroup.id)
+                val session = chatRepository.getOrCreateSessionForCoach(groupId)
+                val messages = chatRepository.getMessages(session.id)
+
+                val executedIds = messages
+                    .mapNotNull { it.metadata?.executedSuggestionIds }
+                    .flatten()
+                    .toSet()
+
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    currentSession = session,
+                    currentCoach = null,
+                    currentCustomCoach = null,
+                    currentCoachGroup = coachGroup,
+                    isCouncilMode = false,
+                    isCustomCoachMode = false,
+                    isCustomGroupMode = true,
+                    messages = messages,
+                    showSessionList = false,
+                    executedSuggestionIds = executedIds
+                )
+
+                loadSessions()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message
+                )
+            }
+        }
+    }
+
+    /**
+     * Select coach by ID (used for navigation)
+     * Handles built-in coaches, custom coaches, and groups
+     */
+    fun selectCoachById(coachId: String) {
+        viewModelScope.launch {
+            when {
+                coachId == CoachPersona.COUNCIL_ID -> {
+                    selectCouncil()
+                }
+                ChatRepositoryImpl.isCustomCoachId(coachId) -> {
+                    val customId = ChatRepositoryImpl.extractCustomCoachId(coachId)
+                    val customCoach = coachRepository?.getCustomCoachById(customId)
+                    if (customCoach != null) {
+                        selectCustomCoach(customCoach)
+                    }
+                }
+                ChatRepositoryImpl.isGroupId(coachId) -> {
+                    val groupId = ChatRepositoryImpl.extractGroupId(coachId)
+                    val group = coachRepository?.getCoachGroupById(groupId)
+                    if (group != null) {
+                        selectCoachGroup(group)
+                    }
+                }
+                else -> {
+                    val coach = CoachPersona.getById(coachId)
+                    selectCoach(coach)
+                }
+            }
+        }
+    }
+
+    fun selectSession(session: ChatSession) {
+        selectSessionById(session.id)
+    }
+
+    fun selectSessionById(sessionId: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            try {
+                val fullSession = chatRepository.getSessionById(sessionId)
+                val messages = chatRepository.getMessages(sessionId)
+
+                // Collect all executed suggestion IDs from message metadata
+                val executedIds = messages
+                    .mapNotNull { it.metadata?.executedSuggestionIds }
+                    .flatten()
+                    .toSet()
+
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     currentSession = fullSession,
                     messages = messages,
-                    showSessionList = false
+                    showSessionList = false,
+                    executedSuggestionIds = executedIds
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
@@ -138,9 +410,17 @@ class ChatViewModel(
 
                 // Reload all messages to get proper IDs
                 val messages = chatRepository.getMessages(session.id)
+
+                // Collect executed suggestion IDs from message metadata
+                val executedIds = messages
+                    .mapNotNull { it.metadata?.executedSuggestionIds }
+                    .flatten()
+                    .toSet()
+
                 _uiState.value = _uiState.value.copy(
                     isSending = false,
-                    messages = messages
+                    messages = messages,
+                    executedSuggestionIds = executedIds
                 )
 
                 // Refresh sessions to update titles
@@ -186,5 +466,148 @@ class ChatViewModel(
 
     fun refreshUserContext() {
         loadUserContext()
+    }
+
+    /**
+     * Execute a coach suggestion (create goal, habit, journal entry, or check-in habit)
+     */
+    @OptIn(ExperimentalUuidApi::class)
+    fun executeCoachSuggestion(suggestion: CoachSuggestion) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(executingAction = true, error = null)
+
+            // Find the message containing this suggestion to persist executed state
+            val messageWithSuggestion = _uiState.value.messages.find { message ->
+                message.metadata?.coachSuggestions?.any { it.id == suggestion.id } == true
+            }
+
+            try {
+                when (suggestion) {
+                    is CoachSuggestion.CreateGoal -> {
+                        val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+                        val dueDate = when (suggestion.timeline) {
+                            "SHORT_TERM" -> now.date.plus(30, DateTimeUnit.DAY)
+                            "MID_TERM" -> now.date.plus(90, DateTimeUnit.DAY)
+                            "LONG_TERM" -> now.date.plus(365, DateTimeUnit.DAY)
+                            else -> now.date.plus(90, DateTimeUnit.DAY)
+                        }
+
+                        // Convert suggested milestones to Milestone objects
+                        val milestones = suggestion.milestones.mapIndexed { index, suggested ->
+                            val milestoneDueDate = now.date.plus(
+                                (suggested.weekOffset.coerceAtLeast(1) * 7).toLong(),
+                                DateTimeUnit.DAY
+                            )
+                            Milestone(
+                                id = Uuid.random().toString(),
+                                title = suggested.title,
+                                isCompleted = false,
+                                dueDate = milestoneDueDate
+                            )
+                        }
+
+                        val goal = Goal(
+                            id = Uuid.random().toString(),
+                            category = GoalCategory.entries.find { it.name == suggestion.category }
+                                ?: GoalCategory.CAREER,
+                            title = suggestion.title,
+                            description = suggestion.description,
+                            status = GoalStatus.NOT_STARTED,
+                            timeline = GoalTimeline.entries.find { it.name == suggestion.timeline }
+                                ?: GoalTimeline.MID_TERM,
+                            dueDate = dueDate,
+                            progress = 0,
+                            milestones = milestones,
+                            createdAt = now
+                        )
+                        goalRepository.insertGoal(goal)
+
+                        val milestoneCount = milestones.size
+                        val feedback = if (milestoneCount > 0) {
+                            "Goal '${suggestion.title}' created with $milestoneCount milestones!"
+                        } else {
+                            "Goal '${suggestion.title}' created!"
+                        }
+                        _uiState.value = _uiState.value.copy(
+                            executingAction = false,
+                            actionFeedback = feedback,
+                            executedSuggestionIds = _uiState.value.executedSuggestionIds + suggestion.id
+                        )
+                    }
+
+                    is CoachSuggestion.CreateHabit -> {
+                        val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+                        val habit = Habit(
+                            id = Uuid.random().toString(),
+                            title = suggestion.title,
+                            description = suggestion.description,
+                            category = GoalCategory.entries.find { it.name == suggestion.category }
+                                ?: GoalCategory.EMOTIONAL,
+                            frequency = if (suggestion.frequency == "WEEKLY") HabitFrequency.WEEKLY else HabitFrequency.DAILY,
+                            createdAt = now
+                        )
+                        habitRepository.insertHabit(habit)
+                        _uiState.value = _uiState.value.copy(
+                            executingAction = false,
+                            actionFeedback = "Habit '${suggestion.title}' created!",
+                            executedSuggestionIds = _uiState.value.executedSuggestionIds + suggestion.id
+                        )
+                    }
+
+                    is CoachSuggestion.CreateJournalEntry -> {
+                        val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+                        val entry = JournalEntry(
+                            id = Uuid.random().toString(),
+                            title = suggestion.title,
+                            content = suggestion.content,
+                            mood = suggestion.mood?.let { moodStr ->
+                                Mood.entries.find { it.name == moodStr }
+                            } ?: Mood.NEUTRAL,
+                            date = now.date,
+                            createdAt = now
+                        )
+                        journalRepository.insertEntry(entry)
+                        _uiState.value = _uiState.value.copy(
+                            executingAction = false,
+                            actionFeedback = "Journal entry created!",
+                            executedSuggestionIds = _uiState.value.executedSuggestionIds + suggestion.id
+                        )
+                    }
+
+                    is CoachSuggestion.CheckInHabit -> {
+                        val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+                        habitRepository.checkIn(suggestion.habitId, today)
+                        _uiState.value = _uiState.value.copy(
+                            executingAction = false,
+                            actionFeedback = "Checked in: ${suggestion.habitTitle}",
+                            executedSuggestionIds = _uiState.value.executedSuggestionIds + suggestion.id
+                        )
+                    }
+
+                    is CoachSuggestion.AskQuestion -> {
+                        // For questions, we don't execute anything directly
+                        // The UI will handle showing options and sending user's choice as a message
+                        _uiState.value = _uiState.value.copy(executingAction = false)
+                    }
+                }
+
+                // Persist executed suggestion to database
+                messageWithSuggestion?.let { message ->
+                    chatRepository.markSuggestionExecuted(message.id, suggestion.id)
+                }
+
+                // Refresh user context after action
+                loadUserContext()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    executingAction = false,
+                    error = e.message ?: "Failed to execute action"
+                )
+            }
+        }
+    }
+
+    fun clearActionFeedback() {
+        _uiState.value = _uiState.value.copy(actionFeedback = null)
     }
 }

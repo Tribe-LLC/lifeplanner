@@ -82,7 +82,7 @@ fun AddGoalScreen(
     Scaffold(
         containerColor = MaterialTheme.modernColors.background,
         topBar = {
-            LargeTopAppBar(
+            TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.modernColors.background,
                     titleContentColor = MaterialTheme.modernColors.textPrimary,
@@ -90,8 +90,8 @@ fun AddGoalScreen(
                 title = {
                     Text(
                         "Create New Goal",
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.SemiBold
                         )
                     )
                 },

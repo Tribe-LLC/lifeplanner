@@ -1,0 +1,85 @@
+-- Migration from version 4 to 5
+-- Add Habits, Journal, and Gamification tables
+
+-- Habit Tracking Tables
+CREATE TABLE IF NOT EXISTS HabitEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL,
+    frequency TEXT NOT NULL DEFAULT 'DAILY',
+    targetCount INTEGER NOT NULL DEFAULT 1,
+    currentStreak INTEGER NOT NULL DEFAULT 0,
+    longestStreak INTEGER NOT NULL DEFAULT 0,
+    totalCompletions INTEGER NOT NULL DEFAULT 0,
+    lastCompletedDate TEXT,
+    linkedGoalId TEXT,
+    correlationScore REAL NOT NULL DEFAULT 0.0,
+    isActive INTEGER NOT NULL DEFAULT 1,
+    createdAt TEXT NOT NULL,
+    reminderTime TEXT,
+    FOREIGN KEY (linkedGoalId) REFERENCES GoalEntity(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS HabitCheckInEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    habitId TEXT NOT NULL,
+    date TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 1,
+    notes TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY (habitId) REFERENCES HabitEntity(id) ON DELETE CASCADE
+);
+
+-- Journal Entry Table
+CREATE TABLE IF NOT EXISTS JournalEntryEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    mood TEXT NOT NULL DEFAULT 'NEUTRAL',
+    linkedGoalId TEXT,
+    linkedHabitId TEXT,
+    promptUsed TEXT,
+    tags TEXT NOT NULL DEFAULT '',
+    date TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT,
+    FOREIGN KEY (linkedGoalId) REFERENCES GoalEntity(id) ON DELETE SET NULL,
+    FOREIGN KEY (linkedHabitId) REFERENCES HabitEntity(id) ON DELETE SET NULL
+);
+
+-- Badge Table
+CREATE TABLE IF NOT EXISTS BadgeEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    badgeType TEXT NOT NULL,
+    earnedAt TEXT NOT NULL,
+    isNew INTEGER NOT NULL DEFAULT 1
+);
+
+-- Challenge Table
+CREATE TABLE IF NOT EXISTS ChallengeEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    challengeType TEXT NOT NULL,
+    startDate TEXT NOT NULL,
+    endDate TEXT NOT NULL,
+    currentProgress INTEGER NOT NULL DEFAULT 0,
+    targetProgress INTEGER NOT NULL,
+    isCompleted INTEGER NOT NULL DEFAULT 0,
+    completedAt TEXT,
+    xpEarned INTEGER NOT NULL DEFAULT 0
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_habits_category ON HabitEntity(category);
+CREATE INDEX IF NOT EXISTS idx_habits_linked_goal ON HabitEntity(linkedGoalId);
+CREATE INDEX IF NOT EXISTS idx_habits_active ON HabitEntity(isActive);
+CREATE INDEX IF NOT EXISTS idx_checkins_habit ON HabitCheckInEntity(habitId);
+CREATE INDEX IF NOT EXISTS idx_checkins_date ON HabitCheckInEntity(date);
+CREATE INDEX IF NOT EXISTS idx_journal_date ON JournalEntryEntity(date);
+CREATE INDEX IF NOT EXISTS idx_journal_mood ON JournalEntryEntity(mood);
+CREATE INDEX IF NOT EXISTS idx_journal_goal ON JournalEntryEntity(linkedGoalId);
+CREATE INDEX IF NOT EXISTS idx_journal_habit ON JournalEntryEntity(linkedHabitId);
+CREATE INDEX IF NOT EXISTS idx_badge_type ON BadgeEntity(badgeType);
+CREATE INDEX IF NOT EXISTS idx_badge_new ON BadgeEntity(isNew);
+CREATE INDEX IF NOT EXISTS idx_challenge_type ON ChallengeEntity(challengeType);
+CREATE INDEX IF NOT EXISTS idx_challenge_completed ON ChallengeEntity(isCompleted);
+CREATE INDEX IF NOT EXISTS idx_challenge_end_date ON ChallengeEntity(endDate);

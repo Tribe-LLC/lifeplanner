@@ -25,13 +25,32 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import az.tribe.lifeplanner.BuildKonfig
+import az.tribe.lifeplanner.di.GEMINI_PRO
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.HabitFrequency
+import az.tribe.lifeplanner.domain.enum.Mood
+import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.domain.model.Habit
-import az.tribe.lifeplanner.ui.components.HabitCard
+import az.tribe.lifeplanner.ui.components.SwipeableHabitCard
+import az.tribe.lifeplanner.ui.GoalViewModel
 import az.tribe.lifeplanner.ui.habit.HabitViewModel
+import az.tribe.lifeplanner.ui.journal.JournalViewModel
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.parameter
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.request.url
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.*
+import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
+import org.koin.core.qualifier.named
 
 // Habit template data class
 data class HabitTemplate(
@@ -116,14 +135,30 @@ val habitTemplates = listOf(
 fun HabitTrackerScreen(
     onNavigateBack: () -> Unit,
     isFromBottomNav: Boolean = false,
-    viewModel: HabitViewModel = koinViewModel()
+    viewModel: HabitViewModel = koinViewModel(),
+    journalViewModel: JournalViewModel = koinViewModel(),
+    goalViewModel: GoalViewModel = koinInject(),
+    httpClient: HttpClient = koinInject(qualifier = named("gemini"))
 ) {
     val habits by viewModel.habits.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
     val showAddSheet by viewModel.showAddHabitDialog.collectAsState()
+    val recentCheckIn by viewModel.recentCheckIn.collectAsState()
+    val goals by goalViewModel.goals.collectAsState()
 
     var habitToEdit by remember { mutableStateOf<Habit?>(null) }
+    var showReflectionSheet by remember { mutableStateOf(false) }
+    var habitForReflection by remember { mutableStateOf<Habit?>(null) }
+    var linkedGoalForReflection by remember { mutableStateOf<Goal?>(null) }
+
+    // Onboarding: keep template setup visible until all added or user skips
+    var onboardingDismissed by remember { mutableStateOf(false) }
+    val existingHabitTitles = remember(habits) {
+        habits.map { it.habit.title.lowercase() }.toSet()
+    }
+    val allTemplatesAdded = habitTemplates.all { it.title.lowercase() in existingHabitTitles }
+    val showOnboarding = !onboardingDismissed && !allTemplatesAdded
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -132,6 +167,26 @@ fun HabitTrackerScreen(
     LaunchedEffect(error) {
         error?.let {
             snackbarHostState.showSnackbar(it)
+        }
+    }
+
+    // Show reflection prompt after habit check-in
+    LaunchedEffect(recentCheckIn) {
+        recentCheckIn?.let { checkIn ->
+            val result = snackbarHostState.showSnackbar(
+                message = "Great job completing ${checkIn.habit.title}!",
+                actionLabel = "Add Reflection",
+                duration = SnackbarDuration.Short
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                habitForReflection = checkIn.habit
+                // Find linked goal if any
+                linkedGoalForReflection = checkIn.habit.linkedGoalId?.let { goalId ->
+                    goals.find { it.id == goalId }
+                }
+                showReflectionSheet = true
+            }
+            viewModel.clearRecentCheckIn()
         }
     }
 
@@ -164,20 +219,34 @@ fun HabitTrackerScreen(
             )
         },
         floatingActionButton = {
-            // Only show FAB when there are habits
-            if (habits.isNotEmpty()) {
-                ExtendedFloatingActionButton(
-                    onClick = { viewModel.showAddHabitDialog() },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ) {
-                    Icon(Icons.Rounded.Add, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("New Habit")
+            // Show FAB when not in onboarding
+            // Wrapped in Box with bottom padding to stay above bottom nav
+            if (!showOnboarding && habits.isNotEmpty()) {
+                Box(modifier = Modifier.padding(bottom = 80.dp)) {
+                    ExtendedFloatingActionButton(
+                        onClick = { viewModel.showAddHabitDialog() },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ) {
+                        Icon(Icons.Rounded.Add, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("New Habit", color = MaterialTheme.colorScheme.onPrimary)
+                    }
                 }
             }
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    actionColor = MaterialTheme.colorScheme.primary,
+                    actionContentColor = MaterialTheme.colorScheme.primary,
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         Column(
@@ -192,9 +261,10 @@ fun HabitTrackerScreen(
                 ) {
                     CircularProgressIndicator()
                 }
-            } else if (habits.isEmpty()) {
-                // Empty state with templates
+            } else if (showOnboarding) {
+                // Template setup — persists until all added or user skips
                 EmptyHabitState(
+                    existingHabitTitles = existingHabitTitles,
                     onTemplateClick = { template ->
                         viewModel.createHabit(
                             title = template.title,
@@ -203,7 +273,8 @@ fun HabitTrackerScreen(
                             frequency = template.frequency
                         )
                     },
-                    onCreateCustomClick = { viewModel.showAddHabitDialog() }
+                    onCreateCustomClick = { viewModel.showAddHabitDialog() },
+                    onSkip = { onboardingDismissed = true }
                 )
             } else {
                 // Stats Header
@@ -218,14 +289,19 @@ fun HabitTrackerScreen(
                 // Habit list
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        top = 16.dp,
+                        end = 16.dp,
+                        bottom = 120.dp // Space for bottom nav and FAB
+                    ),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(
                         items = habits,
                         key = { it.habit.id }
                     ) { habitWithStatus ->
-                        HabitCard(
+                        SwipeableHabitCard(
                             habitWithStatus = habitWithStatus,
                             onCheckIn = { viewModel.toggleCheckIn(habitWithStatus.habit.id) },
                             onDelete = { viewModel.deleteHabit(habitWithStatus.habit.id) },
@@ -240,6 +316,7 @@ fun HabitTrackerScreen(
         // Add Habit Bottom Sheet
         if (showAddSheet) {
             AddHabitBottomSheet(
+                existingHabitTitles = existingHabitTitles,
                 onDismiss = { viewModel.hideAddHabitDialog() },
                 onConfirm = { title, description, category, frequency ->
                     viewModel.createHabit(
@@ -263,41 +340,116 @@ fun HabitTrackerScreen(
                 }
             )
         }
+
+        // Quick Reflection Bottom Sheet
+        if (showReflectionSheet && habitForReflection != null) {
+            QuickReflectionBottomSheet(
+                habit = habitForReflection!!,
+                linkedGoal = linkedGoalForReflection,
+                httpClient = httpClient,
+                onDismiss = {
+                    showReflectionSheet = false
+                    habitForReflection = null
+                    linkedGoalForReflection = null
+                },
+                onSave = { title, content, mood ->
+                    journalViewModel.createEntry(
+                        title = title,
+                        content = content,
+                        mood = mood,
+                        linkedGoalId = linkedGoalForReflection?.id,
+                        linkedHabitId = habitForReflection!!.id
+                    )
+                    showReflectionSheet = false
+                    habitForReflection = null
+                    linkedGoalForReflection = null
+                }
+            )
+        }
     }
 }
 
 @Composable
 private fun EmptyHabitState(
+    existingHabitTitles: Set<String>,
     onTemplateClick: (HabitTemplate) -> Unit,
-    onCreateCustomClick: () -> Unit
+    onCreateCustomClick: () -> Unit,
+    onSkip: () -> Unit
 ) {
+    val addedCount = habitTemplates.count { it.title.lowercase() in existingHabitTitles }
+    val sortedTemplates = remember(existingHabitTitles) {
+        habitTemplates.sortedBy { it.title.lowercase() in existingHabitTitles }
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp)
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            top = 16.dp,
+            end = 16.dp,
+            bottom = 100.dp // Space for bottom nav
+        ),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Quick Start Templates Section
+        // Progress section
         item {
-            Text(
-                text = "Quick Start Templates",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Build Your Routine",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "$addedCount/${habitTemplates.size}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                LinearProgressIndicator(
+                    progress = { addedCount.toFloat() / habitTemplates.size },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp)),
+                    color = Color(0xFF4CAF50),
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+
+                Text(
+                    text = when {
+                        addedCount == 0 -> "Add starter habits for the best experience"
+                        addedCount < habitTemplates.size / 2 -> "Great start! Keep going for better results"
+                        addedCount < habitTemplates.size -> "Almost there! A full routine drives real progress"
+                        else -> "All set! You're ready to build great habits"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
 
-        // Template Grid (2 columns)
+        // Template Grid (2 columns) — unadded first, added last
         item {
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                habitTemplates.chunked(2).forEach { rowTemplates ->
+                sortedTemplates.chunked(2).forEach { rowTemplates ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         rowTemplates.forEach { template ->
+                            val isAdded = template.title.lowercase() in existingHabitTitles
                             HabitTemplateCard(
                                 template = template,
+                                isAdded = isAdded,
                                 onClick = { onTemplateClick(template) },
                                 modifier = Modifier.weight(1f)
                             )
@@ -311,9 +463,9 @@ private fun EmptyHabitState(
             }
         }
 
-        // Create Custom Button
+        // Create Custom + Skip buttons
         item {
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             OutlinedButton(
                 onClick = onCreateCustomClick,
@@ -334,6 +486,20 @@ private fun EmptyHabitState(
                 )
             }
 
+            if (addedCount > 0) {
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(
+                    onClick = onSkip,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "I'm all set — start tracking",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(80.dp))
         }
     }
@@ -342,6 +508,7 @@ private fun EmptyHabitState(
 @Composable
 private fun HabitTemplateCard(
     template: HabitTemplate,
+    isAdded: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -349,62 +516,71 @@ private fun HabitTemplateCard(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 2.dp,
-        onClick = onClick
+        shadowElevation = if (isAdded) 0.dp else 2.dp,
+        onClick = { if (!isAdded) onClick() }
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            // Icon with gradient background
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(
-                        Brush.linearGradient(template.gradientColors)
-                    ),
-                contentAlignment = Alignment.Center
+        Box {
+            Column(
+                modifier = Modifier.padding(16.dp)
             ) {
-                Icon(
-                    imageVector = template.icon,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
+                // Icon with gradient background
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            Brush.linearGradient(
+                                if (isAdded) listOf(Color(0xFF4CAF50), Color(0xFF66BB6A))
+                                else template.gradientColors
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isAdded) Icons.Rounded.Check else template.icon,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
 
-            Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-            Text(
-                text = template.title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = template.description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Frequency chip
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = template.gradientColors.first().copy(alpha = 0.1f)
-            ) {
                 Text(
-                    text = template.frequency.displayName,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = template.gradientColors.first(),
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    text = template.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    color = if (isAdded) MaterialTheme.colorScheme.onSurfaceVariant
+                    else MaterialTheme.colorScheme.onSurface
                 )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = if (isAdded) "Added" else template.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isAdded) Color(0xFF4CAF50)
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (isAdded) FontWeight.Medium else FontWeight.Normal,
+                    maxLines = 2
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Frequency chip
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = template.gradientColors.first().copy(alpha = 0.1f)
+                ) {
+                    Text(
+                        text = template.frequency.displayName,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = template.gradientColors.first(),
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
             }
         }
     }
@@ -518,6 +694,7 @@ private fun StatItem(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddHabitBottomSheet(
+    existingHabitTitles: Set<String> = emptySet(),
     onDismiss: () -> Unit,
     onConfirm: (String, String, GoalCategory, HabitFrequency) -> Unit
 ) {
@@ -596,6 +773,7 @@ private fun AddHabitBottomSheet(
             } else {
                 // Template selection
                 TemplateSelectionContent(
+                    existingHabitTitles = existingHabitTitles,
                     onTemplateClick = { template ->
                         onConfirm(template.title, template.description, template.category, template.frequency)
                     },
@@ -608,9 +786,14 @@ private fun AddHabitBottomSheet(
 
 @Composable
 private fun TemplateSelectionContent(
+    existingHabitTitles: Set<String> = emptySet(),
     onTemplateClick: (HabitTemplate) -> Unit,
     onCustomClick: () -> Unit
 ) {
+    val sortedTemplates = remember(existingHabitTitles) {
+        habitTemplates.sortedBy { it.title.lowercase() in existingHabitTitles }
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
@@ -627,19 +810,21 @@ private fun TemplateSelectionContent(
             Spacer(modifier = Modifier.height(12.dp))
         }
 
-        // Template grid (2 columns)
+        // Template grid (2 columns) — unadded first
         item {
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                habitTemplates.chunked(2).forEach { rowTemplates ->
+                sortedTemplates.chunked(2).forEach { rowTemplates ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         rowTemplates.forEach { template ->
+                            val isAdded = template.title.lowercase() in existingHabitTitles
                             CompactTemplateCard(
                                 template = template,
+                                isAdded = isAdded,
                                 onClick = { onTemplateClick(template) },
                                 modifier = Modifier.weight(1f)
                             )
@@ -699,14 +884,16 @@ private fun TemplateSelectionContent(
 @Composable
 private fun CompactTemplateCard(
     template: HabitTemplate,
+    isAdded: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        onClick = onClick
+        color = if (isAdded) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        onClick = { if (!isAdded) onClick() }
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -718,12 +905,15 @@ private fun CompactTemplateCard(
                     .size(40.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(
-                        Brush.linearGradient(template.gradientColors)
+                        Brush.linearGradient(
+                            if (isAdded) listOf(Color(0xFF4CAF50), Color(0xFF66BB6A))
+                            else template.gradientColors
+                        )
                     ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = template.icon,
+                    imageVector = if (isAdded) Icons.Rounded.Check else template.icon,
                     contentDescription = null,
                     tint = Color.White,
                     modifier = Modifier.size(20.dp)
@@ -737,12 +927,16 @@ private fun CompactTemplateCard(
                     text = template.title,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = 1
+                    maxLines = 1,
+                    color = if (isAdded) MaterialTheme.colorScheme.onSurfaceVariant
+                    else MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = template.frequency.displayName,
+                    text = if (isAdded) "Added" else template.frequency.displayName,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (isAdded) Color(0xFF4CAF50)
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (isAdded) FontWeight.Medium else FontWeight.Normal
                 )
             }
         }
@@ -1059,5 +1253,418 @@ private fun EditHabitBottomSheet(
                 Spacer(modifier = Modifier.height(24.dp))
             }
         }
+    }
+}
+
+/**
+ * Quick reflection bottom sheet shown after habit check-in with AI-generated content
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QuickReflectionBottomSheet(
+    habit: Habit,
+    linkedGoal: Goal?,
+    httpClient: HttpClient,
+    onDismiss: () -> Unit,
+    onSave: (String, String, Mood) -> Unit
+) {
+    var title by remember { mutableStateOf("Reflection: ${habit.title}") }
+    var content by remember { mutableStateOf("") }
+    var selectedMood by remember { mutableStateOf(Mood.NEUTRAL) }
+    var isGenerating by remember { mutableStateOf(false) }
+    var hasGenerated by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // Generate AI reflection when mood changes (after first selection)
+    LaunchedEffect(selectedMood) {
+        if (!hasGenerated) return@LaunchedEffect
+        isGenerating = true
+        try {
+            val aiContent = generateAiReflection(
+                httpClient = httpClient,
+                habit = habit,
+                linkedGoal = linkedGoal,
+                mood = selectedMood
+            )
+            if (aiContent != null) {
+                title = aiContent.first
+                content = aiContent.second
+            }
+        } catch (e: Exception) {
+            // Fallback to simple content
+            content = "Completed ${habit.title}. Feeling ${selectedMood.emoji}"
+        }
+        isGenerating = false
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        dragHandle = null,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+        ) {
+            // Header with AI icon
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            "Quick Reflection",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        // AI sparkle icon
+                        Icon(
+                            imageVector = Icons.Rounded.AutoAwesome,
+                            contentDescription = "AI Generated",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Text(
+                        "How was your ${habit.title}?",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    linkedGoal?.let {
+                        Text(
+                            "Linked to: ${it.title}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = "Close"
+                    )
+                }
+            }
+
+            // Mood selector
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+            ) {
+                Text(
+                    "How are you feeling?",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Mood.entries.forEach { mood ->
+                        MoodOption(
+                            mood = mood,
+                            isSelected = mood == selectedMood,
+                            onClick = {
+                                selectedMood = mood
+                                // Trigger AI generation on first mood selection
+                                if (!hasGenerated) {
+                                    hasGenerated = true
+                                    isGenerating = true
+                                    coroutineScope.launch {
+                                        try {
+                                            val aiContent = generateAiReflection(
+                                                httpClient = httpClient,
+                                                habit = habit,
+                                                linkedGoal = linkedGoal,
+                                                mood = mood
+                                            )
+                                            if (aiContent != null) {
+                                                title = aiContent.first
+                                                content = aiContent.second
+                                            }
+                                        } catch (e: Exception) {
+                                            content = "Completed ${habit.title}. Feeling ${mood.emoji}"
+                                        }
+                                        isGenerating = false
+                                    }
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // AI Generated Title
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                label = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("Title")
+                        if (hasGenerated) {
+                            Icon(
+                                imageVector = Icons.Rounded.AutoAwesome,
+                                contentDescription = "AI",
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                shape = RoundedCornerShape(12.dp),
+                enabled = !isGenerating
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Content input with loading state
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .height(140.dp)
+            ) {
+                OutlinedTextField(
+                    value = content,
+                    onValueChange = { content = it },
+                    label = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text("Your reflection")
+                            if (hasGenerated) {
+                                Icon(
+                                    imageVector = Icons.Rounded.AutoAwesome,
+                                    contentDescription = "AI",
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    },
+                    placeholder = {
+                        Text(
+                            if (!hasGenerated) "Select a mood to generate AI reflection..."
+                            else "How did it go? Any insights?"
+                        )
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                    shape = RoundedCornerShape(12.dp),
+                    maxLines = 5,
+                    enabled = !isGenerating
+                )
+
+                // Loading overlay
+                if (isGenerating) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Text(
+                                "Generating reflection...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Action buttons
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Skip")
+                }
+
+                Button(
+                    onClick = {
+                        val finalTitle = title.ifBlank { "Reflection: ${habit.title}" }
+                        val finalContent = content.ifBlank {
+                            "Completed ${habit.title}. Feeling ${selectedMood.emoji}"
+                        }
+                        onSave(finalTitle, finalContent, selectedMood)
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    enabled = !isGenerating
+                ) {
+                    Text("Save")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+/**
+ * Generate AI reflection content based on habit, goal, and mood
+ */
+private suspend fun generateAiReflection(
+    httpClient: HttpClient,
+    habit: Habit,
+    linkedGoal: Goal?,
+    mood: Mood
+): Pair<String, String>? = withContext(Dispatchers.IO) {
+    try {
+        val prompt = buildString {
+            append("Generate a short, personal journal reflection (2-3 sentences) for someone who just completed their habit.\n\n")
+            append("Habit: ${habit.title}\n")
+            append("Description: ${habit.description}\n")
+            append("Current streak: ${habit.currentStreak} days\n")
+            append("Total completions: ${habit.totalCompletions}\n")
+            append("Mood: ${mood.displayName} (${mood.emoji})\n")
+
+            linkedGoal?.let {
+                append("\nThis habit is linked to their goal: ${it.title}\n")
+                append("Goal progress: ${(it.progress ?: 0).toInt()}%\n")
+                append("Goal status: ${it.status}\n")
+            }
+
+            append("\nWrite in first person, be encouraging and reflective. Match the tone to their ${mood.displayName.lowercase()} mood.")
+            append("\nAlso suggest a better, more personal title for this reflection (not just 'Reflection: habit name').")
+        }
+
+        val requestBody = buildJsonObject {
+            putJsonArray("contents") {
+                addJsonObject {
+                    putJsonArray("parts") {
+                        addJsonObject {
+                            put("text", prompt)
+                        }
+                    }
+                }
+            }
+            putJsonObject("generationConfig") {
+                put("responseMimeType", "application/json")
+                putJsonObject("responseSchema") {
+                    put("type", "object")
+                    putJsonObject("properties") {
+                        putJsonObject("title") {
+                            put("type", "string")
+                        }
+                        putJsonObject("content") {
+                            put("type", "string")
+                        }
+                    }
+                    putJsonArray("required") {
+                        add("title")
+                        add("content")
+                    }
+                }
+            }
+        }
+
+        val response: JsonObject = httpClient.post {
+            url("v1beta/models/$GEMINI_PRO:generateContent")
+            parameter("key", BuildKonfig.GEMINI_API_KEY)
+            setBody(requestBody)
+        }.body()
+
+        // Parse response
+        val candidates = response["candidates"]?.jsonArray
+        val firstCandidate = candidates?.firstOrNull()?.jsonObject
+        val content = firstCandidate?.get("content")?.jsonObject
+        val parts = content?.get("parts")?.jsonArray
+        val textPart = parts?.firstOrNull()?.jsonObject?.get("text")?.jsonPrimitive?.content
+
+        if (textPart != null) {
+            val json = Json { ignoreUnknownKeys = true }
+            val parsed = json.parseToJsonElement(textPart).jsonObject
+            val aiTitle = parsed["title"]?.jsonPrimitive?.content ?: "Reflection: ${habit.title}"
+            val aiContent = parsed["content"]?.jsonPrimitive?.content ?: ""
+            Pair(aiTitle, aiContent)
+        } else {
+            null
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
+
+@Composable
+private fun MoodOption(
+    mood: Mood,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(8.dp)
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                    else Color.Transparent,
+            modifier = Modifier.size(48.dp)
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Text(
+                    text = mood.emoji,
+                    style = MaterialTheme.typography.headlineMedium
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = mood.displayName,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (isSelected) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }

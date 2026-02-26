@@ -2,13 +2,16 @@ package az.tribe.lifeplanner.domain.repository
 
 import az.tribe.lifeplanner.domain.enum.Mood
 import az.tribe.lifeplanner.domain.model.JournalEntry
+import kotlinx.coroutines.flow.Flow
 import kotlinx.datetime.LocalDate
 
 interface JournalRepository {
+    fun observeAllEntries(): Flow<List<JournalEntry>>
     suspend fun getAllEntries(): List<JournalEntry>
     suspend fun getEntryById(id: String): JournalEntry?
     suspend fun getEntriesByDate(date: LocalDate): List<JournalEntry>
     suspend fun getEntriesByGoalId(goalId: String): List<JournalEntry>
+    suspend fun getEntriesByHabitId(habitId: String): List<JournalEntry>
     suspend fun getEntriesByMood(mood: Mood): List<JournalEntry>
     suspend fun getEntriesInRange(startDate: LocalDate, endDate: LocalDate): List<JournalEntry>
     suspend fun getRecentEntries(limit: Int = 10): List<JournalEntry>

@@ -1,15 +1,19 @@
 package az.tribe.lifeplanner.ui.components
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -19,27 +23,305 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.HabitFrequency
 import az.tribe.lifeplanner.domain.model.Habit
 import az.tribe.lifeplanner.ui.habit.HabitWithStatus
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
+import kotlin.math.absoluteValue
+import kotlin.math.roundToInt
 
+// Haptic feedback
+private var lastThresholdState: ThresholdState = ThresholdState.NONE
+
+private enum class ThresholdState {
+    NONE, EDIT_ZONE, DELETE_ZONE, CHECK_IN_ZONE
+}
+
+// Swipe thresholds
+private const val EDIT_THRESHOLD = 0.25f  // 25% for edit
+private const val DELETE_THRESHOLD = 0.45f  // 45% for delete
+
+/**
+ * Swipeable wrapper for HabitCard
+ * - Swipe right (start-to-end): Check-in / Toggle completion
+ * - Swipe left (end-to-start):
+ *   - Light swipe (25-45%): Edit
+ *   - Heavy swipe (>45%): Delete
+ */
 @Composable
-fun HabitCard(
+fun SwipeableHabitCard(
     habitWithStatus: HabitWithStatus,
     onCheckIn: () -> Unit,
     onDelete: () -> Unit,
     onEdit: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    val isCompletedToday = habitWithStatus.isCompletedToday
+    val haptic = rememberHapticManager()
+
+    var offsetX by remember { mutableStateOf(0f) }
+    var cardWidth by remember { mutableStateOf(1f) }
+    val density = LocalDensity.current
+
+    // Track threshold state for haptic feedback
+    var currentThresholdState by remember { mutableStateOf(ThresholdState.NONE) }
+
+    // Calculate swipe progress (0 to 1)
+    val swipeProgress = (offsetX.absoluteValue / cardWidth).coerceIn(0f, 1f)
+    val isSwipingLeft = offsetX < 0
+    val isSwipingRight = offsetX > 0
+
+    // Determine action based on threshold
+    val isInDeleteZone = isSwipingLeft && swipeProgress >= DELETE_THRESHOLD
+    val isInEditZone = isSwipingLeft && swipeProgress >= EDIT_THRESHOLD && swipeProgress < DELETE_THRESHOLD
+    val isInCheckInZone = isSwipingRight && swipeProgress >= EDIT_THRESHOLD
+
+    // Haptic feedback when crossing thresholds
+    val newThresholdState = when {
+        isInDeleteZone -> ThresholdState.DELETE_ZONE
+        isInEditZone -> ThresholdState.EDIT_ZONE
+        isInCheckInZone -> ThresholdState.CHECK_IN_ZONE
+        else -> ThresholdState.NONE
+    }
+
+    LaunchedEffect(newThresholdState) {
+        if (newThresholdState != currentThresholdState && newThresholdState != ThresholdState.NONE) {
+            when (newThresholdState) {
+                ThresholdState.DELETE_ZONE -> haptic.swipeDeleteZone()
+                ThresholdState.EDIT_ZONE -> haptic.swipeActionZone()
+                ThresholdState.CHECK_IN_ZONE -> haptic.swipeActionZone()
+                else -> {}
+            }
+        }
+        currentThresholdState = newThresholdState
+    }
+
+    // Animated offset for smooth return
+    val animatedOffset by animateFloatAsState(
+        targetValue = offsetX,
+        animationSpec = tween(
+            durationMillis = if (offsetX == 0f) 200 else 0
+        ),
+        label = "offsetAnimation"
+    )
+
+    val draggableState = rememberDraggableState { delta ->
+        offsetX = (offsetX + delta).coerceIn(-cardWidth * 0.6f, cardWidth * 0.4f)
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .onSizeChanged { cardWidth = it.width.toFloat() }
+    ) {
+        // Background layer - uses matchParentSize to match card height
+        HabitSwipeBackgroundNew(
+            swipeProgress = swipeProgress,
+            isSwipingLeft = isSwipingLeft,
+            isSwipingRight = isSwipingRight,
+            isInDeleteZone = isInDeleteZone,
+            isInEditZone = isInEditZone,
+            isCompletedToday = isCompletedToday,
+            modifier = Modifier.matchParentSize()
+        )
+
+        // Foreground card
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(animatedOffset.roundToInt(), 0) }
+                .draggable(
+                    state = draggableState,
+                    orientation = Orientation.Horizontal,
+                    onDragStopped = {
+                        when {
+                            isInDeleteZone -> {
+                                haptic.warning()
+                                showDeleteDialog = true
+                            }
+                            isInEditZone -> {
+                                haptic.click()
+                                onEdit()
+                            }
+                            isInCheckInZone -> {
+                                haptic.success()
+                                onCheckIn()
+                            }
+                        }
+                        offsetX = 0f
+                        currentThresholdState = ThresholdState.NONE
+                    }
+                )
+        ) {
+            HabitCard(
+                habitWithStatus = habitWithStatus,
+                onCheckIn = onCheckIn
+            )
+        }
+    }
+
+    // Delete Confirmation Dialog
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Rounded.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = { Text("Delete Habit?") },
+            text = { Text("Are you sure you want to delete \"${habitWithStatus.habit.title}\"? This will remove all check-in history. This action cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteDialog = false
+                        onDelete()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun HabitSwipeBackgroundNew(
+    swipeProgress: Float,
+    isSwipingLeft: Boolean,
+    isSwipingRight: Boolean,
+    isInDeleteZone: Boolean,
+    isInEditZone: Boolean,
+    isCompletedToday: Boolean,
+    modifier: Modifier = Modifier
+) {
+    // Colors for different states
+    val editColor = Color(0xFF2196F3) // Blue for edit
+    val deleteColor = Color(0xFFF44336) // Red for delete
+    val checkInColor = if (isCompletedToday) Color(0xFFFF9800) else Color(0xFF4CAF50)
+
+    val backgroundColor by animateColorAsState(
+        targetValue = when {
+            isInDeleteZone -> deleteColor
+            isInEditZone -> editColor
+            isSwipingLeft && swipeProgress > 0.1f -> editColor.copy(alpha = 0.7f)
+            isSwipingRight && swipeProgress > 0.1f -> checkInColor
+            else -> Color.Transparent
+        },
+        animationSpec = tween(150),
+        label = "backgroundColor"
+    )
+
+    val icon = when {
+        isInDeleteZone -> Icons.Rounded.Delete
+        isSwipingLeft -> Icons.Rounded.Edit
+        isSwipingRight && isCompletedToday -> Icons.AutoMirrored.Rounded.Undo
+        isSwipingRight -> Icons.Rounded.CheckCircle
+        else -> null
+    }
+
+    val actionText = when {
+        isInDeleteZone -> "Delete"
+        isInEditZone -> "Edit"
+        isSwipingLeft && swipeProgress > 0.1f -> "Edit"
+        isSwipingRight && swipeProgress > EDIT_THRESHOLD -> if (isCompletedToday) "Undo" else "Check in"
+        else -> null
+    }
+
+    val alignment = if (isSwipingLeft) Alignment.CenterEnd else Alignment.CenterStart
+
+    val iconScale by animateFloatAsState(
+        targetValue = when {
+            isInDeleteZone -> 1.2f
+            swipeProgress > 0.15f -> 1f
+            else -> 0.8f
+        },
+        animationSpec = tween(150),
+        label = "iconScale"
+    )
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(LifePlannerDesign.CornerRadius.medium))
+            .background(backgroundColor)
+            .padding(horizontal = 20.dp),
+        contentAlignment = alignment
+    ) {
+        if (swipeProgress > 0.1f) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = if (isSwipingLeft) Arrangement.End else Arrangement.Start,
+                modifier = Modifier.graphicsLayer {
+                    scaleX = iconScale
+                    scaleY = iconScale
+                }
+            ) {
+                if (!isSwipingLeft) {
+                    icon?.let {
+                        Icon(
+                            imageVector = it,
+                            contentDescription = actionText,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+
+                actionText?.let {
+                    Text(
+                        text = it,
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                if (isSwipingLeft) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    icon?.let {
+                        Icon(
+                            imageVector = it,
+                            contentDescription = actionText,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun HabitCard(
+    habitWithStatus: HabitWithStatus,
+    onCheckIn: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     val habit = habitWithStatus.habit
     val isCompletedToday = habitWithStatus.isCompletedToday
-    var showMenu by remember { mutableStateOf(false) }
 
     val backgroundColor by animateColorAsState(
         targetValue = if (isCompletedToday)
@@ -134,42 +416,6 @@ fun HabitCard(
                     }
                 }
             }
-
-            // More options menu
-            Box {
-                IconButton(onClick = { showMenu = true }) {
-                    Icon(
-                        imageVector = Icons.Rounded.MoreVert,
-                        contentDescription = "More options",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = { showMenu = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("Edit") },
-                        onClick = {
-                            showMenu = false
-                            onEdit()
-                        },
-                        leadingIcon = {
-                            Icon(Icons.Rounded.Edit, contentDescription = null)
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Delete") },
-                        onClick = {
-                            showMenu = false
-                            onDelete()
-                        },
-                        leadingIcon = {
-                            Icon(Icons.Rounded.Delete, contentDescription = null)
-                        }
-                    )
-                }
-            }
         }
     }
 }
@@ -180,6 +426,7 @@ private fun CheckInButton(
     categoryColor: Color,
     onClick: () -> Unit
 ) {
+    val haptic = rememberHapticManager()
     val scale by animateFloatAsState(
         targetValue = if (isCompleted) 1.1f else 1f,
         animationSpec = tween(200),
@@ -202,11 +449,14 @@ private fun CheckInButton(
         modifier = Modifier
             .size(48.dp)
             .scale(scale)
-            .clickable { onClick() },
+            .clickable {
+                haptic.success()
+                onClick()
+            },
         shape = CircleShape,
         color = backgroundColor,
         border = if (!isCompleted) {
-            ButtonDefaults.outlinedButtonBorder
+            ButtonDefaults.outlinedButtonBorder(enabled = true)
         } else null
     ) {
         Box(

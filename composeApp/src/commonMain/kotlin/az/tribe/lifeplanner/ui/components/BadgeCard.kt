@@ -1,6 +1,5 @@
 package az.tribe.lifeplanner.ui.components
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -24,10 +23,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Loop
-import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.TrendingUp
-import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -62,114 +60,73 @@ fun BadgeCard(
     modifier: Modifier = Modifier
 ) {
     val scale by animateFloatAsState(
-        targetValue = if (badge?.isNew == true) 1.1f else 1f,
+        targetValue = if (badge?.isNew == true) 1.05f else 1f,
         animationSpec = spring()
     )
 
-    val backgroundColor by animateColorAsState(
-        targetValue = if (isEarned) {
-            Color(badgeType.color).copy(alpha = 0.15f)
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        },
-        animationSpec = tween(300)
-    )
-
-    Card(
+    Column(
         modifier = modifier
             .scale(scale)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(LifePlannerDesign.CornerRadius.medium),
-        colors = CardDefaults.cardColors(containerColor = backgroundColor),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isEarned) LifePlannerDesign.Elevation.low else LifePlannerDesign.Elevation.none
-        )
+            .clickable(onClick = onClick)
+            .padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
+        // Badge Icon
+        Box(
             modifier = Modifier
-                .padding(LifePlannerDesign.Padding.medium)
-                .fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Badge Icon
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (isEarned) {
-                            Brush.radialGradient(
-                                colors = listOf(
-                                    Color(badgeType.color),
-                                    Color(badgeType.color).copy(alpha = 0.7f)
-                                )
-                            )
-                        } else {
-                            Brush.radialGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                                    MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
-                                )
-                            )
-                        }
-                    )
-                    .then(
-                        if (badge?.isNew == true) {
-                            Modifier.border(
-                                width = 2.dp,
-                                color = MaterialTheme.colorScheme.primary,
-                                shape = CircleShape
-                            )
-                        } else Modifier
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = getBadgeIcon(badgeType),
-                    contentDescription = badgeType.displayName,
-                    modifier = Modifier.size(32.dp),
-                    tint = if (isEarned) Color.White else MaterialTheme.colorScheme.outline
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(
+                    if (isEarned) {
+                        Color(badgeType.color)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    }
                 )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Badge Name
-            Text(
-                text = badgeType.displayName,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = if (isEarned) FontWeight.Bold else FontWeight.Normal,
-                color = if (isEarned) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                },
-                textAlign = TextAlign.Center,
-                maxLines = 2
+                .then(
+                    if (badge?.isNew == true) {
+                        Modifier.border(
+                            width = 2.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                            shape = CircleShape
+                        )
+                    } else Modifier
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = getBadgeIcon(badgeType),
+                contentDescription = badgeType.displayName,
+                modifier = Modifier.size(24.dp),
+                tint = if (isEarned) Color.White else MaterialTheme.colorScheme.outline
             )
+        }
 
-            // New indicator
-            if (badge?.isNew == true) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.AutoAwesome,
-                        contentDescription = "New",
-                        modifier = Modifier.size(12.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(2.dp))
-                    Text(
-                        text = "NEW",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Badge Name
+        Text(
+            text = badgeType.displayName,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (isEarned) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (isEarned) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+            },
+            textAlign = TextAlign.Center,
+            maxLines = 2
+        )
+
+        // New indicator
+        if (badge?.isNew == true) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "NEW",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
@@ -338,9 +295,9 @@ fun GamificationStatCard(
 fun getBadgeIcon(type: BadgeType): ImageVector {
     return when {
         type.name.startsWith("STREAK") -> Icons.Default.LocalFireDepartment
-        type.name.startsWith("GOAL") || type.name == "FIRST_STEP" -> Icons.Default.TrendingUp
+        type.name.startsWith("GOAL") || type.name == "FIRST_STEP" -> Icons.AutoMirrored.Filled.TrendingUp
         type.name.startsWith("HABIT") -> Icons.Default.Loop
-        type.name.startsWith("JOURNAL") -> Icons.Default.MenuBook
+        type.name.startsWith("JOURNAL") -> Icons.AutoMirrored.Filled.MenuBook
         type == BadgeType.PERFECTIONIST -> Icons.Default.Check
         else -> Icons.Default.EmojiEvents
     }

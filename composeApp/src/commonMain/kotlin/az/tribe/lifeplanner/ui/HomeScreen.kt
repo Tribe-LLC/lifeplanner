@@ -4,10 +4,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -23,13 +26,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.model.Goal
+import az.tribe.lifeplanner.ui.components.AchievementsCard
 import az.tribe.lifeplanner.ui.components.DailyMotivationCard
 import az.tribe.lifeplanner.ui.components.DashboardStatsRow
+import az.tribe.lifeplanner.ui.components.PersonalCoachCard
 import az.tribe.lifeplanner.ui.components.PriorityGoalsSection
 import az.tribe.lifeplanner.ui.components.QuickActionsGrid
 import az.tribe.lifeplanner.ui.components.TodayHabitsSection
 import az.tribe.lifeplanner.ui.components.TodayProgressCard
 import az.tribe.lifeplanner.ui.components.WelcomeHeader
+import az.tribe.lifeplanner.domain.enum.BadgeType
 import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
 import az.tribe.lifeplanner.ui.habit.HabitViewModel
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
@@ -50,7 +56,9 @@ fun HomeScreen(
     onAddGoalClick: () -> Unit,
     goToAiGeneration: () -> Unit,
     onNavigateToHabits: () -> Unit = {},
-    onNavigateToJournal: () -> Unit = {}
+    onNavigateToJournal: () -> Unit = {},
+    onNavigateToAchievements: () -> Unit = {},
+    onNavigateToCoach: () -> Unit = {}
 ) {
     val snackBarHostState = remember { SnackbarHostState() }
 
@@ -61,6 +69,7 @@ fun HomeScreen(
 
     val authState by authViewModel.authState.collectAsState()
     val userProgress by gamificationViewModel.userProgress.collectAsState()
+    val badges by gamificationViewModel.badges.collectAsState()
     val goals by viewModel.goals.collectAsState()
     val habits by habitViewModel.habits.collectAsState()
 
@@ -98,6 +107,7 @@ fun HomeScreen(
         viewModel.loadAllGoals()
         viewModel.loadAnalytics()
         habitViewModel.loadHabits()
+        gamificationViewModel.refresh()
     }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -121,13 +131,29 @@ fun HomeScreen(
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
-        snackbarHost = { SnackbarHost(snackBarHostState) }
+        snackbarHost = {
+            SnackbarHost(snackBarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = MaterialTheme.colorScheme.inverseSurface,
+                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                    actionColor = MaterialTheme.colorScheme.primary,
+                    actionContentColor = MaterialTheme.colorScheme.primary,
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        }
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues = PaddingValues(top = innerPadding.calculateTopPadding())),
-            contentPadding = PaddingValues(horizontal = LifePlannerDesign.Padding.screenHorizontal),
+            contentPadding = PaddingValues(
+                top = LifePlannerDesign.Padding.screenHorizontal,
+                start = LifePlannerDesign.Padding.screenHorizontal,
+                end = LifePlannerDesign.Padding.screenHorizontal,
+                bottom = innerPadding.calculateBottomPadding()+96.dp // Space for bottom navigation bar
+            ),
             verticalArrangement = Arrangement.spacedBy(LifePlannerDesign.Spacing.lg)
         ) {
             // 1. Welcome Header with XP progress
@@ -142,7 +168,15 @@ fun HomeScreen(
                 )
             }
 
-            // 2. Quick Actions Grid (2x2)
+            // 2. Personal Coach Card
+            item {
+                PersonalCoachCard(
+                    lastMessage = null, // Could be populated from ChatViewModel if needed
+                    onChatClick = onNavigateToCoach
+                )
+            }
+
+            // 3. Quick Actions Grid (2x2)
             item {
                 QuickActionsGrid(
                     onAddGoalClick = onAddGoalClick,
@@ -171,7 +205,17 @@ fun HomeScreen(
                 )
             }
 
-            // 5. Today's Habits Section
+            // 5. Badges Card
+            item {
+                AchievementsCard(
+                    earnedBadges = badges.size,
+                    totalBadges = BadgeType.entries.size,
+                    recentBadges = badges.take(3).map { it.type },
+                    onSeeAllClick = onNavigateToAchievements
+                )
+            }
+
+            // 6. Today's Habits Section
             item {
                 TodayHabitsSection(
                     habits = habits,
@@ -182,7 +226,7 @@ fun HomeScreen(
                 )
             }
 
-            // 6. Priority Goals Section
+            // 7. Priority Goals Section
             item {
                 PriorityGoalsSection(
                     upcomingGoals = upcomingGoals,
@@ -190,7 +234,7 @@ fun HomeScreen(
                 )
             }
 
-            // 7. Daily Inspiration (at bottom)
+            // 8. Daily Inspiration (at bottom)
             item {
                 DailyMotivationCard()
             }

@@ -4,9 +4,10 @@ import az.tribe.lifeplanner.data.network.FirebaseTokenProvider
 import az.tribe.lifeplanner.data.network.GeminiService
 import az.tribe.lifeplanner.data.network.GeminiServiceImpl
 import az.tribe.lifeplanner.data.repository.BackupRepositoryImpl
+import az.tribe.lifeplanner.data.repository.ChatRepositoryImpl
+import az.tribe.lifeplanner.data.repository.CoachRepositoryImpl
 import az.tribe.lifeplanner.di.FileSharer
 import az.tribe.lifeplanner.di.createFileSharer
-import az.tribe.lifeplanner.data.repository.ChatRepositoryImpl
 import az.tribe.lifeplanner.data.repository.GamificationRepositoryImpl
 import az.tribe.lifeplanner.data.repository.GeminiRepositoryImp
 import az.tribe.lifeplanner.data.repository.GoalDependencyRepositoryImpl
@@ -20,6 +21,7 @@ import az.tribe.lifeplanner.data.repository.ReviewRepositoryImpl
 import az.tribe.lifeplanner.data.repository.UserRepositoryImpl
 import az.tribe.lifeplanner.domain.repository.BackupRepository
 import az.tribe.lifeplanner.domain.repository.ChatRepository
+import az.tribe.lifeplanner.domain.repository.CoachRepository
 import az.tribe.lifeplanner.domain.repository.GamificationRepository
 import az.tribe.lifeplanner.domain.repository.GeminiRepository
 import az.tribe.lifeplanner.domain.repository.GoalDependencyRepository
@@ -32,6 +34,7 @@ import az.tribe.lifeplanner.domain.repository.ReminderRepository
 import az.tribe.lifeplanner.domain.repository.ReviewRepository
 import az.tribe.lifeplanner.domain.repository.UserRepository
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
+import az.tribe.lifeplanner.widget.WidgetDataSyncService
 import az.tribe.lifeplanner.ui.GoalViewModel
 import az.tribe.lifeplanner.ui.chat.ChatViewModel
 import az.tribe.lifeplanner.ui.dependency.GoalDependencyViewModel
@@ -40,6 +43,7 @@ import az.tribe.lifeplanner.ui.habit.HabitViewModel
 import az.tribe.lifeplanner.ui.journal.JournalViewModel
 import az.tribe.lifeplanner.ui.backup.BackupViewModel
 import az.tribe.lifeplanner.ui.balance.LifeBalanceViewModel
+import az.tribe.lifeplanner.ui.coach.CoachViewModel
 import az.tribe.lifeplanner.ui.reminder.ReminderViewModel
 import az.tribe.lifeplanner.ui.review.ReviewViewModel
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
@@ -48,6 +52,7 @@ import az.tribe.lifeplanner.usecases.journal.DeleteJournalEntryUseCase
 import az.tribe.lifeplanner.usecases.journal.GetAllJournalEntriesUseCase
 import az.tribe.lifeplanner.usecases.journal.GetJournalEntriesByGoalUseCase
 import az.tribe.lifeplanner.usecases.journal.GetRecentJournalEntriesUseCase
+import az.tribe.lifeplanner.usecases.journal.UpdateJournalEntryUseCase
 import az.tribe.lifeplanner.usecases.habit.CheckInHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.CreateHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.DeleteHabitUseCase
@@ -107,6 +112,7 @@ val appModule = module {
     single { SharedDatabase(get()) }
     single { Settings() }
     single<FileSharer> { createFileSharer() }
+    single { WidgetDataSyncService() }
 
     // Firebase Token Provider (platform-specific)
     single<FirebaseTokenProvider> { createFirebaseTokenProvider() }
@@ -118,14 +124,15 @@ val appModule = module {
     single<GeminiService> { GeminiServiceImpl(get(named("gemini"))) }
     single<GeminiRepository> { GeminiRepositoryImp(get()) }
 
-    single<GoalRepository> { GoalRepositoryImpl(get()) }
+    single<GoalRepository> { GoalRepositoryImpl(get(), get()) }
     single<GoalHistoryRepository> { GoalHistoryRepositoryImpl(get()) }
-    single<GamificationRepository> { GamificationRepositoryImpl(get()) }
+    single<GamificationRepository> { GamificationRepositoryImpl(get(), get()) }
     single<UserRepository> { UserRepositoryImpl(get()) }
-    single<HabitRepository> { HabitRepositoryImpl(get()) }
+    single<HabitRepository> { HabitRepositoryImpl(get(), get()) }
     single<JournalRepository> { JournalRepositoryImpl(get()) }
     single<GoalDependencyRepository> { GoalDependencyRepositoryImpl(get()) }
-    single<ChatRepository> { ChatRepositoryImpl(get(), get(named("gemini"))) }
+    single<CoachRepository> { CoachRepositoryImpl(get()) }
+    single<ChatRepository> { ChatRepositoryImpl(get(), get(named("gemini")), get()) }
     single<ReviewRepository> { ReviewRepositoryImpl(get(), get(named("gemini"))) }
     single<ReminderRepository> { ReminderRepositoryImpl(get()) }
 
@@ -181,6 +188,7 @@ val appModule = module {
     // Journal Use Cases
     factory { GetAllJournalEntriesUseCase(get()) }
     factory { CreateJournalEntryUseCase(get()) }
+    factory { UpdateJournalEntryUseCase(get()) }
     factory { DeleteJournalEntryUseCase(get()) }
     factory { GetRecentJournalEntriesUseCase(get()) }
     factory { GetJournalEntriesByGoalUseCase(get()) }
@@ -199,6 +207,7 @@ val appModule = module {
     viewModelOf(::JournalViewModel)
     viewModelOf(::GoalDependencyViewModel)
     viewModelOf(::ChatViewModel)
+    viewModelOf(::CoachViewModel)
     viewModelOf(::ReviewViewModel)
     viewModelOf(::ReminderViewModel)
     viewModelOf(::LifeBalanceViewModel)

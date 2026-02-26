@@ -283,6 +283,7 @@ class BackupRepositoryImpl(
                             content = journalBackup.content,
                             mood = journalBackup.mood ?: "NEUTRAL",
                             linkedGoalId = journalBackup.linkedGoalId,
+                            linkedHabitId = null,
                             promptUsed = journalBackup.promptUsed,
                             tags = "",
                             date = journalBackup.createdAt.take(10),
@@ -327,5 +328,13 @@ class BackupRepositoryImpl(
 
     override suspend fun saveLastBackupDate(date: String) {
         settings.putString("last_backup_date", date)
+    }
+
+    override fun isAutoBackupEnabled(): Boolean {
+        return settings.getBoolean("auto_backup_enabled", false)
+    }
+
+    override fun setAutoBackupEnabled(enabled: Boolean) {
+        settings.putBoolean("auto_backup_enabled", enabled)
     }
 }

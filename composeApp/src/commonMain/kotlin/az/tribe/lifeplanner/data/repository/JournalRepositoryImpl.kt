@@ -7,6 +7,8 @@ import az.tribe.lifeplanner.domain.enum.Mood
 import az.tribe.lifeplanner.domain.model.JournalEntry
 import az.tribe.lifeplanner.domain.repository.JournalRepository
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -15,6 +17,10 @@ import kotlinx.datetime.toLocalDateTime
 class JournalRepositoryImpl(
     private val database: SharedDatabase
 ) : JournalRepository {
+
+    override fun observeAllEntries(): Flow<List<JournalEntry>> {
+        return database.observeAllJournalEntries().map { it.toDomainJournalEntries() }
+    }
 
     override suspend fun getAllEntries(): List<JournalEntry> {
         return database.getAllJournalEntries().toDomainJournalEntries()
@@ -30,6 +36,10 @@ class JournalRepositoryImpl(
 
     override suspend fun getEntriesByGoalId(goalId: String): List<JournalEntry> {
         return database.getJournalEntriesByGoalId(goalId).toDomainJournalEntries()
+    }
+
+    override suspend fun getEntriesByHabitId(habitId: String): List<JournalEntry> {
+        return database.getJournalEntriesByHabitId(habitId).toDomainJournalEntries()
     }
 
     override suspend fun getEntriesByMood(mood: Mood): List<JournalEntry> {

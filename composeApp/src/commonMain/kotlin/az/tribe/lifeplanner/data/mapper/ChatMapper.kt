@@ -56,7 +56,8 @@ fun ChatSessionEntity.toDomain(messages: List<ChatMessage> = emptyList()): ChatS
     messages = messages,
     createdAt = LocalDateTime.parse(createdAt),
     lastMessageAt = LocalDateTime.parse(lastMessageAt),
-    summary = summary
+    summary = summary,
+    coachId = coachId
 )
 
 /**
@@ -89,7 +90,8 @@ fun createChatMessage(
  */
 @OptIn(ExperimentalUuidApi::class)
 fun createChatSession(
-    title: String = "New Chat"
+    title: String = "New Chat",
+    coachId: String = "luna_general"
 ): ChatSession {
     val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
     return ChatSession(
@@ -98,6 +100,7 @@ fun createChatSession(
         messages = emptyList(),
         createdAt = now,
         lastMessageAt = now,
-        summary = null
+        summary = null,
+        coachId = coachId
     )
 }

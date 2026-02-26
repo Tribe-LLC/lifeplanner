@@ -2,16 +2,26 @@
 
 package az.tribe.lifeplanner.di
 
+import android.content.Context
 import androidx.sqlite.db.SupportSQLiteDatabase
 import app.cash.sqldelight.async.coroutines.synchronous
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import az.tribe.lifeplanner.database.LifePlannerDB
+import co.touchlab.kermit.Logger
 import org.koin.mp.KoinPlatform
 
+private const val PREFS_NAME = "lifeplanner_db_prefs"
+private const val KEY_DB_SCHEMA_VERSION = "db_schema_version"
+private const val CURRENT_SCHEMA_VERSION = 2 // Increment this when you want to force a fresh DB for all users
 
 actual class DatabaseDriverFactory {
     actual suspend fun createDriver(): SqlDriver {
+        val context: Context = KoinPlatform.getKoin().get()
+
+        // Check if we need to reset the database for users upgrading from v1
+        resetDatabaseIfNeeded(context)
+
         return AndroidSqliteDriver(
             schema = LifePlannerDB.Schema.synchronous(),
             context = KoinPlatform.getKoin().get(),
@@ -24,6 +34,8 @@ actual class DatabaseDriverFactory {
                     migrateToVersion6(db)
                     migrateToVersion7(db)
                     migrateToVersion8(db)
+                    migrateToVersion9(db)
+                    migrateToVersion10(db)
                 }
 
                 override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -274,10 +286,20 @@ actual class DatabaseDriverFactory {
                             title TEXT NOT NULL,
                             createdAt TEXT NOT NULL,
                             lastMessageAt TEXT NOT NULL,
-                            summary TEXT
+                            summary TEXT,
+                            coachId TEXT NOT NULL DEFAULT 'luna_general'
                         )
                         """.trimIndent()
                     )
+
+                    // Add coachId column if table was created without it (defensive migration)
+                    if (!columnExists(db, "ChatSessionEntity", "coachId")) {
+                        try {
+                            db.execSQL("ALTER TABLE ChatSessionEntity ADD COLUMN coachId TEXT NOT NULL DEFAULT 'luna_general'")
+                        } catch (e: Exception) {
+                            // Column might already exist
+                        }
+                    }
 
                     // Create ChatMessageEntity table if not exists
                     db.execSQL(
@@ -319,6 +341,7 @@ actual class DatabaseDriverFactory {
 
                     // Create indexes for chat
                     db.execSQL("CREATE INDEX IF NOT EXISTS idx_chat_session_last_message ON ChatSessionEntity(lastMessageAt)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS idx_chat_session_coach ON ChatSessionEntity(coachId)")
                     db.execSQL("CREATE INDEX IF NOT EXISTS idx_chat_message_session ON ChatMessageEntity(sessionId)")
                     db.execSQL("CREATE INDEX IF NOT EXISTS idx_chat_message_timestamp ON ChatMessageEntity(timestamp)")
 
@@ -413,7 +436,105 @@ actual class DatabaseDriverFactory {
                     db.execSQL("CREATE INDEX IF NOT EXISTS idx_scheduled_time ON ScheduledNotificationEntity(scheduledAt)")
                     db.execSQL("CREATE INDEX IF NOT EXISTS idx_scheduled_delivered ON ScheduledNotificationEntity(isDelivered)")
                 }
+
+                private fun migrateToVersion9(db: SupportSQLiteDatabase) {
+                    // Add linkedHabitId column to JournalEntryEntity if it doesn't exist
+                    if (!columnExists(db, "JournalEntryEntity", "linkedHabitId")) {
+                        try {
+                            db.execSQL("ALTER TABLE JournalEntryEntity ADD COLUMN linkedHabitId TEXT")
+                            db.execSQL("CREATE INDEX IF NOT EXISTS idx_journal_habit ON JournalEntryEntity(linkedHabitId)")
+                        } catch (e: Exception) {
+                            // Column might already exist
+                        }
+                    }
+                }
+
+                private fun migrateToVersion10(db: SupportSQLiteDatabase) {
+                    // Create CustomCoachEntity table
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS CustomCoachEntity (
+                            id TEXT PRIMARY KEY NOT NULL,
+                            name TEXT NOT NULL,
+                            icon TEXT NOT NULL,
+                            iconBackgroundColor TEXT NOT NULL DEFAULT '#6366F1',
+                            iconAccentColor TEXT NOT NULL DEFAULT '#818CF8',
+                            systemPrompt TEXT NOT NULL,
+                            characteristics TEXT NOT NULL DEFAULT '',
+                            isFromTemplate INTEGER NOT NULL DEFAULT 0,
+                            templateId TEXT,
+                            createdAt TEXT NOT NULL,
+                            updatedAt TEXT
+                        )
+                        """.trimIndent()
+                    )
+
+                    // Create CoachGroupEntity table
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS CoachGroupEntity (
+                            id TEXT PRIMARY KEY NOT NULL,
+                            name TEXT NOT NULL,
+                            icon TEXT NOT NULL,
+                            description TEXT NOT NULL DEFAULT '',
+                            createdAt TEXT NOT NULL,
+                            updatedAt TEXT
+                        )
+                        """.trimIndent()
+                    )
+
+                    // Create CoachGroupMemberEntity table
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS CoachGroupMemberEntity (
+                            id TEXT PRIMARY KEY NOT NULL,
+                            groupId TEXT NOT NULL,
+                            coachType TEXT NOT NULL,
+                            coachId TEXT NOT NULL,
+                            displayOrder INTEGER NOT NULL DEFAULT 0,
+                            FOREIGN KEY (groupId) REFERENCES CoachGroupEntity(id) ON DELETE CASCADE
+                        )
+                        """.trimIndent()
+                    )
+
+                    // Create indexes
+                    db.execSQL("CREATE INDEX IF NOT EXISTS idx_custom_coach_template ON CustomCoachEntity(templateId)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS idx_coach_group_member_group ON CoachGroupMemberEntity(groupId)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS idx_coach_group_member_coach ON CoachGroupMemberEntity(coachId)")
+                }
             }
         )
+    }
+
+    /**
+     * Reset database for users upgrading from older versions (v1).
+     * This ensures a clean slate without migration errors.
+     */
+    private fun resetDatabaseIfNeeded(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val storedVersion = prefs.getInt(KEY_DB_SCHEMA_VERSION, 0)
+
+        if (storedVersion < CURRENT_SCHEMA_VERSION) {
+            Logger.i("DatabaseDriverFactory") { "Upgrading from schema version $storedVersion to $CURRENT_SCHEMA_VERSION" }
+
+            // Delete the old database file
+            val dbFile = context.getDatabasePath(DB_NAME)
+            if (dbFile.exists()) {
+                Logger.i("DatabaseDriverFactory") { "Deleting old database for clean upgrade" }
+                context.deleteDatabase(DB_NAME)
+            }
+
+            // Also delete any journal/wal files
+            val dbDir = dbFile.parentFile
+            dbDir?.listFiles()?.forEach { file ->
+                if (file.name.startsWith(DB_NAME)) {
+                    file.delete()
+                }
+            }
+
+            // Update stored version
+            prefs.edit().putInt(KEY_DB_SCHEMA_VERSION, CURRENT_SCHEMA_VERSION).apply()
+            Logger.i("DatabaseDriverFactory") { "Database reset complete, now at schema version $CURRENT_SCHEMA_VERSION" }
+        }
     }
 }

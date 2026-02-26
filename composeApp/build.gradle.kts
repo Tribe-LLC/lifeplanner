@@ -33,8 +33,10 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
-
-            export(libs.kmpnotifier)
+            binaryOption("bundleId", "az.tribe.lifeplanner")
+            export(libs.kmpnotifier) {
+                transitiveExport = false
+            }
             linkerOpts.add("-lsqlite3")
         }
     }
@@ -58,6 +60,14 @@ kotlin {
 
             // Coroutines for Firebase Tasks
             implementation(libs.kotlinx.coroutines.play.services)
+
+            // WorkManager for background tasks
+            implementation(libs.androidx.work.runtime)
+
+            // Glance for home screen widgets
+            implementation(libs.androidx.glance)
+            implementation(libs.androidx.glance.appwidget)
+            implementation(libs.androidx.glance.material3)
 
         }
         commonMain.dependencies {
@@ -128,7 +138,7 @@ sqldelight {
         create("LifePlannerDB") {
             packageName.set("az.tribe.lifeplanner.database")
             schemaOutputDirectory = file("src/commonMain/sqldelight/databases")
-            version = 6 // Updated to include Goal Dependencies
+            version = 8 // Updated to add custom coaches and coach groups
             generateAsync.set(true)
         }
     }
@@ -158,8 +168,8 @@ android {
         applicationId = "az.tribe.lifeplanner"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 4
-        versionName = "1.2"
+        versionCode = 5
+        versionName = "1.3"
 
     }
     packaging {

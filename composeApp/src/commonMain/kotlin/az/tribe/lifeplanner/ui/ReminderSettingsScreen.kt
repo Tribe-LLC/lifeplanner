@@ -41,6 +41,7 @@ import az.tribe.lifeplanner.domain.model.ReminderSettings
 import az.tribe.lifeplanner.domain.model.ReminderType
 import az.tribe.lifeplanner.ui.reminder.ReminderViewModel
 import az.tribe.lifeplanner.ui.theme.modernColors
+import com.mmk.kmpnotifier.notification.NotifierManager
 import kotlinx.datetime.LocalTime
 import org.koin.compose.koinInject
 
@@ -258,7 +259,13 @@ private fun GlobalReminderToggle(
             }
             Switch(
                 checked = isEnabled,
-                onCheckedChange = onToggle
+                onCheckedChange = { enabled ->
+                    if (enabled) {
+                        // Request notification permission when user enables reminders
+                        NotifierManager.getPermissionUtil().askNotificationPermission()
+                    }
+                    onToggle(enabled)
+                }
             )
         }
     }
@@ -553,7 +560,10 @@ private fun ReminderSettingsSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface
+        containerColor = MaterialTheme.colorScheme.surface,
+        modifier = Modifier
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .padding(bottom = 32.dp)
     ) {
         Column(
             modifier = Modifier

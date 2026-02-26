@@ -35,4 +35,10 @@ interface GamificationRepository {
     suspend fun checkAndCompleteChallenge(challengeId: String): Challenge?
     suspend fun cleanupExpiredChallenges()
     suspend fun getAvailableChallenges(): List<ChallengeType>
+
+    // Activity-based challenge updates
+    suspend fun onHabitCheckedIn()
+    suspend fun onJournalEntryCreated()
+    suspend fun onGoalCompleted()
+    suspend fun onMilestoneCompleted()
 }

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Error
@@ -56,17 +56,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.domain.enum.GoalStatus
-import az.tribe.lifeplanner.domain.model.Goal
+import az.tribe.lifeplanner.domain.model.JournalEntry
 import az.tribe.lifeplanner.domain.model.Milestone
+import az.tribe.lifeplanner.domain.repository.JournalRepository
 import az.tribe.lifeplanner.ui.components.AddDependencyBottomSheet
 import az.tribe.lifeplanner.ui.components.DependenciesCard
 import az.tribe.lifeplanner.ui.components.GlassCard
@@ -75,9 +74,11 @@ import az.tribe.lifeplanner.ui.components.GoalDetailDialogs
 import az.tribe.lifeplanner.ui.components.GoalDetailHeroHeader
 import az.tribe.lifeplanner.ui.components.StatusToggleButtons
 import az.tribe.lifeplanner.ui.components.backgroundColor
+import az.tribe.lifeplanner.ui.components.rememberHapticManager
 import az.tribe.lifeplanner.ui.dependency.GoalDependencyViewModel
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
 import az.tribe.lifeplanner.ui.theme.gradientColors
+import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
 import org.koin.compose.koinInject
 
@@ -87,14 +88,21 @@ fun GoalDetailScreen(
     goalId: String,
     viewModel: GoalViewModel,
     dependencyViewModel: GoalDependencyViewModel = koinInject(),
+    journalRepository: JournalRepository = koinInject(),
     onBackClick: () -> Unit,
     onEditClick: () -> Unit,
     onViewDependencyGraph: (String) -> Unit = {},
-    onNavigateToGoal: (String) -> Unit = {}
+    onNavigateToGoal: (String) -> Unit = {},
+    onNavigateToJournal: (String) -> Unit = {},
+    onReflectOnGoal: (String) -> Unit = {}
 ) {
     val goals by viewModel.goals.collectAsState()
     val goal = goals.find { it.id == goalId }
     val dependencyUiState by dependencyViewModel.uiState.collectAsState()
+
+    // Journal entries linked to this goal
+    var journalEntries by remember { mutableStateOf<List<JournalEntry>>(emptyList()) }
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showNotesDialog by remember { mutableStateOf(false) }
@@ -121,9 +129,13 @@ fun GoalDetailScreen(
         dependencyViewModel.loadData()
     }
 
-    // Load dependencies for current goal when goal changes
+    // Load dependencies and journal entries for current goal when goal changes
     LaunchedEffect(goalId) {
         goal?.let { dependencyViewModel.selectGoal(it) }
+        // Load journal entries linked to this goal
+        coroutineScope.launch {
+            journalEntries = journalRepository.getEntriesByGoalId(goalId)
+        }
     }
 
     if (goal == null) {
@@ -142,6 +154,7 @@ fun GoalDetailScreen(
                 title = {
                     Text(
                         text = goal.title,
+                        color = Color.White,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
@@ -304,6 +317,15 @@ fun GoalDetailScreen(
                     onGoalClick = { linkedGoalId ->
                         onNavigateToGoal(linkedGoalId)
                     }
+                )
+            }
+
+            // Reflections/Journal Entries section
+            item {
+                ReflectionsCard(
+                    entries = journalEntries,
+                    onAddReflection = { onReflectOnGoal(goalId) },
+                    onEntryClick = { entryId -> onNavigateToJournal(entryId) }
                 )
             }
         }
@@ -543,11 +565,15 @@ private fun MilestoneItem(
     milestone: Milestone,
     onClick: () -> Unit
 ) {
+    val haptic = rememberHapticManager()
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .clickable { onClick() }
+            .clickable {
+                haptic.click()
+                onClick()
+            }
             .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -645,4 +671,155 @@ private fun formatDate(date: LocalDate): String {
         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
     )
     return "${months[date.monthNumber - 1]} ${date.dayOfMonth}, ${date.year}"
+}
+
+@Composable
+private fun ReflectionsCard(
+    entries: List<JournalEntry>,
+    onAddReflection: () -> Unit,
+    onEntryClick: (String) -> Unit
+) {
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(LifePlannerDesign.Padding.standard),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Rounded.MenuBook,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = "Reflections",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (entries.isNotEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "${entries.size}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                }
+
+                IconButton(
+                    onClick = onAddReflection,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .background(
+                            MaterialTheme.colorScheme.primaryContainer,
+                            CircleShape
+                        )
+                ) {
+                    Icon(
+                        Icons.Rounded.Add,
+                        contentDescription = "Add Reflection",
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            if (entries.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "No reflections yet",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Document your journey on this goal",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+            } else {
+                entries.take(3).forEach { entry ->
+                    ReflectionItem(
+                        entry = entry,
+                        onClick = { onEntryClick(entry.id) }
+                    )
+                }
+
+                if (entries.size > 3) {
+                    Text(
+                        text = "View all ${entries.size} reflections",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReflectionItem(
+    entry: JournalEntry,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { onClick() }
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = entry.mood.emoji,
+            style = MaterialTheme.typography.titleLarge
+        )
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = entry.title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = formatDate(entry.date),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
 }

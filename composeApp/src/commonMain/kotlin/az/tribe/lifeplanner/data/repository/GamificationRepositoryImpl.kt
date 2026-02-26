@@ -11,6 +11,8 @@ import az.tribe.lifeplanner.domain.model.Challenge
 import az.tribe.lifeplanner.domain.model.UserProgress
 import az.tribe.lifeplanner.domain.repository.GamificationRepository
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
+import az.tribe.lifeplanner.widget.WidgetDataSyncService
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -23,8 +25,17 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 
 class GamificationRepositoryImpl(
-    private val database: SharedDatabase
+    private val database: SharedDatabase,
+    private val widgetSyncService: WidgetDataSyncService
 ) : GamificationRepository {
+
+    private suspend fun notifyWidgets() {
+        try {
+            widgetSyncService.refreshWidgets()
+        } catch (e: Exception) {
+            Logger.w("GamificationRepositoryImpl") { "Widget refresh failed: ${e.message}" }
+        }
+    }
 
     init {
         CoroutineScope(Dispatchers.IO).launch {
@@ -83,6 +94,7 @@ class GamificationRepositoryImpl(
             longestStreak = longestStreak
         )
 
+        notifyWidgets()
         emit(newStreak)
     }
 
@@ -98,6 +110,7 @@ class GamificationRepositoryImpl(
 
         database.updateUserXp(newTotalXp, newLevel.toLong())
 
+        notifyWidgets()
         return database.getUserProgressEntity()!!.toDomain()
     }
 
@@ -218,6 +231,13 @@ class GamificationRepositoryImpl(
     }
 
     override suspend fun startChallenge(type: ChallengeType): Challenge {
+        // Check if an active challenge of this type already exists
+        val existingChallenge = database.getChallengeByType(type.name)
+        if (existingChallenge != null) {
+            return existingChallenge.toDomain()
+        }
+
+        // Create a new challenge only if one doesn't exist
         val challenge = createNewChallenge(type)
         database.insertChallenge(challenge.toEntity())
         return challenge
@@ -262,5 +282,74 @@ class GamificationRepositoryImpl(
 
     private fun isConsecutiveDay(previous: LocalDate, current: LocalDate): Boolean {
         return (current.toEpochDays() - previous.toEpochDays()).toLong() == 1L
+    }
+
+    // --- Activity-based Challenge Updates ---
+
+    override suspend fun onHabitCheckedIn() {
+        // Update habit-related challenges
+        val activeChallenges = getActiveChallenges()
+
+        for (challenge in activeChallenges) {
+            when (challenge.type) {
+                ChallengeType.DAILY_HABIT,
+                ChallengeType.WEEKLY_HABITS -> {
+                    val newProgress = challenge.currentProgress + 1
+                    updateChallengeProgress(challenge.id, newProgress)
+                    checkAndCompleteChallenge(challenge.id)
+                }
+                else -> { /* Not a habit challenge */ }
+            }
+        }
+    }
+
+    override suspend fun onJournalEntryCreated() {
+        // Update journal-related challenges
+        val activeChallenges = getActiveChallenges()
+
+        for (challenge in activeChallenges) {
+            when (challenge.type) {
+                ChallengeType.DAILY_JOURNAL,
+                ChallengeType.WEEKLY_JOURNAL -> {
+                    val newProgress = challenge.currentProgress + 1
+                    updateChallengeProgress(challenge.id, newProgress)
+                    checkAndCompleteChallenge(challenge.id)
+                }
+                else -> { /* Not a journal challenge */ }
+            }
+        }
+    }
+
+    override suspend fun onGoalCompleted() {
+        // Update goal-related challenges
+        val activeChallenges = getActiveChallenges()
+
+        for (challenge in activeChallenges) {
+            when (challenge.type) {
+                ChallengeType.WEEKLY_GOALS,
+                ChallengeType.MONTHLY_COMPLETION -> {
+                    val newProgress = challenge.currentProgress + 1
+                    updateChallengeProgress(challenge.id, newProgress)
+                    checkAndCompleteChallenge(challenge.id)
+                }
+                else -> { /* Not a goal challenge */ }
+            }
+        }
+    }
+
+    override suspend fun onMilestoneCompleted() {
+        // Update milestone-related challenges
+        val activeChallenges = getActiveChallenges()
+
+        for (challenge in activeChallenges) {
+            when (challenge.type) {
+                ChallengeType.WEEKLY_MILESTONE -> {
+                    val newProgress = challenge.currentProgress + 1
+                    updateChallengeProgress(challenge.id, newProgress)
+                    checkAndCompleteChallenge(challenge.id)
+                }
+                else -> { /* Not a milestone challenge */ }
+            }
+        }
     }
 }

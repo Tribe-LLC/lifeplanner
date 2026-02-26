@@ -6,16 +6,22 @@ import az.tribe.lifeplanner.data.mapper.createNewHabit
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.HabitFrequency
 import az.tribe.lifeplanner.domain.model.Habit
+import az.tribe.lifeplanner.domain.model.XpRewards
+import az.tribe.lifeplanner.domain.repository.GamificationRepository
+import az.tribe.lifeplanner.domain.repository.HabitRepository
 import az.tribe.lifeplanner.usecases.habit.CheckInHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.CreateHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.DeleteHabitUseCase
-import az.tribe.lifeplanner.usecases.habit.GetAllHabitsUseCase
-import az.tribe.lifeplanner.usecases.habit.GetHabitsWithTodayStatusUseCase
 import az.tribe.lifeplanner.usecases.habit.UncheckHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.UpdateHabitUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
@@ -26,48 +32,50 @@ data class HabitWithStatus(
     val isCompletedToday: Boolean
 )
 
+/**
+ * Represents a habit that was just checked in, for showing reflection prompt
+ */
+data class RecentCheckIn(
+    val habit: Habit,
+    val timestamp: Long = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+)
+
 class HabitViewModel(
-    private val getAllHabitsUseCase: GetAllHabitsUseCase,
+    private val habitRepository: HabitRepository,
     private val createHabitUseCase: CreateHabitUseCase,
     private val updateHabitUseCase: UpdateHabitUseCase,
     private val deleteHabitUseCase: DeleteHabitUseCase,
     private val checkInHabitUseCase: CheckInHabitUseCase,
     private val uncheckHabitUseCase: UncheckHabitUseCase,
-    private val getHabitsWithTodayStatusUseCase: GetHabitsWithTodayStatusUseCase
+    private val gamificationRepository: GamificationRepository
 ) : ViewModel() {
 
-    private val _habits = MutableStateFlow<List<HabitWithStatus>>(emptyList())
-    val habits: StateFlow<List<HabitWithStatus>> = _habits.asStateFlow()
-
-    private val _isLoading = MutableStateFlow(false)
+    private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    val habits: StateFlow<List<HabitWithStatus>> = habitRepository.observeHabitsWithTodayStatus()
+        .map { pairs -> pairs.map { (habit, isCompleted) -> HabitWithStatus(habit, isCompleted) } }
+        .onEach { _isLoading.value = false }
+        .catch { e ->
+            _error.value = "Failed to load habits: ${e.message}"
+            _isLoading.value = false
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private val _showAddHabitDialog = MutableStateFlow(false)
     val showAddHabitDialog: StateFlow<Boolean> = _showAddHabitDialog.asStateFlow()
 
-    init {
-        loadHabits()
-    }
+    // Track recently checked-in habit for reflection prompt
+    private val _recentCheckIn = MutableStateFlow<RecentCheckIn?>(null)
+    val recentCheckIn: StateFlow<RecentCheckIn?> = _recentCheckIn.asStateFlow()
 
-    fun loadHabits() {
-        viewModelScope.launch {
-            _isLoading.value = true
-            _error.value = null
-            try {
-                val habitsWithStatus = getHabitsWithTodayStatusUseCase()
-                _habits.value = habitsWithStatus.map { (habit, isCompleted) ->
-                    HabitWithStatus(habit, isCompleted)
-                }
-            } catch (e: Exception) {
-                _error.value = "Failed to load habits: ${e.message}"
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
+    // No-op: data is now reactively observed via habitRepository.observeHabitsWithTodayStatus()
+    fun loadHabits() { }
+
+    private var isCreatingHabit = false
 
     fun createHabit(
         title: String,
@@ -78,8 +86,13 @@ class HabitViewModel(
         linkedGoalId: String? = null,
         reminderTime: String? = null
     ) {
+        if (isCreatingHabit) return
+
+        // Prevent duplicate: skip if a habit with the same title already exists
+        if (habits.value.any { it.habit.title.equals(title, ignoreCase = true) }) return
+
         viewModelScope.launch {
-            _isLoading.value = true
+            isCreatingHabit = true
             try {
                 val habit = createNewHabit(
                     title = title,
@@ -91,12 +104,11 @@ class HabitViewModel(
                     reminderTime = reminderTime
                 )
                 createHabitUseCase(habit)
-                loadHabits()
                 _showAddHabitDialog.value = false
             } catch (e: Exception) {
                 _error.value = "Failed to create habit: ${e.message}"
             } finally {
-                _isLoading.value = false
+                isCreatingHabit = false
             }
         }
     }
@@ -106,11 +118,30 @@ class HabitViewModel(
             try {
                 val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
                 checkInHabitUseCase(habitId, today, notes)
-                loadHabits()
+
+                // Read updated habit directly from repository for accurate streak data
+                val updatedHabit = habitRepository.getHabitById(habitId)
+                val streakDays = updatedHabit?.currentStreak ?: 0
+
+                // Update gamification: XP and challenges
+                val xp = XpRewards.HABIT_CHECK_IN + (XpRewards.HABIT_STREAK_BONUS * streakDays)
+                gamificationRepository.incrementHabitsCompleted()
+                gamificationRepository.addXp(xp)
+                gamificationRepository.onHabitCheckedIn()
+                gamificationRepository.checkAndAwardBadges()
+
+                // Emit recent check-in for reflection prompt
+                updatedHabit?.let {
+                    _recentCheckIn.value = RecentCheckIn(it)
+                }
             } catch (e: Exception) {
                 _error.value = "Failed to check in: ${e.message}"
             }
         }
+    }
+
+    fun clearRecentCheckIn() {
+        _recentCheckIn.value = null
     }
 
     fun uncheckInHabit(habitId: String) {
@@ -118,7 +149,6 @@ class HabitViewModel(
             try {
                 val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
                 uncheckHabitUseCase(habitId, today)
-                loadHabits()
             } catch (e: Exception) {
                 _error.value = "Failed to uncheck: ${e.message}"
             }
@@ -126,7 +156,7 @@ class HabitViewModel(
     }
 
     fun toggleCheckIn(habitId: String) {
-        val habitWithStatus = _habits.value.find { it.habit.id == habitId }
+        val habitWithStatus = habits.value.find { it.habit.id == habitId }
         if (habitWithStatus != null) {
             if (habitWithStatus.isCompletedToday) {
                 uncheckInHabit(habitId)
@@ -140,7 +170,6 @@ class HabitViewModel(
         viewModelScope.launch {
             try {
                 deleteHabitUseCase(habitId)
-                loadHabits()
             } catch (e: Exception) {
                 _error.value = "Failed to delete habit: ${e.message}"
             }
@@ -151,7 +180,6 @@ class HabitViewModel(
         viewModelScope.launch {
             try {
                 updateHabitUseCase(habit)
-                loadHabits()
             } catch (e: Exception) {
                 _error.value = "Failed to update habit: ${e.message}"
             }
@@ -171,14 +199,14 @@ class HabitViewModel(
     }
 
     fun getTodayCompletedCount(): Int {
-        return _habits.value.count { it.isCompletedToday }
+        return habits.value.count { it.isCompletedToday }
     }
 
     fun getTotalHabitsCount(): Int {
-        return _habits.value.size
+        return habits.value.size
     }
 
     fun getStreakLeader(): Habit? {
-        return _habits.value.maxByOrNull { it.habit.currentStreak }?.habit
+        return habits.value.maxByOrNull { it.habit.currentStreak }?.habit
     }
 }

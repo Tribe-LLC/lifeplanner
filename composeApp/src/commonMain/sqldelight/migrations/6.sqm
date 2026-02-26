@@ -1,0 +1,7 @@
+-- Migration from version 6 to 7
+-- Add coachId column to ChatSessionEntity for coach-specific sessions
+
+ALTER TABLE ChatSessionEntity ADD COLUMN coachId TEXT NOT NULL DEFAULT 'luna_general';
+
+-- Create index for faster coach lookups
+CREATE INDEX IF NOT EXISTS idx_chat_session_coach ON ChatSessionEntity(coachId);

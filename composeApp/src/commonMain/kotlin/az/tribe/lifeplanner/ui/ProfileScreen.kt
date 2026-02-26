@@ -26,7 +26,7 @@ import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.Login
+import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Psychology
@@ -44,12 +44,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -58,6 +60,7 @@ import az.tribe.lifeplanner.domain.model.User
 import az.tribe.lifeplanner.domain.model.UserProgress
 import az.tribe.lifeplanner.ui.components.GlassCard
 import az.tribe.lifeplanner.ui.components.GradientProgressBar
+import az.tribe.lifeplanner.ui.components.getBadgeIcon
 import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
 import az.tribe.lifeplanner.ui.theme.LifePlannerGradients
@@ -90,6 +93,11 @@ fun ProfileScreen(
         else -> null
     }
 
+    // Refresh gamification data when screen is shown
+    LaunchedEffect(Unit) {
+        gamificationViewModel.refresh()
+    }
+
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
@@ -114,7 +122,12 @@ fun ProfileScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues = PaddingValues(top = padding.calculateTopPadding())),
-            contentPadding = PaddingValues(horizontal = LifePlannerDesign.Padding.screenHorizontal),
+            contentPadding = PaddingValues(
+                start = LifePlannerDesign.Padding.screenHorizontal,
+                end = LifePlannerDesign.Padding.screenHorizontal,
+                bottom = padding.calculateBottomPadding()+96.dp,
+                top = 16.dp
+            ),
             verticalArrangement = Arrangement.spacedBy(LifePlannerDesign.Spacing.md)
         ) {
             // User Profile Header Card
@@ -138,14 +151,15 @@ fun ProfileScreen(
                 ProfileSectionHeader("Insights & Analytics")
             }
 
-            item {
-                ProfileMenuItem(
-                    icon = Icons.Rounded.Assessment,
-                    title = "Reviews & Insights",
-                    subtitle = "Weekly, monthly, and quarterly reviews",
-                    onClick = onNavigateToReviews
-                )
-            }
+            // Reviews hidden for now - will be re-enabled later
+            // item {
+            //     ProfileMenuItem(
+            //         icon = Icons.Rounded.Assessment,
+            //         title = "Reviews & Insights",
+            //         subtitle = "Weekly, monthly, and quarterly reviews",
+            //         onClick = onNavigateToReviews
+            //     )
+            // }
 
             item {
                 ProfileMenuItem(
@@ -168,32 +182,47 @@ fun ProfileScreen(
                     subtitle = "${badges.size} badges earned",
                     onClick = onNavigateToAchievements,
                     trailingContent = {
-                        Row {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy((-8).dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             badges.take(3).forEach { badge ->
-                                Text(
-                                    badge.type.icon,
-                                    modifier = Modifier.padding(2.dp),
-                                    fontSize = 20.sp
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(badge.type.color)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = getBadgeIcon(badge.type),
+                                        contentDescription = badge.type.displayName,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = Color.White
+                                    )
+                                }
+                            }
+                            if (badges.size > 3) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "+${badges.size - 3}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     }
                 )
             }
 
-            // AI Features Section
-            item {
-                ProfileSectionHeader("AI Features")
-            }
-
-            item {
-                ProfileMenuItem(
-                    icon = Icons.Rounded.Psychology,
-                    title = "AI Coach",
-                    subtitle = "Get personalized guidance",
-                    onClick = onNavigateToAICoach
-                )
-            }
 
             // Settings Section
             item {
@@ -226,7 +255,7 @@ fun ProfileScreen(
             item {
                 if (currentUser?.isGuest == true) {
                     ProfileMenuItem(
-                        icon = Icons.Rounded.Login,
+                        icon = Icons.AutoMirrored.Rounded.Login,
                         title = "Sign In / Create Account",
                         subtitle = "Sync your data across devices",
                         onClick = onNavigateToSignIn
@@ -413,10 +442,8 @@ private fun ProfileStatsCard(progress: UserProgress) {
                         )
                     }
                     Spacer(modifier = Modifier.height(10.dp))
-                    val xpForCurrentLevel = progress.totalXp % 100
-                    val progressPercent = xpForCurrentLevel / 100f
                     GradientProgressBar(
-                        progress = progressPercent,
+                        progress = progress.levelProgress,
                         gradient = LifePlannerGradients.primary,
                         modifier = Modifier.fillMaxWidth(),
                         height = 10.dp

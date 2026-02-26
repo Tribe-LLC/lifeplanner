@@ -21,7 +21,8 @@ data class BackupUiState(
     val showExportSuccess: Boolean = false,
     val showImportDialog: Boolean = false,
     val showMergeStrategyDialog: Boolean = false,
-    val pendingImportData: String? = null
+    val pendingImportData: String? = null,
+    val isAutoBackupEnabled: Boolean = false
 )
 
 class BackupViewModel(
@@ -33,6 +34,7 @@ class BackupViewModel(
 
     init {
         loadLastBackupDate()
+        loadAutoBackupSetting()
     }
 
     private fun loadLastBackupDate() {
@@ -40,6 +42,16 @@ class BackupViewModel(
             val lastBackup = backupRepository.getLastBackupDate()
             _uiState.value = _uiState.value.copy(lastBackupDate = lastBackup)
         }
+    }
+
+    private fun loadAutoBackupSetting() {
+        val isEnabled = backupRepository.isAutoBackupEnabled()
+        _uiState.value = _uiState.value.copy(isAutoBackupEnabled = isEnabled)
+    }
+
+    fun setAutoBackupEnabled(enabled: Boolean) {
+        backupRepository.setAutoBackupEnabled(enabled)
+        _uiState.value = _uiState.value.copy(isAutoBackupEnabled = enabled)
     }
 
     fun exportData() {
@@ -153,5 +165,9 @@ class BackupViewModel(
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    fun setError(message: String) {
+        _uiState.value = _uiState.value.copy(error = message)
     }
 }

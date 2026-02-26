@@ -3,6 +3,7 @@ import FirebaseCore
 //import FirebasePerformance
 import FirebaseMessaging
 import ComposeApp
+import WidgetKit
 
 
 class AppDelegate: NSObject, UIApplicationDelegate {
@@ -13,7 +14,28 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         AppInitializer.shared.onApplicationStart()
 //        let _ = Performance.sharedInstance()
 
+        // Register background backup task
+        IOSBackupScheduler.shared.registerBackgroundTask()
+
+        // Observe widget refresh notifications from KMP
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("az.tribe.lifeplanner.refreshWidgets"),
+            object: nil,
+            queue: .main
+        ) { _ in
+            if #available(iOS 14.0, *) {
+                WidgetCenter.shared.reloadAllTimelines()
+            }
+        }
+
         return true
+    }
+
+    func applicationDidEnterBackground(_ application: UIApplication) {
+        // Schedule daily backup when app goes to background (only if enabled)
+        if IOSBackupScheduler.shared.isAutoBackupEnabled() {
+            IOSBackupScheduler.shared.scheduleDailyBackup()
+        }
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {

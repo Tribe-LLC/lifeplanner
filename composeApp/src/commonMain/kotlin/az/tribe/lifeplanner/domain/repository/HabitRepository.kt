@@ -3,9 +3,11 @@ package az.tribe.lifeplanner.domain.repository
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.model.Habit
 import az.tribe.lifeplanner.domain.model.HabitCheckIn
+import kotlinx.coroutines.flow.Flow
 import kotlinx.datetime.LocalDate
 
 interface HabitRepository {
+    fun observeHabitsWithTodayStatus(): Flow<List<Pair<Habit, Boolean>>>
     suspend fun getAllHabits(): List<Habit>
     suspend fun getHabitById(id: String): Habit?
     suspend fun getHabitsByCategory(category: GoalCategory): List<Habit>

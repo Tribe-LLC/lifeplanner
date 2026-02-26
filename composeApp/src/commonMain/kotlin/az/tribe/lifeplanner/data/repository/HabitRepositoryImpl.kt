@@ -10,6 +10,10 @@ import az.tribe.lifeplanner.domain.model.Habit
 import az.tribe.lifeplanner.domain.model.HabitCheckIn
 import az.tribe.lifeplanner.domain.repository.HabitRepository
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
+import az.tribe.lifeplanner.widget.WidgetDataSyncService
+import co.touchlab.kermit.Logger
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
@@ -18,8 +22,29 @@ import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 
 class HabitRepositoryImpl(
-    private val database: SharedDatabase
+    private val database: SharedDatabase,
+    private val widgetSyncService: WidgetDataSyncService
 ) : HabitRepository {
+
+    private suspend fun notifyWidgets() {
+        try {
+            widgetSyncService.refreshWidgets()
+        } catch (e: Exception) {
+            Logger.w("HabitRepositoryImpl") { "Widget refresh failed: ${e.message}" }
+        }
+    }
+
+    override fun observeHabitsWithTodayStatus(): Flow<List<Pair<Habit, Boolean>>> {
+        val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date.toString()
+        return combine(
+            database.observeAllHabits(),
+            database.observeCheckInsByDate(today)
+        ) { habitEntities, checkInEntities ->
+            habitEntities.toDomainHabits().map { habit ->
+                habit to checkInEntities.any { it.habitId == habit.id && it.completed == 1L }
+            }
+        }
+    }
 
     override suspend fun getAllHabits(): List<Habit> {
         return database.getAllHabits().toDomainHabits()
@@ -77,6 +102,7 @@ class HabitRepositoryImpl(
         )
         database.insertHabitCheckIn(checkIn.toEntity())
         updateStreakAfterCheckIn(habitId)
+        notifyWidgets()
         return checkIn
     }
 
@@ -103,6 +129,7 @@ class HabitRepositoryImpl(
 
     override suspend fun deleteCheckIn(id: String) {
         database.deleteCheckIn(id)
+        notifyWidgets()
     }
 
     override suspend fun calculateStreak(habitId: String): Int {

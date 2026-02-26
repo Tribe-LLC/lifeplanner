@@ -22,7 +22,17 @@ interface ChatRepository {
     /**
      * Create a new chat session
      */
-    suspend fun createSession(title: String): ChatSession
+    suspend fun createSession(title: String, coachId: String = "luna_general"): ChatSession
+
+    /**
+     * Get session by coach ID (one session per coach)
+     */
+    suspend fun getSessionByCoachId(coachId: String): ChatSession?
+
+    /**
+     * Get or create a session for a specific coach
+     */
+    suspend fun getOrCreateSessionForCoach(coachId: String): ChatSession
 
     /**
      * Delete a chat session and all its messages
@@ -78,4 +88,9 @@ interface ChatRepository {
      * Get session count
      */
     suspend fun getSessionCount(): Long
+
+    /**
+     * Mark a suggestion as executed in the message metadata
+     */
+    suspend fun markSuggestionExecuted(messageId: String, suggestionId: String)
 }

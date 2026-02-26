@@ -1,5 +1,7 @@
 package az.tribe.lifeplanner.infrastructure
 
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
 import az.tribe.lifeplanner.domain.model.GoalChange
 import az.tribe.lifeplanner.database.LifePlannerDB
 import az.tribe.lifeplanner.di.DatabaseDriverFactory
@@ -19,6 +21,14 @@ import az.tribe.lifeplanner.database.ReminderEntity
 import az.tribe.lifeplanner.database.ReminderSettingsEntity
 import az.tribe.lifeplanner.database.ScheduledNotificationEntity
 import az.tribe.lifeplanner.database.UserActivityPatternEntity
+import az.tribe.lifeplanner.database.CustomCoachEntity
+import az.tribe.lifeplanner.database.CoachGroupEntity
+import az.tribe.lifeplanner.database.CoachGroupMemberEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 
 class SharedDatabase(
     private val driverProvider: DatabaseDriverFactory,
@@ -488,6 +498,10 @@ class SharedDatabase(
         return this { db -> db.lifePlannerDBQueries.getJournalEntriesByGoalId(goalId).executeAsList() }
     }
 
+    suspend fun getJournalEntriesByHabitId(habitId: String): List<JournalEntryEntity> {
+        return this { db -> db.lifePlannerDBQueries.getJournalEntriesByHabitId(habitId).executeAsList() }
+    }
+
     suspend fun getJournalEntriesByMood(mood: String): List<JournalEntryEntity> {
         return this { db -> db.lifePlannerDBQueries.getJournalEntriesByMood(mood).executeAsList() }
     }
@@ -510,6 +524,7 @@ class SharedDatabase(
                 content = entry.content,
                 mood = entry.mood,
                 linkedGoalId = entry.linkedGoalId,
+                linkedHabitId = entry.linkedHabitId,
                 promptUsed = entry.promptUsed,
                 tags = entry.tags,
                 date = entry.date,
@@ -526,6 +541,7 @@ class SharedDatabase(
                 content = entry.content,
                 mood = entry.mood,
                 linkedGoalId = entry.linkedGoalId,
+                linkedHabitId = entry.linkedHabitId,
                 promptUsed = entry.promptUsed,
                 tags = entry.tags,
                 updatedAt = entry.updatedAt,
@@ -549,6 +565,44 @@ class SharedDatabase(
             db.lifePlannerDBQueries.getMoodCountInRange(startDate, endDate).executeAsList()
                 .associate { result -> result.mood to result.COUNT }
         }
+    }
+
+    // --- Reactive Flow observers (auto-emit on table changes) ---
+
+    fun observeAllGoals(): Flow<List<GoalEntity>> = flow {
+        initDatabase()
+        emitAll(
+            database!!.lifePlannerDBQueries.selectAll()
+                .asFlow()
+                .mapToList(Dispatchers.IO)
+        )
+    }
+
+    fun observeAllHabits(): Flow<List<HabitEntity>> = flow {
+        initDatabase()
+        emitAll(
+            database!!.lifePlannerDBQueries.getAllHabits()
+                .asFlow()
+                .mapToList(Dispatchers.IO)
+        )
+    }
+
+    fun observeCheckInsByDate(date: String): Flow<List<HabitCheckInEntity>> = flow {
+        initDatabase()
+        emitAll(
+            database!!.lifePlannerDBQueries.getCheckInsByDate(date)
+                .asFlow()
+                .mapToList(Dispatchers.IO)
+        )
+    }
+
+    fun observeAllJournalEntries(): Flow<List<JournalEntryEntity>> = flow {
+        initDatabase()
+        emitAll(
+            database!!.lifePlannerDBQueries.getAllJournalEntries()
+                .asFlow()
+                .mapToList(Dispatchers.IO)
+        )
     }
 
     // --- Badge operations ---
@@ -798,11 +852,16 @@ class SharedDatabase(
         title: String,
         createdAt: String,
         lastMessageAt: String,
-        summary: String?
+        summary: String?,
+        coachId: String = "luna_general"
     ) {
         this { db ->
-            db.lifePlannerDBQueries.insertChatSession(id, title, createdAt, lastMessageAt, summary)
+            db.lifePlannerDBQueries.insertChatSession(id, title, createdAt, lastMessageAt, summary, coachId)
         }
+    }
+
+    suspend fun getChatSessionByCoachId(coachId: String): ChatSessionEntity? {
+        return this { db -> db.lifePlannerDBQueries.getChatSessionByCoachId(coachId).executeAsOneOrNull() }
     }
 
     suspend fun updateChatSessionLastMessage(id: String, lastMessageAt: String, title: String) {
@@ -873,6 +932,10 @@ class SharedDatabase(
 
     suspend fun getLastMessageBySession(sessionId: String): ChatMessageEntity? {
         return this { db -> db.lifePlannerDBQueries.getLastMessageBySession(sessionId).executeAsOneOrNull() }
+    }
+
+    suspend fun updateChatMessageMetadata(id: String, metadata: String?) {
+        this { db -> db.lifePlannerDBQueries.updateChatMessageMetadata(metadata, id) }
     }
 
     // --- Review operations ---
@@ -1184,5 +1247,136 @@ class SharedDatabase(
 
     suspend fun getPendingNotificationCount(): Long {
         return this { db -> db.lifePlannerDBQueries.getPendingNotificationCount().executeAsOne() }
+    }
+
+    // ===== Custom Coach Operations =====
+
+    suspend fun insertCustomCoach(
+        id: String,
+        name: String,
+        icon: String,
+        iconBackgroundColor: String,
+        iconAccentColor: String,
+        systemPrompt: String,
+        characteristics: String,
+        isFromTemplate: Long,
+        templateId: String?,
+        createdAt: String,
+        updatedAt: String?
+    ) {
+        this { db ->
+            db.lifePlannerDBQueries.insertCustomCoach(
+                id, name, icon, iconBackgroundColor, iconAccentColor,
+                systemPrompt, characteristics, isFromTemplate, templateId,
+                createdAt, updatedAt
+            )
+        }
+    }
+
+    suspend fun getAllCustomCoaches(): List<CustomCoachEntity> {
+        return this { db -> db.lifePlannerDBQueries.getAllCustomCoaches().executeAsList() }
+    }
+
+    suspend fun getCustomCoachById(id: String): CustomCoachEntity? {
+        return this { db -> db.lifePlannerDBQueries.getCustomCoachById(id).executeAsOneOrNull() }
+    }
+
+    suspend fun updateCustomCoach(
+        name: String,
+        icon: String,
+        iconBackgroundColor: String,
+        iconAccentColor: String,
+        systemPrompt: String,
+        characteristics: String,
+        updatedAt: String?,
+        id: String
+    ) {
+        this { db ->
+            db.lifePlannerDBQueries.updateCustomCoach(
+                name, icon, iconBackgroundColor, iconAccentColor,
+                systemPrompt, characteristics, updatedAt, id
+            )
+        }
+    }
+
+    suspend fun deleteCustomCoach(id: String) {
+        this { db -> db.lifePlannerDBQueries.deleteCustomCoach(id) }
+    }
+
+    suspend fun getCustomCoachCount(): Long {
+        return this { db -> db.lifePlannerDBQueries.getCustomCoachCount().executeAsOne() }
+    }
+
+    // ===== Coach Group Operations =====
+
+    suspend fun insertCoachGroup(
+        id: String,
+        name: String,
+        icon: String,
+        description: String,
+        createdAt: String,
+        updatedAt: String?
+    ) {
+        this { db ->
+            db.lifePlannerDBQueries.insertCoachGroup(id, name, icon, description, createdAt, updatedAt)
+        }
+    }
+
+    suspend fun getAllCoachGroups(): List<CoachGroupEntity> {
+        return this { db -> db.lifePlannerDBQueries.getAllCoachGroups().executeAsList() }
+    }
+
+    suspend fun getCoachGroupById(id: String): CoachGroupEntity? {
+        return this { db -> db.lifePlannerDBQueries.getCoachGroupById(id).executeAsOneOrNull() }
+    }
+
+    suspend fun updateCoachGroup(
+        name: String,
+        icon: String,
+        description: String,
+        updatedAt: String?,
+        id: String
+    ) {
+        this { db ->
+            db.lifePlannerDBQueries.updateCoachGroup(name, icon, description, updatedAt, id)
+        }
+    }
+
+    suspend fun deleteCoachGroup(id: String) {
+        this { db -> db.lifePlannerDBQueries.deleteCoachGroup(id) }
+    }
+
+    suspend fun getCoachGroupCount(): Long {
+        return this { db -> db.lifePlannerDBQueries.getCoachGroupCount().executeAsOne() }
+    }
+
+    // ===== Coach Group Member Operations =====
+
+    suspend fun insertCoachGroupMember(
+        id: String,
+        groupId: String,
+        coachType: String,
+        coachId: String,
+        displayOrder: Long
+    ) {
+        this { db ->
+            db.lifePlannerDBQueries.insertCoachGroupMember(id, groupId, coachType, coachId, displayOrder)
+        }
+    }
+
+    suspend fun getCoachGroupMembers(groupId: String): List<CoachGroupMemberEntity> {
+        return this { db -> db.lifePlannerDBQueries.getCoachGroupMembers(groupId).executeAsList() }
+    }
+
+    suspend fun deleteCoachGroupMember(id: String) {
+        this { db -> db.lifePlannerDBQueries.deleteCoachGroupMember(id) }
+    }
+
+    suspend fun deleteCoachGroupMembersByGroup(groupId: String) {
+        this { db -> db.lifePlannerDBQueries.deleteCoachGroupMembersByGroup(groupId) }
+    }
+
+    suspend fun updateCoachGroupMemberOrder(displayOrder: Long, id: String) {
+        this { db -> db.lifePlannerDBQueries.updateCoachGroupMemberOrder(displayOrder, id) }
     }
 }

@@ -106,7 +106,7 @@ fun AddGoalFromTemplateScreen(
     Scaffold(
         containerColor = MaterialTheme.modernColors.background,
         topBar = {
-            LargeTopAppBar(
+            TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.modernColors.background,
                     titleContentColor = MaterialTheme.modernColors.textPrimary,
@@ -115,13 +115,13 @@ fun AddGoalFromTemplateScreen(
                     Column {
                         Text(
                             "Customize Goal",
-                            style = MaterialTheme.typography.headlineMedium.copy(
-                                fontWeight = FontWeight.Bold
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.SemiBold
                             )
                         )
                         Text(
                             "Based on: ${template.title}",
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodySmall,
                             color = template.category.backgroundColor()
                         )
                     }

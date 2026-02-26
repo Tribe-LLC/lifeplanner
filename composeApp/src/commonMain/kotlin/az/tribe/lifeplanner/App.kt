@@ -1,19 +1,26 @@
 package az.tribe.lifeplanner
 
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -23,6 +30,7 @@ import androidx.navigation.navArgument
 import az.tribe.lifeplanner.ui.AchievementsScreen
 import az.tribe.lifeplanner.ui.AddGoalFromTemplateScreen
 import az.tribe.lifeplanner.ui.AddGoalScreen
+import az.tribe.lifeplanner.ui.SmartGoalGeneratorScreen
 import az.tribe.lifeplanner.ui.EditGoalScreen
 import az.tribe.lifeplanner.ui.AIChatScreen
 import az.tribe.lifeplanner.ui.AiGoalGenerationScreen
@@ -32,6 +40,8 @@ import az.tribe.lifeplanner.ui.GoalDetailScreen
 import az.tribe.lifeplanner.ui.GoalViewModel
 import az.tribe.lifeplanner.ui.GoalsScreen
 import az.tribe.lifeplanner.ui.HabitTrackerScreen
+import az.tribe.lifeplanner.ui.JournalEntryDetailScreen
+import az.tribe.lifeplanner.ui.JournalCreationWizardScreen
 import az.tribe.lifeplanner.ui.JournalScreen
 import az.tribe.lifeplanner.ui.LifeBalanceScreen
 import az.tribe.lifeplanner.ui.BackupSettingsScreen
@@ -42,11 +52,24 @@ import az.tribe.lifeplanner.ui.TemplatePickerScreen
 import az.tribe.lifeplanner.ui.HomeScreen
 import az.tribe.lifeplanner.ui.OnboardingScreen
 import az.tribe.lifeplanner.ui.SignInScreen
+import az.tribe.lifeplanner.ui.coach.CoachViewModel
+import az.tribe.lifeplanner.ui.coach.CreateCoachScreen
+import az.tribe.lifeplanner.ui.coach.CreateGroupScreen
 import az.tribe.lifeplanner.ui.components.BottomNavigationBar
 import az.tribe.lifeplanner.ui.navigation.Screen
 import az.tribe.lifeplanner.ui.theme.LifePlannerTheme
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
+import az.tribe.lifeplanner.widget.WidgetDataSyncService
+import az.tribe.lifeplanner.widget.WidgetDashboardData
+import az.tribe.lifeplanner.widget.WidgetHabitData
+import az.tribe.lifeplanner.domain.repository.HabitRepository
+import az.tribe.lifeplanner.domain.repository.GoalRepository
+import az.tribe.lifeplanner.domain.repository.GamificationRepository
 import com.mmk.kmpnotifier.notification.NotifierManager
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.datetime.Clock
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import org.koin.compose.koinInject
 
@@ -74,6 +97,71 @@ fun App(
             println("Firebase Token: $myPushNotificationToken")
         }
 
+        // Sync widget data on every app resume (processes pending widget check-ins)
+        var resumeCount by remember { mutableIntStateOf(0) }
+        val lifecycleOwner = LocalLifecycleOwner.current
+        DisposableEffect(lifecycleOwner) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    resumeCount++
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
+
+        LaunchedEffect(resumeCount) {
+            try {
+                val widgetSync: WidgetDataSyncService = org.koin.mp.KoinPlatform.getKoin().get()
+                val habitRepo: HabitRepository = org.koin.mp.KoinPlatform.getKoin().get()
+                val goalRepo: GoalRepository = org.koin.mp.KoinPlatform.getKoin().get()
+                val gamificationRepo: GamificationRepository = org.koin.mp.KoinPlatform.getKoin().get()
+
+                val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+
+                // Process any pending check-ins from widget before syncing
+                val pendingCheckIns = widgetSync.getPendingCheckIns()
+                for (habitId in pendingCheckIns) {
+                    try {
+                        habitRepo.checkIn(habitId, today)
+                    } catch (_: Exception) {
+                        // Already checked in or invalid — skip
+                    }
+                }
+                if (pendingCheckIns.isNotEmpty()) {
+                    widgetSync.clearPendingCheckIns()
+                }
+
+                val habitsWithStatus = habitRepo.getHabitsWithTodayStatus(today)
+                val activeGoals = goalRepo.getActiveGoals()
+                val progress = gamificationRepo.getUserProgress().firstOrNull()
+
+                val dashboardData = WidgetDashboardData(
+                    currentStreak = progress?.currentStreak ?: 0,
+                    totalXp = progress?.totalXp ?: 0,
+                    currentLevel = progress?.currentLevel ?: 1,
+                    activeGoals = activeGoals.size,
+                    habitsTotal = habitsWithStatus.size,
+                    habitsDoneToday = habitsWithStatus.count { it.second },
+                    lastUpdated = today.toString()
+                )
+
+                val widgetHabits = habitsWithStatus.map { (habit, isDone) ->
+                    WidgetHabitData(
+                        id = habit.id,
+                        title = habit.title,
+                        isCompletedToday = isDone,
+                        currentStreak = habit.currentStreak,
+                        category = habit.category.name
+                    )
+                }
+
+                widgetSync.syncWidgetData(dashboardData, widgetHabits)
+            } catch (e: Exception) {
+                println("Widget sync failed: ${e.message}")
+            }
+        }
+
         val isForceUpdateEnabled = viewModel.isForceUpdateEnabled.collectAsState().value ?: false
 
         val navController = rememberNavController()
@@ -98,21 +186,14 @@ fun App(
 
         val showBottomNav = currentRoute in mainRoutes
 
-//        Scaffold(
-//            bottomBar = {
-//
-//            },
-//            containerColor =  MaterialTheme.colorScheme.surface,
-//        ) { innerPadding ->
-
-
-        Column(modifier = Modifier.fillMaxSize()) {
-
+        // Use Box layout to prevent jumping when bottom nav hides
+        // NavHost fills entire space, bottom bar overlays at bottom
+        Box(modifier = Modifier.fillMaxSize()) {
 
         NavHost(
             navController = navController,
             startDestination = startDestination,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.fillMaxSize()
         ) {
             // Home Screen (Dashboard)
             composable(Screen.Home.route) {
@@ -142,6 +223,16 @@ fun App(
                         },
                         onNavigateToJournal = {
                             navController.navigate(Screen.Journal.route) {
+                                launchSingleTop = true
+                            }
+                        },
+                        onNavigateToAchievements = {
+                            navController.navigate(Screen.Achievements.route) {
+                                launchSingleTop = true
+                            }
+                        },
+                        onNavigateToCoach = {
+                            navController.navigate(Screen.AIChat.route) {
                                 launchSingleTop = true
                             }
                         }
@@ -189,7 +280,41 @@ fun App(
             composable(Screen.Journal.route) {
                 JournalScreen(
                     onNavigateBack = { navController.popBackStack() },
+                    onEntryClick = { entryId ->
+                        navController.navigate("journal_entry_detail/$entryId") {
+                            launchSingleTop = true
+                        }
+                    },
+                    onNavigateToWizard = {
+                        navController.navigate(Screen.JournalWizard.route) {
+                            launchSingleTop = true
+                        }
+                    },
                     isFromBottomNav = true
+                )
+            }
+
+            // Journal Creation Wizard
+            composable(Screen.JournalWizard.route) {
+                JournalCreationWizardScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            // Journal Entry Detail Screen
+            composable(
+                route = Screen.JournalEntryDetail.route,
+                arguments = listOf(navArgument("entryId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val entryId = backStackEntry.arguments?.getString("entryId") ?: return@composable
+                JournalEntryDetailScreen(
+                    entryId = entryId,
+                    onBackClick = { navController.popBackStack() },
+                    onNavigateToGoal = { goalId ->
+                        navController.navigate("goal_detail/$goalId") {
+                            launchSingleTop = true
+                        }
+                    }
                 )
             }
 
@@ -259,6 +384,17 @@ fun App(
                         navController.navigate("goal_detail/$id") {
                             launchSingleTop = true
                         }
+                    },
+                    onNavigateToJournal = { entryId ->
+                        navController.navigate("journal_entry_detail/$entryId") {
+                            launchSingleTop = true
+                        }
+                    },
+                    onReflectOnGoal = { id ->
+                        // Navigate to Journal screen - the user can use the goal picker
+                        navController.navigate(Screen.Journal.route) {
+                            launchSingleTop = true
+                        }
                     }
                 )
             }
@@ -305,10 +441,14 @@ fun App(
 
             // AI Goal Generation Screen
             composable(Screen.AiGoalGeneration.route) {
-                AiGoalGenerationScreen(
+                SmartGoalGeneratorScreen(
                     viewModel = viewModel,
                     onBackClick = { navController.popBackStack() },
-                    onHomeClick = { navController.popBackStack() }
+                    onComplete = {
+                        navController.navigate(Screen.Goals.route) {
+                            popUpTo(Screen.AiGoalGeneration.route) { inclusive = true }
+                        }
+                    }
                 )
             }
 
@@ -344,10 +484,113 @@ fun App(
                 )
             }
 
-            // AI Chat Screen
+            // AI Chat Screen - Coach List
             composable(Screen.AIChat.route) {
                 AIChatScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToCoach = { coachId ->
+                        navController.navigate("ai_chat/$coachId") {
+                            launchSingleTop = true
+                        }
+                    },
+                    onNavigateToCreateCoach = {
+                        navController.navigate(Screen.CreateCoach.route) {
+                            launchSingleTop = true
+                        }
+                    },
+                    onNavigateToCreateGroup = {
+                        navController.navigate(Screen.CreateGroup.route) {
+                            launchSingleTop = true
+                        }
+                    }
+                )
+            }
+
+            // AI Chat Screen - Chat with specific Coach
+            composable(Screen.AIChatSession.route) { backStackEntry ->
+                val coachId = backStackEntry.arguments?.getString("sessionId")
+                AIChatScreen(
+                    coachId = coachId,
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToCoach = { newCoachId ->
+                        navController.navigate("ai_chat/$newCoachId") {
+                            launchSingleTop = true
+                        }
+                    },
+                    onNavigateToCreateCoach = {
+                        navController.navigate(Screen.CreateCoach.route) {
+                            launchSingleTop = true
+                        }
+                    },
+                    onNavigateToCreateGroup = {
+                        navController.navigate(Screen.CreateGroup.route) {
+                            launchSingleTop = true
+                        }
+                    }
+                )
+            }
+
+            // Create Custom Coach Screen
+            composable(Screen.CreateCoach.route) {
+                val coachViewModel: CoachViewModel = koinInject()
+                CreateCoachScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onCoachSaved = { coach ->
+                        coachViewModel.createCoach(coach)
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            // Edit Custom Coach Screen
+            composable(
+                route = Screen.EditCoach.route,
+                arguments = listOf(navArgument("coachId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val coachId = backStackEntry.arguments?.getString("coachId") ?: return@composable
+                val coachViewModel: CoachViewModel = koinInject()
+                val coachToEdit = coachViewModel.getCoachById(coachId)
+                CreateCoachScreen(
+                    coachToEdit = coachToEdit,
+                    onNavigateBack = { navController.popBackStack() },
+                    onCoachSaved = { coach ->
+                        coachViewModel.updateCoach(coach)
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            // Create Coach Group Screen
+            composable(Screen.CreateGroup.route) {
+                val coachViewModel: CoachViewModel = koinInject()
+                val uiState by coachViewModel.uiState.collectAsState()
+                CreateGroupScreen(
+                    customCoaches = uiState.customCoaches,
+                    onNavigateBack = { navController.popBackStack() },
+                    onGroupSaved = { group ->
+                        coachViewModel.createGroup(group)
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            // Edit Coach Group Screen
+            composable(
+                route = Screen.EditGroup.route,
+                arguments = listOf(navArgument("groupId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val groupId = backStackEntry.arguments?.getString("groupId") ?: return@composable
+                val coachViewModel: CoachViewModel = koinInject()
+                val uiState by coachViewModel.uiState.collectAsState()
+                val groupToEdit = coachViewModel.getGroupById(groupId)
+                CreateGroupScreen(
+                    groupToEdit = groupToEdit,
+                    customCoaches = uiState.customCoaches,
+                    onNavigateBack = { navController.popBackStack() },
+                    onGroupSaved = { group ->
+                        coachViewModel.updateGroup(group)
+                        navController.popBackStack()
+                    }
                 )
             }
 
@@ -431,10 +674,15 @@ fun App(
             }
         }
 
-        BottomNavigationBar(
-            navController = navController,
-            isVisible = showBottomNav
-        )
+        // Bottom nav at the bottom, overlays content
+        Box(
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            BottomNavigationBar(
+                navController = navController,
+                isVisible = showBottomNav
+            )
+        }
     }
     }
 }

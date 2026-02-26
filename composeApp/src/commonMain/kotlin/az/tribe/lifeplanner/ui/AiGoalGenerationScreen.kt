@@ -106,7 +106,7 @@ fun AiGoalGenerationScreen(
         ) {
             // Top App Bar
             TopAppBar(
-                title = { Text("Smart AI Goal Generation") },
+                title = { Text("Smart Goal Generation") },
                 navigationIcon = {
                     IconButton(onClick = {
                         if (currentStep == QuestionnaireStep.INPUT) {
@@ -135,7 +135,7 @@ fun AiGoalGenerationScreen(
                         item {
                             Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
                                 AiGoalHeader(
-                                    title = "AI Goal Generator",
+                                    title = "Smart Goal Generator",
                                     description = "Tell us about your goals and we'll create personalized questions to understand your specific situation better."
                                 )
 

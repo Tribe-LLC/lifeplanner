@@ -15,7 +15,7 @@ actual fun onApplicationStartPlatformSpecific() {
     NotifierManager.initialize(
         NotificationPlatformConfiguration.Ios(
             showPushNotification = true,
-            askNotificationPermissionOnStart = true,
+            askNotificationPermissionOnStart = false,
             notificationSoundName = "custom_notification_sound.wav"
         )
     )

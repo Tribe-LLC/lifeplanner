@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -14,10 +15,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import az.tribe.lifeplanner.di.FilePickerResult
 import az.tribe.lifeplanner.di.FileSharer
+import az.tribe.lifeplanner.di.rememberFilePicker
 import az.tribe.lifeplanner.domain.model.ImportResult
 import az.tribe.lifeplanner.domain.repository.MergeStrategy
 import az.tribe.lifeplanner.ui.backup.BackupViewModel
+import az.tribe.lifeplanner.worker.getBackupScheduler
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -29,6 +33,21 @@ fun BackupSettingsScreen(
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    // File picker for restore
+    val filePicker = rememberFilePicker { result ->
+        when (result) {
+            is FilePickerResult.Success -> {
+                viewModel.prepareImport(result.content)
+            }
+            is FilePickerResult.Error -> {
+                viewModel.setError(result.message)
+            }
+            FilePickerResult.Cancelled -> {
+                // User cancelled, do nothing
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -81,6 +100,51 @@ fun BackupSettingsScreen(
                         "Backup your goals, habits, journal entries, and progress to keep your data safe.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Auto Backup Toggle
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Autorenew,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(40.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Auto Backup",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "Daily backup at 01:00 AM",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = uiState.isAutoBackupEnabled,
+                        onCheckedChange = { enabled ->
+                            viewModel.setAutoBackupEnabled(enabled)
+                            val scheduler = getBackupScheduler()
+                            if (enabled) {
+                                scheduler.scheduleDailyBackup()
+                            } else {
+                                scheduler.cancelDailyBackup()
+                            }
+                        }
                     )
                 }
             }
@@ -186,7 +250,7 @@ fun BackupSettingsScreen(
 
             // Import Section
             Text(
-                "Import",
+                "Restore",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(top = 8.dp)
@@ -217,7 +281,7 @@ fun BackupSettingsScreen(
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                "Import data from a backup file",
+                                "Import data from a JSON backup file",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -226,14 +290,22 @@ fun BackupSettingsScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
+                    // Primary: Select File button
                     OutlinedButton(
-                        onClick = { viewModel.showImportDialog() },
+                        onClick = { filePicker.launchFilePicker() },
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !uiState.isLoading
                     ) {
-                        Icon(Icons.Rounded.Upload, contentDescription = null)
+                        if (uiState.isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Icon(Icons.Rounded.FolderOpen, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Import Data")
+                        Text("Select Backup File")
                     }
                 }
             }
@@ -261,7 +333,7 @@ fun BackupSettingsScreen(
                     BackupItem(icon = Icons.Rounded.Repeat, text = "Habits & Streaks")
                     BackupItem(icon = Icons.Rounded.Book, text = "Journal Entries")
                     BackupItem(icon = Icons.Rounded.EmojiEvents, text = "Badges & Achievements")
-                    BackupItem(icon = Icons.Rounded.TrendingUp, text = "Progress & XP")
+                    BackupItem(icon = Icons.AutoMirrored.Rounded.TrendingUp, text = "Progress & XP")
                     BackupItem(icon = Icons.Rounded.Settings, text = "App Settings")
                 }
             }
@@ -329,50 +401,6 @@ fun BackupSettingsScreen(
             dismissButton = {
                 TextButton(onClick = { viewModel.clearExportData() }) {
                     Text("Close")
-                }
-            }
-        )
-    }
-
-    // Import Dialog
-    if (uiState.showImportDialog) {
-        var importText by remember { mutableStateOf("") }
-
-        AlertDialog(
-            onDismissRequest = { viewModel.hideImportDialog() },
-            title = { Text("Import Backup") },
-            text = {
-                Column {
-                    Text(
-                        "Paste your backup JSON data below:",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = importText,
-                        onValueChange = { importText = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp),
-                        placeholder = { Text("Paste backup data here...") },
-                        maxLines = 10
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.hideImportDialog()
-                        viewModel.prepareImport(importText)
-                    },
-                    enabled = importText.isNotBlank()
-                ) {
-                    Text("Continue")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { viewModel.hideImportDialog() }) {
-                    Text("Cancel")
                 }
             }
         )

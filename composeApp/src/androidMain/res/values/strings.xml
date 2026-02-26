@@ -1,4 +1,8 @@
 <resources>
     <string name="app_name">Lean LifePlan</string>
     <string name="default_notification_channel_id">az.tribe.lifeplanner.app.urgent</string>
+    <string name="widget_dashboard_description">View your daily streak, habits, goals, and XP at a glance</string>
+    <string name="widget_habit_description">Check in your habits directly from your home screen</string>
+    <string name="widget_dashboard_label">Daily Dashboard</string>
+    <string name="widget_habit_label">Habit Check-In</string>
 </resources>

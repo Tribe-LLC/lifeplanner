@@ -11,6 +11,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ShowChart
+import androidx.compose.material.icons.automirrored.rounded.TrendingDown
+import androidx.compose.material.icons.automirrored.rounded.TrendingFlat
+import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -198,7 +202,10 @@ private fun ReviewListScreen(
                 Snackbar(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(16.dp)
+                        .padding(16.dp),
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(error)
                 }
@@ -377,9 +384,9 @@ private fun QuickStatItem(stat: QuickStat) {
             stat.trend?.let { trend ->
                 Icon(
                     imageVector = when (trend) {
-                        TrendDirection.UP -> Icons.Rounded.TrendingUp
-                        TrendDirection.DOWN -> Icons.Rounded.TrendingDown
-                        TrendDirection.STABLE -> Icons.Rounded.TrendingFlat
+                        TrendDirection.UP -> Icons.AutoMirrored.Rounded.TrendingUp
+                        TrendDirection.DOWN -> Icons.AutoMirrored.Rounded.TrendingDown
+                        TrendDirection.STABLE -> Icons.AutoMirrored.Rounded.TrendingFlat
                     },
                     contentDescription = null,
                     modifier = Modifier.size(14.dp),
@@ -745,9 +752,9 @@ private fun StatsCard(stats: ReviewStats) {
                 ) {
                     Icon(
                         imageVector = when (comparison.overallTrend) {
-                            TrendDirection.UP -> Icons.Rounded.TrendingUp
-                            TrendDirection.DOWN -> Icons.Rounded.TrendingDown
-                            TrendDirection.STABLE -> Icons.Rounded.TrendingFlat
+                            TrendDirection.UP -> Icons.AutoMirrored.Rounded.TrendingUp
+                            TrendDirection.DOWN -> Icons.AutoMirrored.Rounded.TrendingDown
+                            TrendDirection.STABLE -> Icons.AutoMirrored.Rounded.TrendingFlat
                         },
                         contentDescription = null,
                         tint = when (comparison.overallTrend) {
@@ -1139,7 +1146,7 @@ private val HighlightCategory.icon: ImageVector
         HighlightCategory.STREAK_ACHIEVED -> Icons.Rounded.LocalFireDepartment
         HighlightCategory.HABIT_CONSISTENCY -> Icons.Rounded.Loop
         HighlightCategory.XP_MILESTONE -> Icons.Rounded.Star
-        HighlightCategory.LEVEL_UP -> Icons.Rounded.TrendingUp
+        HighlightCategory.LEVEL_UP -> Icons.AutoMirrored.Rounded.TrendingUp
         HighlightCategory.NEW_BADGE -> Icons.Rounded.EmojiEvents
         HighlightCategory.PERSONAL_BEST -> Icons.Rounded.Verified
     }
@@ -1159,9 +1166,9 @@ private val HighlightCategory.color: Color
 // Extension properties for InsightType
 private val InsightType.icon: ImageVector
     get() = when (this) {
-        InsightType.PRODUCTIVITY_PATTERN -> Icons.Rounded.ShowChart
+        InsightType.PRODUCTIVITY_PATTERN -> Icons.AutoMirrored.Rounded.ShowChart
         InsightType.STRENGTH_AREA -> Icons.Rounded.ThumbUp
-        InsightType.IMPROVEMENT_AREA -> Icons.Rounded.TrendingUp
+        InsightType.IMPROVEMENT_AREA -> Icons.AutoMirrored.Rounded.TrendingUp
         InsightType.HABIT_CORRELATION -> Icons.Rounded.Link
         InsightType.TIME_MANAGEMENT -> Icons.Rounded.Schedule
         InsightType.CONSISTENCY -> Icons.Rounded.Loop
@@ -1176,7 +1183,7 @@ private val RecommendationAction.icon: ImageVector
         RecommendationAction.CREATE_HABIT -> Icons.Rounded.Loop
         RecommendationAction.FOCUS_CATEGORY -> Icons.Rounded.CenterFocusStrong
         RecommendationAction.TAKE_BREAK -> Icons.Rounded.Coffee
-        RecommendationAction.INCREASE_DIFFICULTY -> Icons.Rounded.TrendingUp
+        RecommendationAction.INCREASE_DIFFICULTY -> Icons.AutoMirrored.Rounded.TrendingUp
         RecommendationAction.REDUCE_SCOPE -> Icons.Rounded.RemoveCircle
         RecommendationAction.CELEBRATE -> Icons.Rounded.Celebration
         RecommendationAction.REFLECT -> Icons.Rounded.Lightbulb

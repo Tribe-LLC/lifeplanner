@@ -10,13 +10,35 @@ import az.tribe.lifeplanner.domain.model.GoalAnalytics
 import az.tribe.lifeplanner.domain.model.Milestone
 import az.tribe.lifeplanner.domain.repository.GoalRepository
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
+import az.tribe.lifeplanner.widget.WidgetDataSyncService
+import co.touchlab.kermit.Logger
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 
 class GoalRepositoryImpl(
-    private val localGoalStore: SharedDatabase
+    private val localGoalStore: SharedDatabase,
+    private val widgetSyncService: WidgetDataSyncService
 ) : GoalRepository {
+
+    private suspend fun notifyWidgets() {
+        try {
+            widgetSyncService.refreshWidgets()
+        } catch (e: Exception) {
+            Logger.w("GoalRepositoryImpl") { "Widget refresh failed: ${e.message}" }
+        }
+    }
+
+    override fun observeAllGoals(): Flow<List<Goal>> {
+        return localGoalStore.observeAllGoals().map { goalEntities ->
+            val goalIds = goalEntities.map { it.id }
+            val milestonesMap = localGoalStore.getMilestonesForGoals(goalIds)
+                .mapValues { (_, milestones) -> milestones.toDomainMilestones() }
+            goalEntities.toDomainGoals(milestonesMap)
+        }
+    }
 
     override suspend fun getAllGoals(): List<Goal> {
         val goalEntities = localGoalStore.getAllGoals()
@@ -34,6 +56,7 @@ class GoalRepositoryImpl(
         goal.milestones.forEach { milestone ->
             localGoalStore.insertMilestone(milestone.toEntity(goal.id))
         }
+        notifyWidgets()
     }
 
     override suspend fun insertGoals(goals: List<Goal>) {
@@ -54,6 +77,7 @@ class GoalRepositoryImpl(
         goal.milestones.forEach { milestone ->
             localGoalStore.updateMilestone(milestone.toEntity(goal.id))
         }
+        notifyWidgets()
     }
 
     override suspend fun getGoalsByTimeline(timeline: az.tribe.lifeplanner.domain.enum.GoalTimeline): List<Goal> {
@@ -186,6 +210,7 @@ class GoalRepositoryImpl(
 
     override suspend fun deleteGoalById(id: String) {
         localGoalStore.deleteGoalById(id)
+        notifyWidgets()
     }
 
     override suspend fun deleteAllGoals() {

@@ -1,6 +1,7 @@
 package az.tribe.lifeplanner.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -17,6 +19,7 @@ import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.TopAppBarDefaults
@@ -45,6 +48,7 @@ import az.tribe.lifeplanner.ui.components.GoalsTopAppBar
 import az.tribe.lifeplanner.ui.components.SwipeableGoalItem
 import az.tribe.lifeplanner.ui.components.SearchResultsSummary
 import az.tribe.lifeplanner.ui.components.backgroundColor
+import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -137,24 +141,38 @@ fun GoalsScreen(
         },
         floatingActionButton = {
             // Single FAB that opens the Add Goal bottom sheet
-            FloatingActionButton(
-                onClick = { showAddGoalSheet = true },
-                containerColor = dynamicColor,
-                contentColor = Color.White,
-                shape = CircleShape,
-                elevation = FloatingActionButtonDefaults.elevation(
-                    defaultElevation = 6.dp,
-                    pressedElevation = 8.dp
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Add,
-                    contentDescription = "Add Goal"
-                )
+            // Wrapped in Box with bottom padding to stay above bottom nav
+            Box(modifier = Modifier.padding(bottom = 80.dp)) {
+                FloatingActionButton(
+                    onClick = { showAddGoalSheet = true },
+                    containerColor = dynamicColor,
+                    contentColor = Color.White,
+                    shape = CircleShape,
+                    elevation = FloatingActionButtonDefaults.elevation(
+                        defaultElevation = 6.dp,
+                        pressedElevation = 8.dp
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = "Add Goal"
+                    )
+                }
             }
         },
         containerColor = MaterialTheme.colorScheme.background,
-        snackbarHost = { SnackbarHost(snackBarHostState) }
+        snackbarHost = {
+            SnackbarHost(snackBarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = MaterialTheme.colorScheme.inverseSurface,
+                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                    actionColor = MaterialTheme.colorScheme.primary,
+                    actionContentColor = MaterialTheme.colorScheme.primary,
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -171,6 +189,10 @@ fun GoalsScreen(
             // Goals List
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    top = LifePlannerDesign.Padding.screenVertical,
+                    bottom = 140.dp // Space for bottom nav and FAB
+                ),
                 state = scrollState
             ) {
                 // Search Results Summary

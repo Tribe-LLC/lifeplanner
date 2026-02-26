@@ -31,6 +31,16 @@ interface BackupRepository {
      * Save last backup timestamp
      */
     suspend fun saveLastBackupDate(date: String)
+
+    /**
+     * Check if automatic daily backup is enabled
+     */
+    fun isAutoBackupEnabled(): Boolean
+
+    /**
+     * Enable or disable automatic daily backup
+     */
+    fun setAutoBackupEnabled(enabled: Boolean)
 }
 
 enum class MergeStrategy {

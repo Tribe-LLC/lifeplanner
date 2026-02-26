@@ -5,8 +5,10 @@ import az.tribe.lifeplanner.domain.model.GoalAnalytics
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.GoalTimeline
 import az.tribe.lifeplanner.domain.model.Milestone
+import kotlinx.coroutines.flow.Flow
 
 interface GoalRepository {
+    fun observeAllGoals(): Flow<List<Goal>>
     suspend fun getAllGoals(): List<Goal>
     suspend fun insertGoal(goal: Goal)
     suspend fun insertGoals(goals: List<Goal>)

@@ -15,18 +15,26 @@ import az.tribe.lifeplanner.domain.model.XpRewards
 import az.tribe.lifeplanner.domain.enum.GoalFilter
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.repository.GamificationRepository
+import az.tribe.lifeplanner.domain.repository.GoalRepository
 import az.tribe.lifeplanner.usecases.*
 import dev.gitlive.firebase.Firebase
 import dev.gitlive.firebase.remoteconfig.FirebaseRemoteConfig
 import dev.gitlive.firebase.remoteconfig.remoteConfig
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
 import kotlin.time.Duration
 
 class GoalViewModel(
+    // Reactive data source
+    private val goalRepository: GoalRepository,
     // Core CRUD Use Cases
     private val getAllGoalsUseCase: GetAllGoalsUseCase,
     private val createGoalUseCase: CreateGoalUseCase,
@@ -59,26 +67,49 @@ class GoalViewModel(
 ) : ViewModel() {
 
     // State Management
-    private val _goals = MutableStateFlow<List<Goal>>(emptyList())
-    val goals: StateFlow<List<Goal>> = _goals.asStateFlow()
-
-    private val _analytics = MutableStateFlow<GoalAnalytics?>(null)
-    val analytics: StateFlow<GoalAnalytics?> = _analytics
-
-    private val _goalHistory = MutableStateFlow<List<GoalChange>>(emptyList())
-    val goalHistory: StateFlow<List<GoalChange>> = _goalHistory.asStateFlow()
-
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
     private val _selectedFilter = MutableStateFlow(GoalFilter.ALL)
     val selectedFilter: StateFlow<GoalFilter> = _selectedFilter.asStateFlow()
 
-    private val _isLoading = MutableStateFlow(false)
+    private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
+
+    // Reactive goals: auto-updates from DB, with client-side search/filter
+    val goals: StateFlow<List<Goal>> = combine(
+        goalRepository.observeAllGoals(),
+        _searchQuery,
+        _selectedFilter
+    ) { allGoals, query, filter ->
+        var result = allGoals
+        if (query.isNotBlank()) {
+            result = result.filter { goal ->
+                goal.title.contains(query, ignoreCase = true) ||
+                    goal.description.contains(query, ignoreCase = true)
+            }
+        }
+        when (filter) {
+            GoalFilter.ALL -> result
+            GoalFilter.ACTIVE -> result.filter { it.status != GoalStatus.COMPLETED }
+            GoalFilter.COMPLETED -> result.filter { it.status == GoalStatus.COMPLETED }
+        }
+    }
+        .onEach { _isLoading.value = false }
+        .catch { e ->
+            _error.value = "Failed to load goals: ${e.message}"
+            _isLoading.value = false
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _analytics = MutableStateFlow<GoalAnalytics?>(null)
+    val analytics: StateFlow<GoalAnalytics?> = _analytics
+
+    private val _goalHistory = MutableStateFlow<List<GoalChange>>(emptyList())
+    val goalHistory: StateFlow<List<GoalChange>> = _goalHistory.asStateFlow()
 
     private val _isForceUpdateEnabled = MutableStateFlow<Boolean?>(null)
     val isForceUpdateEnabled: StateFlow<Boolean?> = _isForceUpdateEnabled
@@ -114,71 +145,28 @@ class GoalViewModel(
 
     init {
         checkConfig()
-        loadAllGoals()
-
     }
 
-    // Search and Filter Functions
+    // Search and Filter Functions (reactive: combine auto-re-evaluates)
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query
-        filterGoals()
     }
 
     fun updateFilter(filter: GoalFilter) {
         _selectedFilter.value = filter
-        filterGoals()
-    }
-
-    private fun filterGoals() {
-        viewModelScope.launch {
-            try {
-                val searchQuery = _searchQuery.value
-                val filter = _selectedFilter.value
-
-                val filteredGoals = when {
-                    searchQuery.isNotBlank() -> {
-                        val searchResults = searchGoalsUseCase(searchQuery)
-                        when (filter) {
-                            GoalFilter.ALL -> searchResults
-                            GoalFilter.ACTIVE -> searchResults.filter { it.status != GoalStatus.COMPLETED }
-                            GoalFilter.COMPLETED -> searchResults.filter { it.status == GoalStatus.COMPLETED }
-                        }
-                    }
-
-                    filter != GoalFilter.ALL -> {
-                        when (filter) {
-                            GoalFilter.ACTIVE -> getActiveGoalsUseCase()
-                            GoalFilter.COMPLETED -> getCompletedGoalsUseCase()
-                            GoalFilter.ALL -> getAllGoalsUseCase()
-                        }
-                    }
-
-                    else -> getAllGoalsUseCase()
-                }
-
-                _goals.value = filteredGoals
-                _error.value = null
-            } catch (e: Exception) {
-                _error.value = "Failed to filter goals: ${e.message}"
-            }
-        }
     }
 
     // Goal CRUD Operations
     fun createGoal(goal: Goal) {
         viewModelScope.launch {
             try {
-                _isLoading.value = true
                 createGoalUseCase(goal)
-                loadAllGoals()
                 _error.value = null
 
                 // Award XP for creating a goal
                 gamificationRepository.addXp(XpRewards.GOAL_CREATED)
             } catch (e: Exception) {
                 _error.value = "Failed to create goal: ${e.message}"
-            } finally {
-                _isLoading.value = false
             }
         }
     }
@@ -186,14 +174,10 @@ class GoalViewModel(
     fun updateGoal(goal: Goal) {
         viewModelScope.launch {
             try {
-                _isLoading.value = true
                 updateGoalUseCase(goal)
-                loadAllGoals()
                 _error.value = null
             } catch (e: Exception) {
                 _error.value = "Failed to update goal: ${e.message}"
-            } finally {
-                _isLoading.value = false
             }
         }
     }
@@ -202,7 +186,6 @@ class GoalViewModel(
         viewModelScope.launch {
             try {
                 deleteGoalUseCase(id)
-                _goals.value = _goals.value.filterNot { it.id == id }
                 _error.value = null
             } catch (e: Exception) {
                 _error.value = "Failed to delete goal: ${e.message}"
@@ -227,7 +210,6 @@ class GoalViewModel(
                     )
                 }
 
-                loadAllGoals()
                 _error.value = null
             } catch (e: Exception) {
                 _error.value = "Failed to update progress: ${e.message}"
@@ -251,7 +233,6 @@ class GoalViewModel(
                             newValue = newStatus.name
                         )
                     }
-                    loadAllGoals()
                     _error.value = null
 
                     // Update gamification if goal is completed
@@ -286,7 +267,6 @@ class GoalViewModel(
                             newValue = notes
                         )
                     }
-                    loadAllGoals()
                     _error.value = null
                 } else {
                     _error.value = result.exceptionOrNull()?.message ?: "Failed to update notes"
@@ -316,7 +296,6 @@ class GoalViewModel(
                     val updatedGoal = getGoalByIdUseCase(goalId)
                     updatedGoal?.let { recalculateAndUpdateProgress(it) }
 
-                    loadAllGoals()
                     _error.value = null
                 } else {
                     _error.value = result.exceptionOrNull()?.message ?: "Failed to add milestone"
@@ -372,8 +351,6 @@ class GoalViewModel(
                             _promptCompleteGoal.value = goalId
                         }
 
-                        // Force reload all goals to get updated milestone data
-                        loadAllGoals()
                         _error.value = null
 
                         // Update gamification if milestone is newly completed
@@ -414,22 +391,8 @@ class GoalViewModel(
         }
     }
 
-    // Loading and Data Management
-    fun loadAllGoals() {
-        viewModelScope.launch {
-            try {
-                _isLoading.value = true
-                val result = getAllGoalsUseCase()
-                _goals.value = result
-
-                _error.value = null
-            } catch (e: Exception) {
-                _error.value = "Failed to load goals: ${e.message}"
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
+    // No-op: data is now reactively observed via goalRepository.observeAllGoals()
+    fun loadAllGoals() { }
 
     fun loadAnalytics() {
         viewModelScope.launch {
@@ -456,7 +419,7 @@ class GoalViewModel(
 
     // Utility Methods
     fun getGoalById(id: String): Goal? {
-        return _goals.value.find { it.id == id }
+        return goals.value.find { it.id == id }
     }
 
     fun checkConfig() {
@@ -585,16 +548,10 @@ class GoalViewModel(
     fun addGeneratedGoalToList(goal: Goal) {
         viewModelScope.launch {
             try {
-                _isLoading.value = true
-                    createGoalUseCase(goal)
-                    loadAllGoals()
-                    _error.value = null
-                    println("Added goal to main list: ${goal.title}")
+                createGoalUseCase(goal)
+                _error.value = null
             } catch (e: Exception) {
                 _error.value = "Failed to add goal: ${e.message}"
-                println("Error adding goal: ${e.message}")
-            } finally {
-                _isLoading.value = false
             }
         }
     }
@@ -605,24 +562,13 @@ class GoalViewModel(
     fun addAllGeneratedGoalsToList() {
         viewModelScope.launch {
             try {
-                _isLoading.value = true
                 val goals = _generatedGoalsFromAI.value
-
                 goals.forEach { goal ->
-                        createGoalUseCase(goal)
-                        println("Added goal to main list: ${goal.title}")
+                    createGoalUseCase(goal)
                 }
-
-                // Force reload to ensure all goals appear in the main list
-                loadAllGoals()
                 _error.value = null
-                println("Added ${goals.size} goals to main list")
-
             } catch (e: Exception) {
                 _error.value = "Failed to add goals: ${e.message}"
-                println("Error adding goals: ${e.message}")
-            } finally {
-                _isLoading.value = false
             }
         }
     }

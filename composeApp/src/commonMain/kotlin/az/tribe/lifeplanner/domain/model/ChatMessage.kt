@@ -32,9 +32,11 @@ enum class MessageRole {
 @Serializable
 data class ChatMessageMetadata(
     val suggestedActions: List<SuggestedAction> = emptyList(),
+    val coachSuggestions: List<CoachSuggestion> = emptyList(),
     val referencedGoals: List<String> = emptyList(),
     val mood: String? = null,
-    val isMotivational: Boolean = false
+    val isMotivational: Boolean = false,
+    val executedSuggestionIds: Set<String> = emptySet()
 )
 
 /**
@@ -71,7 +73,8 @@ data class ChatSession(
     val messages: List<ChatMessage>,
     val createdAt: LocalDateTime,
     val lastMessageAt: LocalDateTime,
-    val summary: String? = null
+    val summary: String? = null,
+    val coachId: String = "luna_general"
 )
 
 /**
