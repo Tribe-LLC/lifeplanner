@@ -24,7 +24,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
@@ -42,8 +45,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -51,7 +58,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -74,6 +83,7 @@ import az.tribe.lifeplanner.domain.model.BalanceInsight
 import az.tribe.lifeplanner.domain.model.BalanceRating
 import az.tribe.lifeplanner.domain.model.BalanceRecommendation
 import az.tribe.lifeplanner.domain.model.BalanceTrend
+import az.tribe.lifeplanner.domain.model.CoachPersona
 import az.tribe.lifeplanner.domain.model.InsightPriority
 import az.tribe.lifeplanner.domain.model.LifeArea
 import az.tribe.lifeplanner.domain.model.LifeAreaScore
@@ -87,12 +97,30 @@ import org.koin.compose.viewmodel.koinViewModel
 fun LifeBalanceScreen(
     viewModel: LifeBalanceViewModel = koinViewModel(),
     onNavigateBack: () -> Unit,
-    onCreateGoal: (LifeArea) -> Unit = {},
-    onCreateHabit: (LifeArea) -> Unit = {}
+    onCreateHabit: (LifeArea) -> Unit = {},
+    onNavigateToCoach: (coachId: String, autoMessage: String) -> Unit = { _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Show snackbar when goal is created
+    LaunchedEffect(uiState.goalCreatedFeedback) {
+        uiState.goalCreatedFeedback?.let { feedback ->
+            snackbarHostState.showSnackbar(feedback)
+            viewModel.clearGoalFeedback()
+        }
+    }
 
     Scaffold(
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        },
         topBar = {
             TopAppBar(
                 title = {
@@ -231,7 +259,10 @@ fun LifeBalanceScreen(
                         }
 
                         items(report.aiInsights) { insight ->
-                            InsightCard(insight)
+                            InsightCard(
+                                insight = insight,
+                                onGetAdvice = { viewModel.showCoachSheetForInsight(it) }
+                            )
                         }
                     }
 
@@ -249,13 +280,10 @@ fun LifeBalanceScreen(
                         items(report.recommendations) { recommendation ->
                             RecommendationCard(
                                 recommendation = recommendation,
-                                onAction = {
-                                    when (recommendation.actionType) {
-                                        BalanceRecommendationAction.CREATE_GOAL -> onCreateGoal(recommendation.targetArea)
-                                        BalanceRecommendationAction.CREATE_HABIT -> onCreateHabit(recommendation.targetArea)
-                                        else -> {}
-                                    }
-                                }
+                                isPreGenerating = uiState.isPreGenerating,
+                                isCreated = uiState.createdGoalIds.contains(recommendation.targetArea.name),
+                                onCreateGoal = { viewModel.createGoalFromRecommendation(recommendation) },
+                                onCreateHabit = { onCreateHabit(recommendation.targetArea) }
                             )
                         }
                     }
@@ -269,6 +297,171 @@ fun LifeBalanceScreen(
         }
     }
 
+    // Coach Selection Bottom Sheet
+    if (uiState.showCoachSheet && uiState.selectedInsight != null) {
+        CoachSelectionSheet(
+            insight = uiState.selectedInsight!!,
+            relevantCoaches = uiState.relevantCoaches,
+            onCoachSelected = { coachId ->
+                val message = viewModel.buildInsightMessage(uiState.selectedInsight!!)
+                viewModel.hideCoachSheet()
+                onNavigateToCoach(coachId, message)
+            },
+            onCouncilSelected = {
+                val message = viewModel.buildInsightMessage(uiState.selectedInsight!!)
+                viewModel.hideCoachSheet()
+                onNavigateToCoach(CoachPersona.COUNCIL_ID, message)
+            },
+            onDismiss = { viewModel.hideCoachSheet() }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CoachSelectionSheet(
+    insight: BalanceInsight,
+    relevantCoaches: List<CoachPersona>,
+    onCoachSelected: (String) -> Unit,
+    onCouncilSelected: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState()
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+        ) {
+            Text(
+                "Who should you talk to?",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "About: ${insight.title}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Recommended coaches section
+            Text(
+                "Recommended",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            relevantCoaches.forEach { coach ->
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onCoachSelected(coach.id) },
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.Transparent
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 10.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.primaryContainer,
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(coach.emoji, fontSize = 20.sp)
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                coach.name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                coach.title,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Group Discussion section
+            Text(
+                "Group Discussion",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onCouncilSelected() },
+                shape = RoundedCornerShape(12.dp),
+                color = Color.Transparent
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 10.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(
+                                MaterialTheme.colorScheme.tertiaryContainer,
+                                CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.Groups,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "The Council",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            "All coaches discuss together",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
 }
 
 @Composable
@@ -814,7 +1007,10 @@ private fun StatChip(
 }
 
 @Composable
-private fun InsightCard(insight: BalanceInsight) {
+private fun InsightCard(
+    insight: BalanceInsight,
+    onGetAdvice: (BalanceInsight) -> Unit
+) {
     val priorityColor = when (insight.priority) {
         InsightPriority.HIGH -> Color(0xFFF44336)
         InsightPriority.MEDIUM -> Color(0xFFFFC107)
@@ -828,44 +1024,68 @@ private fun InsightCard(insight: BalanceInsight) {
         ),
         shape = RoundedCornerShape(12.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.Top
+                .padding(16.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(priorityColor)
-            )
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    insight.title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    insight.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(priorityColor)
                 )
 
-                if (insight.relatedAreas.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        insight.relatedAreas.forEach { area ->
-                            Text(
-                                area.icon,
-                                fontSize = 16.sp
-                            )
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        insight.title,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        insight.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    if (insight.relatedAreas.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            insight.relatedAreas.forEach { area ->
+                                Text(
+                                    area.icon,
+                                    fontSize = 16.sp
+                                )
+                            }
                         }
                     }
+                }
+            }
+
+            // Get Advice button
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(
+                    onClick = { onGetAdvice(insight) },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.AutoAwesome,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Get Advice", style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -875,7 +1095,10 @@ private fun InsightCard(insight: BalanceInsight) {
 @Composable
 private fun RecommendationCard(
     recommendation: BalanceRecommendation,
-    onAction: () -> Unit
+    isPreGenerating: Boolean,
+    isCreated: Boolean,
+    onCreateGoal: () -> Unit,
+    onCreateHabit: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -912,61 +1135,239 @@ private fun RecommendationCard(
                 }
             }
 
-            // Suggested action
-            if (recommendation.suggestedGoal != null || recommendation.suggestedHabit != null) {
-                Spacer(modifier = Modifier.height(12.dp))
+            when (recommendation.actionType) {
+                BalanceRecommendationAction.CREATE_GOAL -> {
+                    val goal = recommendation.preGeneratedGoal
 
-                val suggestionText = recommendation.suggestedGoal ?: recommendation.suggestedHabit ?: ""
-                val actionLabel = when (recommendation.actionType) {
-                    BalanceRecommendationAction.CREATE_GOAL -> "Create Goal"
-                    BalanceRecommendationAction.CREATE_HABIT -> "Create Habit"
-                    else -> null
-                }
-
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Info,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            suggestionText,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.weight(1f),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-
-                        if (actionLabel != null) {
-                            TextButton(
-                                onClick = onAction,
-                                contentPadding = PaddingValues(horizontal = 8.dp)
+                    if (goal != null) {
+                        // Show goal preview
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Add,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
+                                Text(
+                                    goal.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(actionLabel, style = MaterialTheme.typography.labelSmall)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    goal.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Milestones count badge
+                                    if (goal.milestones.isNotEmpty()) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    Icons.Rounded.Flag,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(12.dp),
+                                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                                )
+                                                Spacer(modifier = Modifier.width(2.dp))
+                                                Text(
+                                                    "${goal.milestones.size} milestones",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // Timeline badge
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = MaterialTheme.colorScheme.tertiaryContainer
+                                    ) {
+                                        Text(
+                                            when (goal.timeline) {
+                                                az.tribe.lifeplanner.domain.enum.GoalTimeline.SHORT_TERM -> "30 days"
+                                                az.tribe.lifeplanner.domain.enum.GoalTimeline.MID_TERM -> "90 days"
+                                                az.tribe.lifeplanner.domain.enum.GoalTimeline.LONG_TERM -> "1 year"
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Add to My Goals button
+                        Button(
+                            onClick = onCreateGoal,
+                            enabled = !isCreated,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = if (isCreated) {
+                                ButtonDefaults.buttonColors(
+                                    disabledContainerColor = Color(0xFF4CAF50).copy(alpha = 0.12f),
+                                    disabledContentColor = Color(0xFF4CAF50)
+                                )
+                            } else {
+                                ButtonDefaults.buttonColors()
+                            },
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            if (isCreated) {
+                                Icon(
+                                    Icons.Rounded.Check,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Added")
+                            } else {
+                                Icon(
+                                    Icons.Rounded.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Add to My Goals")
+                            }
+                        }
+                    } else if (isPreGenerating) {
+                        // Shimmer/loading state
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    "Generating smart goal...",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    } else {
+                        // Fallback: show suggestion text with old-style button
+                        if (recommendation.suggestedGoal != null) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surface
+                                ),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Info,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        recommendation.suggestedGoal,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier.weight(1f),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                     }
                 }
+
+                BalanceRecommendationAction.CREATE_HABIT -> {
+                    if (recommendation.suggestedHabit != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    recommendation.suggestedHabit,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                TextButton(
+                                    onClick = onCreateHabit,
+                                    contentPadding = PaddingValues(horizontal = 8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Add,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Create Habit", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                else -> {} // INCREASE_FOCUS, REDUCE_FOCUS, MAINTAIN_CURRENT - no action button
             }
         }
     }

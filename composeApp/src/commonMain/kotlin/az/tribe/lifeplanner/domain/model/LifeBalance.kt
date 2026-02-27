@@ -1,5 +1,6 @@
 package az.tribe.lifeplanner.domain.model
 
+import az.tribe.lifeplanner.domain.enum.GoalCategory
 import kotlinx.datetime.LocalDateTime
 
 /**
@@ -90,7 +91,8 @@ data class BalanceRecommendation(
     val targetArea: LifeArea,
     val actionType: BalanceRecommendationAction,
     val suggestedGoal: String? = null,
-    val suggestedHabit: String? = null
+    val suggestedHabit: String? = null,
+    val preGeneratedGoal: Goal? = null
 )
 
 enum class BalanceRecommendationAction {
@@ -110,3 +112,19 @@ data class ManualAssessment(
     val notes: String? = null,
     val assessedAt: LocalDateTime
 )
+
+/**
+ * Maps LifeArea to GoalCategory. PERSONAL_GROWTH maps to CAREER as fallback.
+ */
+fun LifeArea.toGoalCategory(): GoalCategory {
+    return when (this) {
+        LifeArea.CAREER -> GoalCategory.CAREER
+        LifeArea.FINANCIAL -> GoalCategory.FINANCIAL
+        LifeArea.PHYSICAL -> GoalCategory.PHYSICAL
+        LifeArea.SOCIAL -> GoalCategory.SOCIAL
+        LifeArea.EMOTIONAL -> GoalCategory.EMOTIONAL
+        LifeArea.SPIRITUAL -> GoalCategory.SPIRITUAL
+        LifeArea.FAMILY -> GoalCategory.FAMILY
+        LifeArea.PERSONAL_GROWTH -> GoalCategory.CAREER
+    }
+}

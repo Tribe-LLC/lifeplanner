@@ -114,12 +114,32 @@ class GamificationRepositoryImpl(
         return database.getUserProgressEntity()!!.toDomain()
     }
 
+    override suspend fun deductXp(amount: Int): UserProgress {
+        val current = database.getUserProgressEntity()
+            ?: run {
+                initializeProgress()
+                database.getUserProgressEntity()!!
+            }
+
+        val newTotalXp = (current.totalXp - amount).coerceAtLeast(0)
+        val newLevel = UserProgress.calculateLevelFromXp(newTotalXp.toInt())
+
+        database.updateUserXp(newTotalXp, newLevel.toLong())
+
+        notifyWidgets()
+        return database.getUserProgressEntity()!!.toDomain()
+    }
+
     override suspend fun incrementGoalsCompleted() {
         database.incrementGoalsCompleted()
     }
 
     override suspend fun incrementHabitsCompleted() {
         database.incrementHabitsCompleted()
+    }
+
+    override suspend fun decrementHabitsCompleted() {
+        database.decrementHabitsCompleted()
     }
 
     override suspend fun incrementJournalEntries() {

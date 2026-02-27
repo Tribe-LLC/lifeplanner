@@ -13,8 +13,10 @@ interface GamificationRepository {
     suspend fun getUserProgress(): Flow<UserProgress>
     suspend fun updateDailyStreak(): Flow<Int>
     suspend fun addXp(amount: Int): UserProgress
+    suspend fun deductXp(amount: Int): UserProgress
     suspend fun incrementGoalsCompleted()
     suspend fun incrementHabitsCompleted()
+    suspend fun decrementHabitsCompleted()
     suspend fun incrementJournalEntries()
 
     // Badges

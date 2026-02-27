@@ -91,10 +91,13 @@ import az.tribe.lifeplanner.domain.model.MessageRole
 import az.tribe.lifeplanner.data.repository.ChatRepositoryImpl
 import az.tribe.lifeplanner.domain.model.CoachGroup
 import az.tribe.lifeplanner.domain.model.CustomCoach
+import az.tribe.lifeplanner.ui.balance.InsightMessageHolder
 import az.tribe.lifeplanner.ui.chat.ChatViewModel
 import az.tribe.lifeplanner.ui.components.CoachListContent
 import az.tribe.lifeplanner.ui.components.CoachListContentExtended
 import az.tribe.lifeplanner.ui.components.CoachSuggestionButtons
+import az.tribe.lifeplanner.ui.components.OfflineBanner
+import az.tribe.lifeplanner.util.NetworkConnectivityObserver
 import kotlinx.datetime.LocalDateTime
 import org.koin.compose.koinInject
 
@@ -110,6 +113,9 @@ fun AIChatScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val connectivityObserver: NetworkConnectivityObserver = koinInject()
+    val isConnected by connectivityObserver.isConnected.collectAsState()
+    val isOffline = !isConnected
 
     LaunchedEffect(Unit) {
         viewModel.loadSessions()
@@ -120,6 +126,17 @@ fun AIChatScreen(
     LaunchedEffect(coachId) {
         if (coachId != null) {
             viewModel.selectCoachById(coachId)
+        }
+    }
+
+    // Auto-send pending insight message from Life Balance screen (skip when offline)
+    LaunchedEffect(uiState.showSessionList, uiState.isLoading, isOffline) {
+        if (!isOffline && !uiState.showSessionList && !uiState.isLoading && uiState.messages.isEmpty()) {
+            val pending = InsightMessageHolder.pendingMessage
+            if (pending != null) {
+                InsightMessageHolder.pendingMessage = null
+                viewModel.sendMessage(pending)
+            }
         }
     }
 
@@ -275,7 +292,8 @@ fun AIChatScreen(
                     onSendMessage = { viewModel.sendMessage(it) },
                     onExecuteSuggestion = { viewModel.executeCoachSuggestion(it) },
                     executedSuggestionIds = uiState.executedSuggestionIds,
-                    isCouncilMode = uiState.isCouncilMode
+                    isCouncilMode = uiState.isCouncilMode,
+                    isOffline = isOffline
                 )
             }
 
@@ -305,7 +323,8 @@ fun ChatContent(
     executedSuggestionIds: Set<String> = emptySet(),
     goals: List<Goal> = emptyList(),
     habits: List<Habit> = emptyList(),
-    isCouncilMode: Boolean = false
+    isCouncilMode: Boolean = false,
+    isOffline: Boolean = false
 ) {
     val listState = rememberLazyListState()
     var inputText by remember { mutableStateOf("") }
@@ -465,6 +484,9 @@ fun ChatContent(
             }
         }
 
+        // Offline banner above input
+        OfflineBanner(isOffline = isOffline)
+
         // Input field
         ChatInputField(
             value = inputText,
@@ -488,6 +510,7 @@ fun ChatContent(
                 }
             },
             isSending = isSending,
+            isOffline = isOffline,
             attachedGoal = attachedGoal,
             attachedHabit = attachedHabit,
             onAttachClick = { showAttachmentSheet = true },
@@ -1041,11 +1064,13 @@ fun ChatInputField(
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
     isSending: Boolean,
+    isOffline: Boolean = false,
     attachedGoal: Goal? = null,
     attachedHabit: Habit? = null,
     onAttachClick: () -> Unit = {},
     onClearAttachment: () -> Unit = {}
 ) {
+    val isDisabled = isSending || isOffline
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
@@ -1074,7 +1099,7 @@ fun ChatInputField(
                 // Attachment button
                 IconButton(
                     onClick = onAttachClick,
-                    enabled = !isSending,
+                    enabled = !isDisabled,
                     modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
@@ -1090,7 +1115,8 @@ fun ChatInputField(
                     modifier = Modifier.weight(1f),
                     placeholder = {
                         Text(
-                            if (attachedGoal != null) "Ask about this goal..."
+                            if (isOffline) "You're offline"
+                            else if (attachedGoal != null) "Ask about this goal..."
                             else if (attachedHabit != null) "Ask about this habit..."
                             else "Message Luna...",
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
@@ -1102,18 +1128,18 @@ fun ChatInputField(
                         unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
                     ),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { onSend() }),
+                    keyboardActions = KeyboardActions(onSend = { if (!isDisabled) onSend() }),
                     maxLines = 4,
-                    enabled = !isSending
+                    enabled = !isDisabled
                 )
 
                 IconButton(
                     onClick = onSend,
-                    enabled = value.isNotBlank() && !isSending,
+                    enabled = value.isNotBlank() && !isDisabled,
                     modifier = Modifier
                         .size(48.dp)
                         .background(
-                            if (value.isNotBlank() && !isSending) {
+                            if (value.isNotBlank() && !isDisabled) {
                                 MaterialTheme.colorScheme.primary
                             } else {
                                 MaterialTheme.colorScheme.surfaceVariant

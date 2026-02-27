@@ -57,7 +57,10 @@ class HabitViewModel(
     val error: StateFlow<String?> = _error.asStateFlow()
 
     val habits: StateFlow<List<HabitWithStatus>> = habitRepository.observeHabitsWithTodayStatus()
-        .map { pairs -> pairs.map { (habit, isCompleted) -> HabitWithStatus(habit, isCompleted) } }
+        .map { pairs ->
+            pairs.map { (habit, isCompleted) -> HabitWithStatus(habit, isCompleted) }
+                .sortedWith(compareBy<HabitWithStatus> { it.isCompletedToday }.thenByDescending { it.habit.currentStreak })
+        }
         .onEach { _isLoading.value = false }
         .catch { e ->
             _error.value = "Failed to load habits: ${e.message}"
@@ -147,8 +150,19 @@ class HabitViewModel(
     fun uncheckInHabit(habitId: String) {
         viewModelScope.launch {
             try {
+                // Read habit before uncheck to get streak for XP calculation
+                val habit = habitRepository.getHabitById(habitId)
+                val streakDays = habit?.currentStreak ?: 0
+
                 val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
-                uncheckHabitUseCase(habitId, today)
+                val wasUnchecked = uncheckHabitUseCase(habitId, today)
+
+                if (wasUnchecked) {
+                    // Deduct the same XP that was awarded on check-in
+                    val xp = XpRewards.HABIT_CHECK_IN + (XpRewards.HABIT_STREAK_BONUS * streakDays)
+                    gamificationRepository.decrementHabitsCompleted()
+                    gamificationRepository.deductXp(xp)
+                }
             } catch (e: Exception) {
                 _error.value = "Failed to uncheck: ${e.message}"
             }
@@ -209,4 +223,5 @@ class HabitViewModel(
     fun getStreakLeader(): Habit? {
         return habits.value.maxByOrNull { it.habit.currentStreak }?.habit
     }
+
 }

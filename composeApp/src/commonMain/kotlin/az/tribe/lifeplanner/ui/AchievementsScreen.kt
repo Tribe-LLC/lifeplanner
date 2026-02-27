@@ -37,6 +37,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -47,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
@@ -249,10 +253,22 @@ private fun BadgeDetailBottomSheet(
                 }
             }
 
-            // Badge Icon
+            // Badge Icon with spring bounce entrance
+            val badgeScale = remember { Animatable(0f) }
+            LaunchedEffect(Unit) {
+                badgeScale.animateTo(
+                    1f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessLow
+                    )
+                )
+            }
+
             Box(
                 modifier = Modifier
                     .size(80.dp)
+                    .scale(badgeScale.value)
                     .clip(CircleShape)
                     .background(
                         if (isEarned) Color(badgeType.color)

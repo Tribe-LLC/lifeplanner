@@ -7,6 +7,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -32,7 +34,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.domain.model.DayOfWeek
 import az.tribe.lifeplanner.domain.model.Reminder
@@ -446,6 +451,7 @@ private fun AddReminderDialog(
     onDismiss: () -> Unit,
     onConfirm: (String, String, ReminderType, ReminderFrequency, LocalTime, List<DayOfWeek>, Boolean) -> Unit
 ) {
+    val focusManager = LocalFocusManager.current
     var title by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
     var selectedType by remember { mutableStateOf(ReminderType.GOAL_CHECK_IN) }
@@ -467,7 +473,8 @@ private fun AddReminderDialog(
                     onValueChange = { title = it },
                     label = { Text("Title") },
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
                 )
 
                 OutlinedTextField(
@@ -475,7 +482,9 @@ private fun AddReminderDialog(
                     onValueChange = { message = it },
                     label = { Text("Message") },
                     modifier = Modifier.fillMaxWidth(),
-                    maxLines = 2
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
                 )
 
                 // Time picker (simplified)
@@ -492,7 +501,8 @@ private fun AddReminderDialog(
                         },
                         label = { Text("Hour") },
                         modifier = Modifier.weight(1f),
-                        singleLine = true
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next)
                     )
                     OutlinedTextField(
                         value = minute.toString().padStart(2, '0'),
@@ -503,7 +513,9 @@ private fun AddReminderDialog(
                         },
                         label = { Text("Minute") },
                         modifier = Modifier.weight(1f),
-                        singleLine = true
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
                     )
                 }
 

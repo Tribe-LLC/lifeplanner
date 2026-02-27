@@ -8,6 +8,8 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,6 +31,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.domain.enum.GoalCategory
@@ -53,6 +57,7 @@ fun AddGoalScreen(
     onGoalSaved: () -> Unit,
     onBackClick: () -> Unit
 ) {
+    val focusManager = LocalFocusManager.current
     var title by remember { mutableStateOf(TextFieldValue("")) }
     var description by remember { mutableStateOf(TextFieldValue("")) }
     var notes by remember { mutableStateOf(TextFieldValue("")) }
@@ -182,6 +187,9 @@ fun AddGoalScreen(
                     label = { Text("Title") },
                     placeholder = { Text("Enter goal title") },
                     modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                     shape = RoundedCornerShape(12.dp),
                 )
             }

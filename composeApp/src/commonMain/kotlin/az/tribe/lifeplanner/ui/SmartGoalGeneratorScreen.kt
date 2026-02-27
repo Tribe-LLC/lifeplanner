@@ -32,8 +32,10 @@ import androidx.compose.ui.unit.sp
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.ui.theme.modernColors
+import az.tribe.lifeplanner.util.NetworkConnectivityObserver
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
 
 // Life scenarios for quick selection
 data class LifeScenario(
@@ -120,6 +122,9 @@ fun SmartGoalGeneratorScreen(
     var selectedCategories by remember { mutableStateOf<Set<GoalCategory>>(emptySet()) }
     var answers by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var hasStartedGeneration by remember { mutableStateOf(false) }
+    val connectivityObserver: NetworkConnectivityObserver = koinInject()
+    val isConnected by connectivityObserver.isConnected.collectAsState()
+    val isOffline = !isConnected
 
     val generatedGoals by viewModel.generatedGoalsFromAI.collectAsState()
     val isLoading by viewModel.isLoadingQuestions.collectAsState()
@@ -224,6 +229,7 @@ fun SmartGoalGeneratorScreen(
 
                 GeneratorStep.CATEGORIES -> CategorySelectStep(
                     selectedCategories = selectedCategories,
+                    isOffline = isOffline,
                     onCategoryToggle = { category ->
                         selectedCategories = if (selectedCategories.contains(category)) {
                             selectedCategories - category
@@ -714,6 +720,7 @@ private fun CustomInputStep(
 @Composable
 private fun CategorySelectStep(
     selectedCategories: Set<GoalCategory>,
+    isOffline: Boolean = false,
     onCategoryToggle: (GoalCategory) -> Unit,
     onGenerate: () -> Unit
 ) {
@@ -760,13 +767,23 @@ private fun CategorySelectStep(
             }
         }
 
+        if (isOffline) {
+            Text(
+                text = "Goal generation requires internet",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
         Button(
             onClick = onGenerate,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
             shape = RoundedCornerShape(16.dp),
-            enabled = selectedCategories.isNotEmpty()
+            enabled = selectedCategories.isNotEmpty() && !isOffline
         ) {
             Icon(Icons.Rounded.AutoAwesome, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))

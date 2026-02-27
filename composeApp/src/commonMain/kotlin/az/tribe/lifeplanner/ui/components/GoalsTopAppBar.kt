@@ -5,8 +5,11 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -20,6 +23,8 @@ import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -41,8 +46,10 @@ fun GoalsTopAppBar(
     searchQuery: TextFieldValue,
     onSearchQueryChange: (TextFieldValue) -> Unit,
     onSearchToggle: (Boolean) -> Unit,
+    onBack: (() -> Unit)? = null,
     scrollBehavior: TopAppBarScrollBehavior? = null
 ) {
+    val focusManager = LocalFocusManager.current
     val animatedColor by animateColorAsState(
         targetValue = dynamicColor,
         animationSpec = tween(durationMillis = 300),
@@ -58,6 +65,8 @@ fun GoalsTopAppBar(
                     onValueChange = onSearchQueryChange,
                     placeholder = { Text("Search goals...") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(24.dp)),
@@ -85,9 +94,19 @@ fun GoalsTopAppBar(
                 )
             }
         },
+        navigationIcon = {
+            if (onBack != null && !showSearchBar) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        Icons.AutoMirrored.Rounded.ArrowBack,
+                        contentDescription = "Back",
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        },
         actions = {
             if (!showSearchBar) {
-                // Search button only
                 IconButton(onClick = { onSearchToggle(true) }) {
                     Icon(
                         Icons.Rounded.Search,

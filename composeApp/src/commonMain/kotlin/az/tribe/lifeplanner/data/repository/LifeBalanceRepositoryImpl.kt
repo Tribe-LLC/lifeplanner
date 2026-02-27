@@ -2,10 +2,13 @@ package az.tribe.lifeplanner.data.repository
 
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.GoalStatus
+import az.tribe.lifeplanner.domain.enum.GoalTimeline
 import az.tribe.lifeplanner.domain.model.BalanceInsight
 import az.tribe.lifeplanner.domain.model.BalanceRating
 import az.tribe.lifeplanner.domain.model.BalanceRecommendation
 import az.tribe.lifeplanner.domain.model.BalanceTrend
+import az.tribe.lifeplanner.domain.model.Goal
+import az.tribe.lifeplanner.domain.model.Milestone
 import az.tribe.lifeplanner.domain.model.InsightPriority
 import az.tribe.lifeplanner.domain.model.LifeArea
 import az.tribe.lifeplanner.domain.model.LifeAreaScore
@@ -24,7 +27,9 @@ import io.ktor.http.contentType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.datetime.Clock
+import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -491,4 +496,224 @@ class LifeBalanceRepositoryImpl(
             LifeArea.PERSONAL_GROWTH -> "Read for 20 minutes before bed"
         }
     }
+
+    override suspend fun preGenerateGoalsForRecommendations(
+        recommendations: List<BalanceRecommendation>,
+        areaScores: List<LifeAreaScore>
+    ): List<BalanceRecommendation> {
+        val goalRecs = recommendations.filter { it.actionType == BalanceRecommendationAction.CREATE_GOAL }
+        if (goalRecs.isEmpty()) return recommendations
+
+        return try {
+            val goalsJson = generateGoalsViaAI(goalRecs, areaScores)
+            val parsedGoals = parsePreGeneratedGoals(goalsJson)
+
+            recommendations.map { rec ->
+                if (rec.actionType == BalanceRecommendationAction.CREATE_GOAL) {
+                    val matchedGoal = parsedGoals[rec.targetArea.name]
+                    rec.copy(preGeneratedGoal = matchedGoal ?: buildFallbackGoal(rec))
+                } else rec
+            }
+        } catch (e: Exception) {
+            // Fallback: build basic goals from recommendation fields
+            recommendations.map { rec ->
+                if (rec.actionType == BalanceRecommendationAction.CREATE_GOAL) {
+                    rec.copy(preGeneratedGoal = buildFallbackGoal(rec))
+                } else rec
+            }
+        }
+    }
+
+    private suspend fun generateGoalsViaAI(
+        goalRecs: List<BalanceRecommendation>,
+        areaScores: List<LifeAreaScore>
+    ): String {
+        val recsText = goalRecs.joinToString("\n") { rec ->
+            val score = areaScores.find { it.area == rec.targetArea }?.score ?: 0
+            "- Area: ${rec.targetArea.name}, Score: $score/100, Suggestion: ${rec.suggestedGoal ?: rec.title}"
+        }
+
+        val prompt = """
+            Generate SMART goals for these life balance recommendations. For each area, create a specific, actionable goal.
+
+            Recommendations:
+            $recsText
+
+            Respond in this exact JSON format (no markdown, no code blocks):
+            {
+                "goals": [
+                    {
+                        "area": "CAREER",
+                        "title": "Specific goal title",
+                        "description": "2-3 sentence description of the goal",
+                        "timeline": "SHORT_TERM",
+                        "milestones": ["Week 1: milestone", "Week 2: milestone", "Week 3: milestone"]
+                    }
+                ]
+            }
+
+            Rules:
+            - timeline must be SHORT_TERM (30 days), MID_TERM (90 days), or LONG_TERM (365 days)
+            - Generate 3-4 milestones per goal
+            - Make goals specific and measurable
+            - area must match exactly: ${goalRecs.joinToString(", ") { it.targetArea.name }}
+        """.trimIndent().replace("\"", "\\\"").replace("\n", "\\n")
+
+        val response = httpClient.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent") {
+            contentType(ContentType.Application.Json)
+            setBody("""
+                {
+                    "contents": [{"parts": [{"text": "$prompt"}]}],
+                    "generationConfig": {
+                        "temperature": 0.7,
+                        "maxOutputTokens": 1024
+                    }
+                }
+            """.trimIndent())
+        }
+
+        return response.body<String>()
+    }
+
+    private fun parsePreGeneratedGoals(responseJson: String): Map<String, Goal> {
+        val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+        val result = mutableMapOf<String, Goal>()
+
+        try {
+            // Extract text content from Gemini response
+            val textContent = extractGeminiText(responseJson)
+
+            // Parse the goals JSON
+            val goalsData = Json { ignoreUnknownKeys = true }.decodeFromString<PreGeneratedGoalsResponse>(textContent)
+
+            for (goalData in goalsData.goals) {
+                val area = try { LifeArea.valueOf(goalData.area) } catch (_: Exception) { continue }
+                val category = area.toGoalCategory() ?: GoalCategory.CAREER
+                val timeline = when (goalData.timeline) {
+                    "SHORT_TERM" -> GoalTimeline.SHORT_TERM
+                    "MID_TERM" -> GoalTimeline.MID_TERM
+                    "LONG_TERM" -> GoalTimeline.LONG_TERM
+                    else -> GoalTimeline.SHORT_TERM
+                }
+                val daysToAdd = when (timeline) {
+                    GoalTimeline.SHORT_TERM -> 30
+                    GoalTimeline.MID_TERM -> 90
+                    GoalTimeline.LONG_TERM -> 365
+                }
+                val dueDate = now.date.plus(daysToAdd.toLong(), DateTimeUnit.DAY)
+                val milestones = goalData.milestones.mapIndexed { index, title ->
+                    val weekOffset = ((index + 1) * (daysToAdd / (goalData.milestones.size + 1))).toLong()
+                    Milestone(
+                        id = Uuid.random().toString(),
+                        title = title,
+                        isCompleted = false,
+                        dueDate = now.date.plus(weekOffset, DateTimeUnit.DAY)
+                    )
+                }
+
+                result[goalData.area] = Goal(
+                    id = Uuid.random().toString(),
+                    category = category,
+                    title = goalData.title,
+                    description = goalData.description,
+                    status = GoalStatus.NOT_STARTED,
+                    timeline = timeline,
+                    dueDate = dueDate,
+                    progress = 0,
+                    milestones = milestones,
+                    createdAt = now
+                )
+            }
+        } catch (_: Exception) {
+            // Return empty map — caller will use fallback
+        }
+
+        return result
+    }
+
+    private fun extractGeminiText(responseJson: String): String {
+        // Extract the text field from Gemini's response structure
+        val json = Json { ignoreUnknownKeys = true }
+        val geminiResponse = json.decodeFromString<GeminiContentResponse>(responseJson)
+        val rawText = geminiResponse.candidates.firstOrNull()
+            ?.content?.parts?.firstOrNull()?.text ?: ""
+        // Strip markdown code block wrappers if present
+        return rawText
+            .removePrefix("```json")
+            .removePrefix("```")
+            .removeSuffix("```")
+            .trim()
+    }
+
+    private fun buildFallbackGoal(rec: BalanceRecommendation): Goal {
+        val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+        val category = rec.targetArea.toGoalCategory() ?: GoalCategory.CAREER
+        val dueDate = now.date.plus(30, DateTimeUnit.DAY)
+
+        return Goal(
+            id = Uuid.random().toString(),
+            category = category,
+            title = rec.suggestedGoal ?: "Improve ${rec.targetArea.displayName}",
+            description = rec.description,
+            status = GoalStatus.NOT_STARTED,
+            timeline = GoalTimeline.SHORT_TERM,
+            dueDate = dueDate,
+            progress = 0,
+            milestones = listOf(
+                Milestone(
+                    id = Uuid.random().toString(),
+                    title = "Get started with ${rec.targetArea.displayName.lowercase()} activities",
+                    isCompleted = false,
+                    dueDate = now.date.plus(7, DateTimeUnit.DAY)
+                ),
+                Milestone(
+                    id = Uuid.random().toString(),
+                    title = "Build consistent momentum",
+                    isCompleted = false,
+                    dueDate = now.date.plus(14, DateTimeUnit.DAY)
+                ),
+                Milestone(
+                    id = Uuid.random().toString(),
+                    title = "Review progress and adjust",
+                    isCompleted = false,
+                    dueDate = now.date.plus(21, DateTimeUnit.DAY)
+                )
+            ),
+            createdAt = now
+        )
+    }
 }
+
+@Serializable
+private data class PreGeneratedGoalsResponse(
+    val goals: List<PreGeneratedGoalData> = emptyList()
+)
+
+@Serializable
+private data class PreGeneratedGoalData(
+    val area: String = "",
+    val title: String = "",
+    val description: String = "",
+    val timeline: String = "SHORT_TERM",
+    val milestones: List<String> = emptyList()
+)
+
+@Serializable
+private data class GeminiContentResponse(
+    val candidates: List<GeminiCandidate> = emptyList()
+)
+
+@Serializable
+private data class GeminiCandidate(
+    val content: GeminiContent? = null
+)
+
+@Serializable
+private data class GeminiContent(
+    val parts: List<GeminiPart> = emptyList()
+)
+
+@Serializable
+private data class GeminiPart(
+    val text: String = ""
+)

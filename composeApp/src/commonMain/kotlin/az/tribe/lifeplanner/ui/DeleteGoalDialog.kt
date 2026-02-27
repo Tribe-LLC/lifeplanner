@@ -2,6 +2,7 @@ package az.tribe.lifeplanner.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEvents
@@ -12,6 +13,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
@@ -200,6 +203,7 @@ fun UpdateProgressDialog(
     onConfirm: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val focusManager = LocalFocusManager.current
     var progressText by remember { mutableStateOf(currentProgress.toString()) }
     var sliderValue by remember { mutableStateOf(currentProgress.toFloat()) }
 
@@ -253,8 +257,10 @@ fun UpdateProgressDialog(
                         }
                     },
                     label = { Text("Progress %") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                     modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
                     suffix = { Text("%") }
                 )
             }
@@ -350,6 +356,7 @@ fun AddMilestoneDialog(
     onAdd: (String, LocalDate?) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val focusManager = LocalFocusManager.current
     var titleText by remember { mutableStateOf(TextFieldValue("")) }
     var dueDateText by remember { mutableStateOf("") }
     var hasDueDate by remember { mutableStateOf(false) }
@@ -378,6 +385,9 @@ fun AddMilestoneDialog(
                     onValueChange = { titleText = it },
                     label = { Text("Milestone title *") },
                     modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                     isError = titleText.text.isBlank()
                 )
 
@@ -402,6 +412,9 @@ fun AddMilestoneDialog(
                         onValueChange = { dueDateText = it },
                         label = { Text("Due date (yyyy-mm-dd)") },
                         modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                         placeholder = { Text("2025-12-31") }
                     )
                 }

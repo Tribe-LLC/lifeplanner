@@ -34,6 +34,7 @@ import az.tribe.lifeplanner.domain.repository.ReminderRepository
 import az.tribe.lifeplanner.domain.repository.ReviewRepository
 import az.tribe.lifeplanner.domain.repository.UserRepository
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
+import az.tribe.lifeplanner.util.NetworkConnectivityObserver
 import az.tribe.lifeplanner.widget.WidgetDataSyncService
 import az.tribe.lifeplanner.ui.GoalViewModel
 import az.tribe.lifeplanner.ui.chat.ChatViewModel
@@ -113,6 +114,7 @@ val appModule = module {
     single { Settings() }
     single<FileSharer> { createFileSharer() }
     single { WidgetDataSyncService() }
+    single { NetworkConnectivityObserver() }
 
     // Firebase Token Provider (platform-specific)
     single<FirebaseTokenProvider> { createFirebaseTokenProvider() }

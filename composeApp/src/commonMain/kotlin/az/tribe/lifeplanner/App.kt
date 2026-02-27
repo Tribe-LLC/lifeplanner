@@ -64,6 +64,7 @@ import az.tribe.lifeplanner.ui.navigation.Screen
 import org.koin.compose.viewmodel.koinViewModel
 import az.tribe.lifeplanner.ui.theme.LifePlannerTheme
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
+import az.tribe.lifeplanner.util.NetworkConnectivityObserver
 import az.tribe.lifeplanner.widget.WidgetDataSyncService
 import az.tribe.lifeplanner.widget.WidgetDashboardData
 import az.tribe.lifeplanner.widget.WidgetHabitData
@@ -100,6 +101,12 @@ fun App(
             })
             myPushNotificationToken = NotifierManager.getPushNotifier().getToken() ?: ""
             println("Firebase Token: $myPushNotificationToken")
+        }
+
+        // Start network connectivity observation
+        val connectivityObserver: NetworkConnectivityObserver = koinInject()
+        LaunchedEffect(Unit) {
+            connectivityObserver.observe().collect { /* keeps StateFlow primed */ }
         }
 
         // Sync widget data on every app resume (processes pending widget check-ins)
@@ -301,7 +308,8 @@ fun App(
                         navController.navigate("add_goal_from_template/$templateId") {
                             launchSingleTop = true
                         }
-                    }
+                    },
+                    onBack = { navController.popBackStack() }
                 )
             }
 

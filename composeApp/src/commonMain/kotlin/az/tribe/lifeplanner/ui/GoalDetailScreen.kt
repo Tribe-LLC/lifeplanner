@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,7 +22,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.automirrored.rounded.Notes
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.rounded.Add
@@ -37,12 +37,11 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -69,7 +68,8 @@ import az.tribe.lifeplanner.domain.repository.JournalRepository
 import az.tribe.lifeplanner.ui.components.AddDependencyBottomSheet
 import az.tribe.lifeplanner.ui.components.DependenciesCard
 import az.tribe.lifeplanner.ui.components.GlassCard
-import az.tribe.lifeplanner.ui.components.GoalDetailActionSheet
+import az.tribe.lifeplanner.ui.components.CelebrationOverlay
+import az.tribe.lifeplanner.ui.components.CelebrationType
 import az.tribe.lifeplanner.ui.components.GoalDetailDialogs
 import az.tribe.lifeplanner.ui.components.GoalDetailHeroHeader
 import az.tribe.lifeplanner.ui.components.StatusToggleButtons
@@ -109,9 +109,9 @@ fun GoalDetailScreen(
     var showAddMilestoneDialog by remember { mutableStateOf(false) }
     var showCompleteConfirmDialog by remember { mutableStateOf(false) }
     var showAllMilestonesCompletedDialog by remember { mutableStateOf(false) }
+    var showGoalCelebration by remember { mutableStateOf(false) }
     var showHistoryModal by remember { mutableStateOf(false) }
     var showAddDependencySheet by remember { mutableStateOf(false) }
-    var showActionSheet by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
@@ -224,24 +224,6 @@ fun GoalDetailScreen(
                 )
             )
         },
-        floatingActionButton = {
-            // Simple FAB that opens action sheet
-            FloatingActionButton(
-                onClick = { showActionSheet = true },
-                containerColor = primaryColor,
-                contentColor = Color.White,
-                shape = CircleShape,
-                elevation = FloatingActionButtonDefaults.elevation(
-                    defaultElevation = 6.dp,
-                    pressedElevation = 8.dp
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Add,
-                    contentDescription = "Actions"
-                )
-            }
-        },
         containerColor = goal.category.gradientColors().first(),
     ) { innerPadding ->
         LazyColumn(
@@ -331,17 +313,6 @@ fun GoalDetailScreen(
         }
     }
 
-    // Action Sheet
-    GoalDetailActionSheet(
-        isVisible = showActionSheet,
-        goal = goal,
-        onDismiss = { showActionSheet = false },
-        onEditClick = onEditClick,
-        onAddMilestoneClick = { showAddMilestoneDialog = true },
-        onHistoryClick = { showHistoryModal = true },
-        onDeleteClick = { showDeleteDialog = true }
-    )
-
     // Add Dependency Bottom Sheet
     AddDependencyBottomSheet(
         isVisible = showAddDependencySheet,
@@ -374,9 +345,23 @@ fun GoalDetailScreen(
         onDismissDelete = { showDeleteDialog = false },
         onDismissNotes = { showNotesDialog = false },
         onDismissAddMilestone = { showAddMilestoneDialog = false },
-        onDismissComplete = { showCompleteConfirmDialog = false },
-        onDismissAllMilestonesCompleted = { showAllMilestonesCompletedDialog = false },
+        onDismissComplete = {
+            showCompleteConfirmDialog = false
+            showGoalCelebration = true
+        },
+        onDismissAllMilestonesCompleted = {
+            showAllMilestonesCompletedDialog = false
+            showGoalCelebration = true
+        },
         onBackClick = onBackClick
+    )
+
+    // Celebration Overlay
+    CelebrationOverlay(
+        type = CelebrationType.GOAL_COMPLETED,
+        isVisible = showGoalCelebration,
+        message = "Goal Complete!",
+        onDismiss = { showGoalCelebration = false }
     )
 }
 
@@ -745,23 +730,51 @@ private fun ReflectionsCard(
             }
 
             if (entries.isEmpty()) {
-                Column(
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                        .clickable { onAddReflection() },
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
                 ) {
-                    Text(
-                        text = "No reflections yet",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "Document your journey on this goal",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "\uD83D\uDCDD",
+                            style = MaterialTheme.typography.headlineMedium
+                        )
+                        Text(
+                            text = "Your story starts here",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Capture thoughts, wins, and lessons as you go",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.primary
+                        ) {
+                            Text(
+                                text = "Write First Reflection",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
                 }
             } else {
                 entries.take(3).forEach { entry ->

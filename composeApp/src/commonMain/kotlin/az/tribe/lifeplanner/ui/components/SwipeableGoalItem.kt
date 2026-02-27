@@ -4,13 +4,8 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListState
@@ -40,15 +35,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.model.Goal
+import kotlinx.coroutines.delay
 
 /**
  * Swipeable wrapper for GoalItem with complete and delete actions
  *
- * - Swipe right (start-to-end): Complete the goal
+ * - Swipe right (start-to-end): Complete the goal (with confetti celebration)
  * - Swipe left (end-to-start): Delete the goal (with confirmation)
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,6 +57,7 @@ fun SwipeableGoalItem(
     modifier: Modifier = Modifier
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showCelebration by remember { mutableStateOf(false) }
     val haptic = rememberHapticManager()
 
     // Don't show complete action for already completed goals
@@ -71,10 +67,10 @@ fun SwipeableGoalItem(
         confirmValueChange = { dismissValue ->
             when (dismissValue) {
                 SwipeToDismissBoxValue.StartToEnd -> {
-                    // Complete action
+                    // Complete action — show celebration first, then complete
                     if (!isCompleted) {
                         haptic.strongSuccess()
-                        onComplete()
+                        showCelebration = true
                     }
                     false // Don't dismiss, just trigger action
                 }
@@ -90,6 +86,15 @@ fun SwipeableGoalItem(
         positionalThreshold = { totalDistance -> totalDistance * 0.25f }
     )
 
+    // Delayed completion after celebration
+    LaunchedEffect(showCelebration) {
+        if (showCelebration) {
+            delay(1200)
+            onComplete()
+            showCelebration = false
+        }
+    }
+
     // Reset state after action
     LaunchedEffect(dismissState.currentValue) {
         if (dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
@@ -97,23 +102,34 @@ fun SwipeableGoalItem(
         }
     }
 
-    SwipeToDismissBox(
-        state = dismissState,
-        modifier = modifier,
-        backgroundContent = {
-            SwipeBackground(
-                dismissDirection = dismissState.dismissDirection,
-                isCompleted = isCompleted
+    Box(modifier = modifier) {
+        SwipeToDismissBox(
+            state = dismissState,
+            backgroundContent = {
+                SwipeBackground(
+                    dismissDirection = dismissState.dismissDirection,
+                    isCompleted = isCompleted
+                )
+            },
+            enableDismissFromStartToEnd = !isCompleted,
+            enableDismissFromEndToStart = true
+        ) {
+            GoalItem(
+                goal = goal,
+                onClick = onClick,
+                scrollState = scrollState
             )
-        },
-        enableDismissFromStartToEnd = !isCompleted, // Only enable complete for non-completed goals
-        enableDismissFromEndToStart = true
-    ) {
-        GoalItem(
-            goal = goal,
-            onClick = onClick,
-            scrollState = scrollState
-        )
+        }
+
+        // Local celebration overlay
+        if (showCelebration) {
+            CelebrationOverlay(
+                type = CelebrationType.GOAL_COMPLETED,
+                isVisible = true,
+                message = "Goal Complete!",
+                onDismiss = { showCelebration = false }
+            )
+        }
     }
 
     // Delete Confirmation Dialog

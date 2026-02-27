@@ -2,6 +2,8 @@ package az.tribe.lifeplanner.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,6 +18,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.domain.enum.GoalCategory
@@ -57,6 +61,7 @@ fun EditGoalScreen(
         return
     }
 
+    val focusManager = LocalFocusManager.current
     // Initialize state with existing goal data
     var title by remember(existingGoal) { mutableStateOf(TextFieldValue(existingGoal.title)) }
     var description by remember(existingGoal) { mutableStateOf(TextFieldValue(existingGoal.description)) }
@@ -187,6 +192,9 @@ fun EditGoalScreen(
                     label = { Text("Title") },
                     placeholder = { Text("Enter goal title") },
                     modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                     shape = RoundedCornerShape(12.dp),
                 )
             }

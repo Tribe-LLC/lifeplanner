@@ -190,18 +190,44 @@ fun HabitTrackerScreen(
         }
     }
 
+    val todayCompleted = viewModel.getTodayCompletedCount()
+    val totalHabits = viewModel.getTotalHabitsCount()
+
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
                 scrollBehavior = scrollBehavior,
                 title = {
-                    Text(
-                        "Habit Tracker",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            "Habit Tracker",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Bold
+                            )
                         )
-                    )
+                        if (totalHabits > 0) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (todayCompleted == totalHabits)
+                                    Color(0xFF4CAF50).copy(alpha = 0.15f)
+                                else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                            ) {
+                                Text(
+                                    text = "$todayCompleted/$totalHabits",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    color = if (todayCompleted == totalHabits)
+                                        Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
                 },
                 navigationIcon = {
                     if (!isFromBottomNav) {
@@ -214,7 +240,8 @@ fun HabitTrackerScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface
                 )
             )
         },
@@ -277,26 +304,57 @@ fun HabitTrackerScreen(
                     onSkip = { onboardingDismissed = true }
                 )
             } else {
-                // Stats Header
-                HabitStatsHeader(
-                    todayCompleted = viewModel.getTodayCompletedCount(),
-                    totalHabits = viewModel.getTotalHabitsCount(),
-                    streakLeader = viewModel.getStreakLeader()?.let {
-                        "${it.title}: ${it.currentStreak} days"
-                    }
-                )
+                val completionRate = if (totalHabits > 0) (todayCompleted.toFloat() / totalHabits * 100).toInt() else 0
+                val streakLeader = viewModel.getStreakLeader()
 
-                // Habit list
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
                         start = 16.dp,
-                        top = 16.dp,
+                        top = 8.dp,
                         end = 16.dp,
-                        bottom = 120.dp // Space for bottom nav and FAB
+                        bottom = 120.dp
                     ),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    // Stats banner — scrolls away with the list
+                    item(key = "stats") {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                StatItem(
+                                    value = "$todayCompleted/$totalHabits",
+                                    label = "Done",
+                                    icon = Icons.Rounded.CheckCircle,
+                                    color = if (todayCompleted == totalHabits && totalHabits > 0)
+                                        Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
+                                )
+                                StatItem(
+                                    value = "$completionRate%",
+                                    label = "Rate",
+                                    icon = Icons.AutoMirrored.Rounded.TrendingUp,
+                                    color = MaterialTheme.colorScheme.tertiary
+                                )
+                                streakLeader?.let {
+                                    StatItem(
+                                        value = "${it.currentStreak}d",
+                                        label = "Streak",
+                                        icon = Icons.Rounded.LocalFireDepartment,
+                                        color = Color(0xFFFF6B35)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     items(
                         items = habits,
                         key = { it.habit.id }
@@ -586,76 +644,6 @@ private fun HabitTemplateCard(
     }
 }
 
-@Composable
-private fun HabitStatsHeader(
-    todayCompleted: Int,
-    totalHabits: Int,
-    streakLeader: String?
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = "Today's Progress",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.SemiBold
-                )
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                StatItem(
-                    value = "$todayCompleted/$totalHabits",
-                    label = "Completed",
-                    icon = Icons.Rounded.CheckCircle,
-                    color = if (todayCompleted == totalHabits && totalHabits > 0)
-                        Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
-                )
-
-                val completionRate = if (totalHabits > 0) {
-                    (todayCompleted.toFloat() / totalHabits * 100).toInt()
-                } else 0
-
-                StatItem(
-                    value = "$completionRate%",
-                    label = "Rate",
-                    icon = Icons.AutoMirrored.Rounded.TrendingUp,
-                    color = MaterialTheme.colorScheme.tertiary
-                )
-            }
-
-            streakLeader?.let {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.LocalFireDepartment,
-                        contentDescription = null,
-                        tint = Color(0xFFFF6B35),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text(
-                        text = "Streak Leader: $it",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun StatItem(

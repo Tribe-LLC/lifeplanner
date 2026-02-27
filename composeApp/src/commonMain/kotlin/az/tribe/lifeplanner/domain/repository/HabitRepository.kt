@@ -33,4 +33,7 @@ interface HabitRepository {
     // Analytics
     suspend fun getHabitsWithTodayStatus(today: LocalDate): List<Pair<Habit, Boolean>>
     suspend fun getHabitCompletionRate(habitId: String, days: Int = 30): Float
+
+    // Cache invalidation (for external DB writers like Glance widgets)
+    suspend fun invalidateCache()
 }

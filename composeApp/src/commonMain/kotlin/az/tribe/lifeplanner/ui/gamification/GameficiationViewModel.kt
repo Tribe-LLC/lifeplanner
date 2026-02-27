@@ -149,20 +149,36 @@ class GamificationViewModel(
         }
     }
 
+    /**
+     * Add XP and check for level-up. Emits LevelUp event if the level increased.
+     */
+    private suspend fun addXpAndCheckLevelUp(xpAmount: Int) {
+        val previousLevel = _userProgress.value?.currentLevel ?: 1
+        gamificationRepository.addXp(xpAmount)
+        loadUserProgress()
+        val newLevel = _userProgress.value?.currentLevel ?: 1
+        if (newLevel > previousLevel) {
+            _gamificationEvents.emit(
+                GamificationEvent.LevelUp(
+                    newLevel = newLevel,
+                    title = _userProgress.value?.title ?: "Adventurer"
+                )
+            )
+        }
+    }
+
     // Methods to be called from other ViewModels when actions occur
     fun onGoalCompleted() {
         viewModelScope.launch {
             gamificationRepository.incrementGoalsCompleted()
-            gamificationRepository.addXp(XpRewards.GOAL_COMPLETED)
-            loadUserProgress()
+            addXpAndCheckLevelUp(XpRewards.GOAL_COMPLETED)
             checkAndAwardBadges()
         }
     }
 
     fun onMilestoneCompleted() {
         viewModelScope.launch {
-            gamificationRepository.addXp(XpRewards.MILESTONE_COMPLETED)
-            loadUserProgress()
+            addXpAndCheckLevelUp(XpRewards.MILESTONE_COMPLETED)
         }
     }
 
@@ -170,8 +186,7 @@ class GamificationViewModel(
         viewModelScope.launch {
             gamificationRepository.incrementHabitsCompleted()
             val xp = XpRewards.HABIT_CHECK_IN + (XpRewards.HABIT_STREAK_BONUS * streakDays)
-            gamificationRepository.addXp(xp)
-            loadUserProgress()
+            addXpAndCheckLevelUp(xp)
             checkAndAwardBadges()
         }
     }
@@ -179,16 +194,14 @@ class GamificationViewModel(
     fun onJournalEntryCreated() {
         viewModelScope.launch {
             gamificationRepository.incrementJournalEntries()
-            gamificationRepository.addXp(XpRewards.JOURNAL_ENTRY)
-            loadUserProgress()
+            addXpAndCheckLevelUp(XpRewards.JOURNAL_ENTRY)
             checkAndAwardBadges()
         }
     }
 
     fun onGoalCreated() {
         viewModelScope.launch {
-            gamificationRepository.addXp(XpRewards.GOAL_CREATED)
-            loadUserProgress()
+            addXpAndCheckLevelUp(XpRewards.GOAL_CREATED)
         }
     }
 

@@ -58,8 +58,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import az.tribe.lifeplanner.domain.model.User
 import az.tribe.lifeplanner.domain.model.UserProgress
+import az.tribe.lifeplanner.domain.enum.BadgeType
+import az.tribe.lifeplanner.ui.components.AchievementsCard
 import az.tribe.lifeplanner.ui.components.GlassCard
 import az.tribe.lifeplanner.ui.components.GradientProgressBar
+import az.tribe.lifeplanner.ui.components.PersonalCoachCard
 import az.tribe.lifeplanner.ui.components.getBadgeIcon
 import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
@@ -146,20 +149,31 @@ fun ProfileScreen(
                 }
             }
 
+            // AI Coach & Achievements
+            item {
+                ProfileSectionHeader("AI Coach & Achievements")
+            }
+
+            item {
+                PersonalCoachCard(
+                    lastMessage = null,
+                    onChatClick = onNavigateToAICoach
+                )
+            }
+
+            item {
+                AchievementsCard(
+                    earnedBadges = badges.size,
+                    totalBadges = BadgeType.entries.size,
+                    recentBadges = badges.take(3).map { it.type },
+                    onSeeAllClick = onNavigateToAchievements
+                )
+            }
+
             // Insights & Analytics Section
             item {
                 ProfileSectionHeader("Insights & Analytics")
             }
-
-            // Reviews hidden for now - will be re-enabled later
-            // item {
-            //     ProfileMenuItem(
-            //         icon = Icons.Rounded.Assessment,
-            //         title = "Reviews & Insights",
-            //         subtitle = "Weekly, monthly, and quarterly reviews",
-            //         onClick = onNavigateToReviews
-            //     )
-            // }
 
             item {
                 ProfileMenuItem(
@@ -167,59 +181,6 @@ fun ProfileScreen(
                     title = "Life Balance",
                     subtitle = "Assess your life areas",
                     onClick = onNavigateToLifeBalance
-                )
-            }
-
-            // Achievements Section
-            item {
-                ProfileSectionHeader("Achievements")
-            }
-
-            item {
-                ProfileMenuItem(
-                    icon = Icons.Rounded.EmojiEvents,
-                    title = "Badges & Achievements",
-                    subtitle = "${badges.size} badges earned",
-                    onClick = onNavigateToAchievements,
-                    trailingContent = {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy((-8).dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            badges.take(3).forEach { badge ->
-                                Box(
-                                    modifier = Modifier
-                                        .size(28.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(badge.type.color)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = getBadgeIcon(badge.type),
-                                        contentDescription = badge.type.displayName,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = Color.White
-                                    )
-                                }
-                            }
-                            if (badges.size > 3) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(28.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "+${badges.size - 3}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
                 )
             }
 
@@ -436,7 +397,7 @@ private fun ProfileStatsCard(progress: UserProgress) {
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            "${progress.xpForNextLevel} XP needed",
+                            "${progress.xpRemainingForNextLevel} XP remaining",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

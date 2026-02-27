@@ -58,7 +58,8 @@ fun GoalsScreen(
     onAddGoalClick: () -> Unit,
     onAiGenerateClick: () -> Unit,
     onTemplatesClick: () -> Unit,
-    onTemplateSelected: (String) -> Unit = {}
+    onTemplateSelected: (String) -> Unit = {},
+    onBack: (() -> Unit)? = null
 ) {
     val snackBarHostState = remember { SnackbarHostState() }
     val goals by viewModel.goals.collectAsState()
@@ -136,6 +137,7 @@ fun GoalsScreen(
                 searchQuery = searchQuery,
                 onSearchQueryChange = { searchQuery = it },
                 onSearchToggle = { showSearchBar = it },
+                onBack = onBack,
                 scrollBehavior = scrollBehavior
             )
         },
@@ -256,7 +258,8 @@ fun GoalsScreen(
                                         onDelete = {
                                             viewModel.deleteGoal(goal.id)
                                         },
-                                        scrollState = scrollState
+                                        scrollState = scrollState,
+                                        modifier = Modifier.animateItem()
                                     )
                                 }
                             }

@@ -45,13 +45,17 @@ class HabitCheckInWidget : GlanceAppWidget() {
     )
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val habits = WidgetDatabaseHelper.getHabitsForWidget(context, limit = 6)
+        val allHabits = WidgetDatabaseHelper.getHabitsForWidget(context, limit = 20)
+        val uncompleted = allHabits.filter { !it.isCompletedToday }
+        val completedCount = allHabits.count { it.isCompletedToday }
+        val totalCount = allHabits.size
 
         provideContent {
             GlanceTheme(colors = WidgetColorProviders) {
                 val size = LocalSize.current
                 val isMedium = size.height < 200.dp
-                val maxHabits = if (isMedium) 3 else 6
+                // Glance Column max 10 children: header(1) + habit rows(up to 8) + status(1) = 10
+                val maxRows = if (isMedium) 3 else 8
 
                 Box(
                     modifier = GlanceModifier
@@ -60,11 +64,13 @@ class HabitCheckInWidget : GlanceAppWidget() {
                         .background(GlanceTheme.colors.surface)
                         .padding(12.dp)
                 ) {
-                    if (habits.isEmpty()) {
-                        EmptyHabitsView()
-                    } else {
-                        HabitsList(
-                            habits = habits.take(maxHabits),
+                    when {
+                        allHabits.isEmpty() -> EmptyHabitsView()
+                        uncompleted.isEmpty() -> AllDoneView(totalCount)
+                        else -> HabitsList(
+                            uncompleted = uncompleted.take(maxRows),
+                            completedCount = completedCount,
+                            totalCount = totalCount,
                             showStreak = !isMedium
                         )
                     }
@@ -82,36 +88,83 @@ class HabitCheckInWidget : GlanceAppWidget() {
 @androidx.compose.runtime.Composable
 private fun EmptyHabitsView() {
     Column(
-        modifier = GlanceModifier.fillMaxSize(),
+        modifier = GlanceModifier
+            .fillMaxSize()
+            .clickable(actionStartActivity<MainActivity>()),
         verticalAlignment = Alignment.CenterVertically,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "No habits yet",
+            text = "\uD83C\uDF31",
+            style = TextStyle(fontSize = 28.sp)
+        )
+        Spacer(modifier = GlanceModifier.height(8.dp))
+        Text(
+            text = "Start building habits",
             style = TextStyle(
                 fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = GlanceTheme.colors.onSurfaceVariant
+                fontWeight = FontWeight.Bold,
+                color = GlanceTheme.colors.onSurface
             )
         )
         Spacer(modifier = GlanceModifier.height(4.dp))
         Text(
-            text = "Tap to add your first habit",
+            text = "Tap to create your first habit",
             style = TextStyle(
                 fontSize = 12.sp,
                 color = GlanceTheme.colors.onSurfaceVariant
-            ),
-            modifier = GlanceModifier.clickable(actionStartActivity<MainActivity>())
+            )
         )
     }
 }
 
 @androidx.compose.runtime.Composable
-private fun HabitsList(habits: List<WidgetHabitData>, showStreak: Boolean) {
+private fun AllDoneView(totalCount: Int) {
+    Column(
+        modifier = GlanceModifier
+            .fillMaxSize()
+            .clickable(actionStartActivity<MainActivity>()),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "\uD83C\uDF89",
+            style = TextStyle(fontSize = 32.sp)
+        )
+        Spacer(modifier = GlanceModifier.height(8.dp))
+        Text(
+            text = "All $totalCount habits done!",
+            style = TextStyle(
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = SuccessColor
+            )
+        )
+        Spacer(modifier = GlanceModifier.height(4.dp))
+        Text(
+            text = "Great job today — keep it up!",
+            style = TextStyle(
+                fontSize = 12.sp,
+                color = GlanceTheme.colors.onSurfaceVariant
+            )
+        )
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun HabitsList(
+    uncompleted: List<WidgetHabitData>,
+    completedCount: Int,
+    totalCount: Int,
+    showStreak: Boolean
+) {
+    // Glance Column max 10 children: header(1) + habit rows(up to 8) + footer(1)
     Column(modifier = GlanceModifier.fillMaxSize()) {
-        // Header
+        // Header with progress
         Row(
-            modifier = GlanceModifier.fillMaxWidth(),
+            modifier = GlanceModifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
@@ -123,9 +176,8 @@ private fun HabitsList(habits: List<WidgetHabitData>, showStreak: Boolean) {
                 )
             )
             Spacer(modifier = GlanceModifier.defaultWeight())
-            val doneCount = habits.count { it.isCompletedToday }
             Text(
-                text = "$doneCount/${habits.size}",
+                text = "$completedCount/$totalCount",
                 style = TextStyle(
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
@@ -134,12 +186,9 @@ private fun HabitsList(habits: List<WidgetHabitData>, showStreak: Boolean) {
             )
         }
 
-        Spacer(modifier = GlanceModifier.height(8.dp))
-
-        // Habit items
-        habits.forEach { habit ->
+        // Uncompleted habit rows only
+        uncompleted.forEach { habit ->
             HabitRow(habit = habit, showStreak = showStreak)
-            Spacer(modifier = GlanceModifier.height(4.dp))
         }
     }
 }
@@ -149,43 +198,34 @@ private fun HabitRow(habit: WidgetHabitData, showStreak: Boolean) {
     Row(
         modifier = GlanceModifier
             .fillMaxWidth()
+            .padding(bottom = 4.dp)
             .cornerRadius(8.dp)
             .background(GlanceTheme.colors.surfaceVariant)
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Checkbox button
-        if (habit.isCompletedToday) {
-            Text(
-                text = "\u2705",
-                style = TextStyle(fontSize = 18.sp)
-            )
-        } else {
-            Text(
-                text = "\u2B1C",
-                style = TextStyle(fontSize = 18.sp),
-                modifier = GlanceModifier.clickable(
-                    actionRunCallback<HabitCheckInActionCallback>(
-                        parameters = actionParametersOf(
-                            HabitCheckInActionCallback.HABIT_ID_KEY to habit.id
-                        )
+        // Checkbox — always uncompleted since we filter above
+        Text(
+            text = "\u2B1C",
+            style = TextStyle(fontSize = 18.sp),
+            modifier = GlanceModifier.clickable(
+                actionRunCallback<HabitCheckInActionCallback>(
+                    parameters = actionParametersOf(
+                        HabitCheckInActionCallback.HABIT_ID_KEY to habit.id
                     )
                 )
             )
-        }
+        )
 
         Spacer(modifier = GlanceModifier.width(8.dp))
 
-        // Habit title - tap opens app
+        // Habit title — tap opens app
         Text(
             text = habit.title,
             style = TextStyle(
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
-                color = if (habit.isCompletedToday)
-                    GlanceTheme.colors.onSurfaceVariant
-                else
-                    GlanceTheme.colors.onSurface
+                color = GlanceTheme.colors.onSurface
             ),
             modifier = GlanceModifier
                 .defaultWeight()

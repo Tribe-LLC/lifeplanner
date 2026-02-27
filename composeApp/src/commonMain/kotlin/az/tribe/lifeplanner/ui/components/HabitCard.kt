@@ -1,8 +1,12 @@
 package az.tribe.lifeplanner.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
@@ -22,12 +26,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -163,10 +169,7 @@ fun SwipeableHabitCard(
                     }
                 )
         ) {
-            HabitCard(
-                habitWithStatus = habitWithStatus,
-                onCheckIn = onCheckIn
-            )
+            HabitCard(habitWithStatus = habitWithStatus)
         }
     }
 
@@ -317,15 +320,15 @@ private fun HabitSwipeBackgroundNew(
 @Composable
 fun HabitCard(
     habitWithStatus: HabitWithStatus,
-    onCheckIn: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val habit = habitWithStatus.habit
     val isCompletedToday = habitWithStatus.isCompletedToday
+    val categoryColor = habit.category.backgroundColor()
 
     val backgroundColor by animateColorAsState(
         targetValue = if (isCompletedToday)
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            MaterialTheme.colorScheme.surface
         else
             MaterialTheme.colorScheme.surface,
         animationSpec = tween(300),
@@ -343,15 +346,26 @@ fun HabitCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .then(
+                    if (isCompletedToday) {
+                        Modifier.background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color(0xFF4CAF50).copy(alpha = 0.08f),
+                                    Color(0xFF4CAF50).copy(alpha = 0.03f)
+                                )
+                            )
+                        )
+                    } else Modifier
+                )
                 .padding(LifePlannerDesign.Padding.standard),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Check-in button (now toggleable)
-            CheckInButton(
-                isCompleted = isCompletedToday,
-                categoryColor = habit.category.backgroundColor(),
-                onClick = onCheckIn // Now toggles check/uncheck
+            // Category icon (replaces checkbox)
+            CategoryIconBadge(
+                category = habit.category,
+                isCompleted = isCompletedToday
             )
 
             // Habit info
@@ -366,8 +380,13 @@ fun HabitCard(
                     Text(
                         text = habit.title,
                         style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            textDecoration = if (isCompletedToday) TextDecoration.LineThrough else TextDecoration.None
                         ),
+                        color = if (isCompletedToday)
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        else
+                            MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
@@ -376,7 +395,7 @@ fun HabitCard(
                     FrequencyChip(frequency = habit.frequency)
                 }
 
-                if (habit.description.isNotBlank()) {
+                if (habit.description.isNotBlank() && !isCompletedToday) {
                     Text(
                         text = habit.description,
                         style = MaterialTheme.typography.bodySmall,
@@ -392,10 +411,12 @@ fun HabitCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Current streak
-                    StreakBadge(
-                        streak = habit.currentStreak,
-                        isActive = habit.currentStreak > 0
-                    )
+                    if (habit.currentStreak > 0) {
+                        StreakBadge(
+                            streak = habit.currentStreak,
+                            isActive = true
+                        )
+                    }
 
                     // Total completions
                     Row(
@@ -405,73 +426,99 @@ fun HabitCard(
                         Icon(
                             imageVector = Icons.Rounded.CheckCircle,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                             modifier = Modifier.size(14.dp)
                         )
                         Text(
-                            text = "${habit.totalCompletions} total",
+                            text = "${habit.totalCompletions}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                 }
+            }
+
+            // Status tag at the end
+            CompletionStatusTag(isCompleted = isCompletedToday)
+        }
+    }
+}
+
+/**
+ * Category icon badge — shows the category symbol.
+ * When completed, shows a green background with check overlay.
+ */
+@Composable
+private fun CategoryIconBadge(
+    category: GoalCategory,
+    isCompleted: Boolean
+) {
+    val categoryColor = category.backgroundColor()
+
+    val bgColor by animateColorAsState(
+        targetValue = if (isCompleted) Color(0xFF4CAF50) else categoryColor.copy(alpha = 0.12f),
+        animationSpec = tween(300),
+        label = "iconBgColor"
+    )
+
+    val iconTint by animateColorAsState(
+        targetValue = if (isCompleted) Color.White else categoryColor,
+        animationSpec = tween(300),
+        label = "iconTint"
+    )
+
+    Box(contentAlignment = Alignment.Center) {
+        Surface(
+            modifier = Modifier.size(44.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = bgColor
+        ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                Icon(
+                    imageVector = category.getIcon(),
+                    contentDescription = category.name,
+                    tint = iconTint,
+                    modifier = Modifier.size(22.dp)
+                )
             }
         }
     }
 }
 
+/**
+ * Small status tag shown at the trailing end of the card.
+ */
 @Composable
-private fun CheckInButton(
-    isCompleted: Boolean,
-    categoryColor: Color,
-    onClick: () -> Unit
-) {
-    val haptic = rememberHapticManager()
-    val scale by animateFloatAsState(
-        targetValue = if (isCompleted) 1.1f else 1f,
-        animationSpec = tween(200),
-        label = "scale"
+private fun CompletionStatusTag(isCompleted: Boolean) {
+    val bgColor by animateColorAsState(
+        targetValue = if (isCompleted)
+            Color(0xFF4CAF50).copy(alpha = 0.12f)
+        else
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+        animationSpec = tween(300),
+        label = "tagBg"
     )
 
-    val backgroundColor by animateColorAsState(
-        targetValue = if (isCompleted) categoryColor else Color.Transparent,
+    val textColor by animateColorAsState(
+        targetValue = if (isCompleted)
+            Color(0xFF4CAF50)
+        else
+            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
         animationSpec = tween(300),
-        label = "checkBackground"
-    )
-
-    val borderColor by animateColorAsState(
-        targetValue = if (isCompleted) categoryColor else MaterialTheme.colorScheme.outline,
-        animationSpec = tween(300),
-        label = "borderColor"
+        label = "tagText"
     )
 
     Surface(
-        modifier = Modifier
-            .size(48.dp)
-            .scale(scale)
-            .clickable {
-                haptic.success()
-                onClick()
-            },
-        shape = CircleShape,
-        color = backgroundColor,
-        border = if (!isCompleted) {
-            ButtonDefaults.outlinedButtonBorder(enabled = true)
-        } else null
+        shape = RoundedCornerShape(8.dp),
+        color = bgColor
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier.fillMaxSize()
-        ) {
-            if (isCompleted) {
-                Icon(
-                    imageVector = Icons.Filled.Check,
-                    contentDescription = "Completed",
-                    tint = Color.White,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
+        Text(
+            text = if (isCompleted) "Done" else "To do",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (isCompleted) FontWeight.SemiBold else FontWeight.Normal,
+            color = textColor,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
     }
 }
 

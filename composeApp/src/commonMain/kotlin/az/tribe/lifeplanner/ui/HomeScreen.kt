@@ -2,11 +2,36 @@ package az.tribe.lifeplanner.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import az.tribe.lifeplanner.ui.components.getIcon
+import az.tribe.lifeplanner.ui.habit.HabitWithStatus
+import az.tribe.lifeplanner.ui.theme.LifePlannerGradients
+import az.tribe.lifeplanner.ui.theme.backgroundColor
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -26,16 +51,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.model.Goal
-import az.tribe.lifeplanner.ui.components.AchievementsCard
-import az.tribe.lifeplanner.ui.components.DailyMotivationCard
-import az.tribe.lifeplanner.ui.components.DashboardStatsRow
-import az.tribe.lifeplanner.ui.components.PersonalCoachCard
-import az.tribe.lifeplanner.ui.components.PriorityGoalsSection
-import az.tribe.lifeplanner.ui.components.QuickActionsGrid
-import az.tribe.lifeplanner.ui.components.TodayHabitsSection
-import az.tribe.lifeplanner.ui.components.TodayProgressCard
-import az.tribe.lifeplanner.ui.components.WelcomeHeader
-import az.tribe.lifeplanner.domain.enum.BadgeType
+import az.tribe.lifeplanner.ui.components.CompactGoalTile
+import az.tribe.lifeplanner.ui.components.InlineGreetingRow
+import az.tribe.lifeplanner.ui.components.InlineStatsRow
+import az.tribe.lifeplanner.ui.components.NextAction
+import az.tribe.lifeplanner.ui.components.NextActionCard
+import az.tribe.lifeplanner.ui.components.GlassCard
+import az.tribe.lifeplanner.ui.components.QuickActionsPillRow
 import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
 import az.tribe.lifeplanner.ui.habit.HabitViewModel
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
@@ -57,8 +79,8 @@ fun HomeScreen(
     goToAiGeneration: () -> Unit,
     onNavigateToHabits: () -> Unit = {},
     onNavigateToJournal: () -> Unit = {},
+    onNavigateToGoals: () -> Unit = {},
     onNavigateToAchievements: () -> Unit = {},
-    onNavigateToCoach: () -> Unit = {}
 ) {
     val snackBarHostState = remember { SnackbarHostState() }
 
@@ -69,7 +91,6 @@ fun HomeScreen(
 
     val authState by authViewModel.authState.collectAsState()
     val userProgress by gamificationViewModel.userProgress.collectAsState()
-    val badges by gamificationViewModel.badges.collectAsState()
     val goals by viewModel.goals.collectAsState()
     val habits by habitViewModel.habits.collectAsState()
 
@@ -81,8 +102,6 @@ fun HomeScreen(
     }
 
     // Calculate dashboard stats
-    val activeGoals = goals.filter { it.status != GoalStatus.COMPLETED }.size
-    val completedGoals = goals.filter { it.status == GoalStatus.COMPLETED }.size
     val totalProgress = if (goals.isNotEmpty()) {
         (goals.sumOf { it.progress ?: 0L } / goals.size).toInt()
     } else 0
@@ -95,13 +114,29 @@ fun HomeScreen(
 
     // Calculate goals due today
     val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
-    val goalsDueToday = goals.count { goal ->
+    val goalsDueToday = goals.filter { goal ->
         goal.status != GoalStatus.COMPLETED && goal.dueDate == today
     }
 
     // Calculate habits stats
     val habitsCompleted = habits.count { it.isCompletedToday }
     val totalHabits = habits.size
+
+    // Derive NextAction
+    val nextAction = remember(goalsDueToday, habits, upcomingGoals) {
+        val firstGoalDueToday = goalsDueToday.firstOrNull()
+        val nextUncheckedHabit = habits.firstOrNull { !it.isCompletedToday }
+        val highestProgressGoal = upcomingGoals
+            .filter { (it.progress ?: 0L) > 0L }
+            .maxByOrNull { it.progress ?: 0L }
+
+        when {
+            firstGoalDueToday != null -> NextAction.GoalDueToday(firstGoalDueToday)
+            nextUncheckedHabit != null -> NextAction.NextHabit(nextUncheckedHabit)
+            highestProgressGoal != null -> NextAction.ContinueGoal(highestProgressGoal)
+            else -> NextAction.AllCaughtUp
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.loadAllGoals()
@@ -152,91 +187,364 @@ fun HomeScreen(
                 top = LifePlannerDesign.Padding.screenHorizontal,
                 start = LifePlannerDesign.Padding.screenHorizontal,
                 end = LifePlannerDesign.Padding.screenHorizontal,
-                bottom = innerPadding.calculateBottomPadding()+96.dp // Space for bottom navigation bar
+                bottom = innerPadding.calculateBottomPadding() + 96.dp
             ),
-            verticalArrangement = Arrangement.spacedBy(LifePlannerDesign.Spacing.lg)
+            verticalArrangement = Arrangement.spacedBy(LifePlannerDesign.Spacing.sm)
         ) {
-            // 1. Welcome Header with XP progress
+            // 1. Inline Greeting Row
             item {
-                WelcomeHeader(
+                InlineGreetingRow(
                     userName = currentUser?.displayName,
                     streak = userProgress?.currentStreak ?: 0,
                     level = userProgress?.currentLevel ?: 1,
-                    levelTitle = userProgress?.title ?: "Novice",
-                    xpProgress = userProgress?.levelProgress ?: 0f,
-                    totalXp = userProgress?.totalXp ?: 0
+                    levelTitle = userProgress?.title ?: "Novice"
                 )
             }
 
-            // 2. Personal Coach Card
+            // 2. Quick Actions Pill Row
             item {
-                PersonalCoachCard(
-                    lastMessage = null, // Could be populated from ChatViewModel if needed
-                    onChatClick = onNavigateToCoach
+                QuickActionsPillRow(
+                    onAddGoal = onAddGoalClick,
+                    onAiSuggest = goToAiGeneration,
+                    onNewHabit = onNavigateToHabits,
+                    onJournal = onNavigateToJournal
                 )
             }
 
-            // 3. Quick Actions Grid (2x2)
+            // 3. Inline Stats Row
             item {
-                QuickActionsGrid(
-                    onAddGoalClick = onAddGoalClick,
-                    onAiSuggestClick = goToAiGeneration,
-                    onNewHabitClick = onNavigateToHabits,
-                    onJournalClick = onNavigateToJournal
-                )
-            }
-
-            // 3. Dashboard Stats Row
-            item {
-                DashboardStatsRow(
-                    activeGoals = activeGoals,
-                    completedGoals = completedGoals,
+                InlineStatsRow(
+                    streak = userProgress?.currentStreak ?: 0,
+                    habitsCompleted = habitsCompleted,
+                    totalHabits = totalHabits,
+                    goalsDueToday = goalsDueToday.size,
                     totalProgress = totalProgress
                 )
             }
 
-            // 4. Today's Progress Card
+            // 4. Priority Goals — horizontal LazyRow
             item {
-                TodayProgressCard(
-                    streak = userProgress?.currentStreak ?: 0,
-                    habitsCompleted = habitsCompleted,
-                    totalHabits = totalHabits,
-                    goalsDueToday = goalsDueToday
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Priority Goals",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (upcomingGoals.isNotEmpty()) {
+                        androidx.compose.material3.Surface(
+                            onClick = onNavigateToGoals,
+                            shape = RoundedCornerShape(50),
+                            color = Color.Transparent
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "See all",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                androidx.compose.material3.Icon(
+                                    Icons.Rounded.ChevronRight,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
-            // 5. Badges Card
             item {
-                AchievementsCard(
-                    earnedBadges = badges.size,
-                    totalBadges = BadgeType.entries.size,
-                    recentBadges = badges.take(3).map { it.type },
-                    onSeeAllClick = onNavigateToAchievements
-                )
+                if (upcomingGoals.isEmpty()) {
+                    GlassCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        cornerRadius = 16.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                        ) {
+                            androidx.compose.material3.Icon(
+                                Icons.Rounded.CheckCircle,
+                                null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(Modifier.width(16.dp))
+                            Column {
+                                Text(
+                                    "All caught up!",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    "No urgent deadlines. Keep up the great work!",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(end = 4.dp)
+                    ) {
+                        items(upcomingGoals.size) { index ->
+                            CompactGoalTile(
+                                goal = upcomingGoals[index],
+                                onClick = { onGoalClick(upcomingGoals[index]) }
+                            )
+                        }
+                    }
+                }
             }
 
-            // 6. Today's Habits Section
+            // 5. Today's Habits
+            if (habits.isNotEmpty()) {
+                val pendingHabits = habits.filter { !it.isCompletedToday }
+                val allDone = pendingHabits.isEmpty()
+
+                item(key = "habits_header") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Today's Habits ($habitsCompleted/$totalHabits)",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        androidx.compose.material3.Surface(
+                            onClick = onNavigateToHabits,
+                            shape = RoundedCornerShape(50),
+                            color = Color.Transparent
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "See all",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                androidx.compose.material3.Icon(
+                                    Icons.Rounded.ChevronRight,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (allDone) {
+                    item(key = "habits_all_done") {
+                        AllHabitsDoneCard(
+                            totalCompleted = habits.size,
+                            currentStreak = userProgress?.currentStreak ?: 0,
+                            currentLevel = userProgress?.currentLevel ?: 1
+                        )
+                    }
+                } else {
+                    item(key = "habits_list") {
+                        GlassCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            cornerRadius = 16.dp
+                        ) {
+                            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                                pendingHabits.forEachIndexed { index, habitWithStatus ->
+                                    CompactHomeHabitRow(
+                                        habitWithStatus = habitWithStatus,
+                                        onCheckIn = { habitViewModel.toggleCheckIn(habitWithStatus.habit.id) }
+                                    )
+                                    if (index < pendingHabits.size - 1) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp)
+                                                .height(1.dp)
+                                                .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 6. Next Action Card (moved to bottom as shortcut)
             item {
-                TodayHabitsSection(
-                    habits = habits,
-                    onCheckIn = { habitId ->
+                NextActionCard(
+                    nextAction = nextAction,
+                    onGoalClick = onGoalClick,
+                    onHabitCheckIn = { habitId ->
                         habitViewModel.toggleCheckIn(habitId)
-                    },
-                    onSeeAllClick = onNavigateToHabits
+                    }
                 )
             }
+        }
+    }
+}
 
-            // 7. Priority Goals Section
-            item {
-                PriorityGoalsSection(
-                    upcomingGoals = upcomingGoals,
-                    onGoalClick = onGoalClick
+@Composable
+private fun CompactHomeHabitRow(
+    habitWithStatus: HabitWithStatus,
+    onCheckIn: () -> Unit
+) {
+    val habit = habitWithStatus.habit
+    val categoryColor = habit.category.backgroundColor()
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onCheckIn)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+    ) {
+        // Category icon
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(categoryColor.copy(alpha = 0.15f)),
+            contentAlignment = androidx.compose.ui.Alignment.Center
+        ) {
+            androidx.compose.material3.Icon(
+                imageVector = habit.category.getIcon(),
+                contentDescription = null,
+                tint = categoryColor,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        // Title + streak
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = habit.title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (habit.currentStreak > 0) {
+                Text(
+                    text = "${habit.currentStreak} day streak",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFFFF6B35)
                 )
             }
+        }
 
-            // 8. Daily Inspiration (at bottom)
-            item {
-                DailyMotivationCard()
+        // Tap to complete hint
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
+            contentAlignment = androidx.compose.ui.Alignment.Center
+        ) {
+            androidx.compose.material3.Icon(
+                Icons.Rounded.Check,
+                contentDescription = "Complete",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun AllHabitsDoneCard(
+    totalCompleted: Int,
+    currentStreak: Int,
+    currentLevel: Int
+) {
+    val advice = remember(currentStreak, currentLevel) {
+        when {
+            currentStreak >= 30 -> "A month of consistency! You're building lasting habits. Consider raising the bar with a new challenge."
+            currentStreak >= 14 -> "Two weeks strong! Your discipline is becoming second nature. Keep this energy going."
+            currentStreak >= 7 -> "A full week! Research shows it takes 21 days to form a habit — you're well on your way."
+            currentStreak >= 3 -> "Great momentum! Focus on not breaking the chain. Every day counts."
+            currentLevel >= 10 -> "Level $currentLevel and crushing it! Your consistency is inspiring."
+            totalCompleted >= 5 -> "All $totalCompleted habits done — what a productive day! Take a moment to appreciate your effort."
+            else -> "All done! Small wins lead to big transformations. You're on the right track."
+        }
+    }
+
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        cornerRadius = 16.dp
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            // Gradient accent
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .background(Brush.horizontalGradient(listOf(Color(0xFF4CAF50), Color(0xFF81C784))))
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "\uD83C\uDF89",
+                    style = MaterialTheme.typography.headlineLarge
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    text = "All $totalCompleted habits done!",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF4CAF50)
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    text = advice,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    lineHeight = MaterialTheme.typography.bodySmall.lineHeight
+                )
+
+                if (currentStreak > 0) {
+                    Spacer(Modifier.height(12.dp))
+                    androidx.compose.material3.Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color(0xFFFF6B35).copy(alpha = 0.1f)
+                    ) {
+                        Text(
+                            text = "\uD83D\uDD25 $currentStreak day streak",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFFF6B35),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                        )
+                    }
+                }
             }
         }
     }

@@ -1,5 +1,6 @@
 package az.tribe.lifeplanner.domain.repository
 
+import az.tribe.lifeplanner.domain.model.BalanceRecommendation
 import az.tribe.lifeplanner.domain.model.LifeBalanceReport
 import az.tribe.lifeplanner.domain.model.LifeArea
 import az.tribe.lifeplanner.domain.model.LifeAreaScore
@@ -52,4 +53,12 @@ interface LifeBalanceRepository {
      * Get the most recent balance report
      */
     suspend fun getLatestReport(): LifeBalanceReport?
+
+    /**
+     * Pre-generate full Goal objects for CREATE_GOAL recommendations using AI
+     */
+    suspend fun preGenerateGoalsForRecommendations(
+        recommendations: List<BalanceRecommendation>,
+        areaScores: List<LifeAreaScore>
+    ): List<BalanceRecommendation>
 }

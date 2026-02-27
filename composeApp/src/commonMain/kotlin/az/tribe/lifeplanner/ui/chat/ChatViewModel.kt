@@ -434,6 +434,49 @@ class ChatViewModel(
         }
     }
 
+    /**
+     * Sends a message to the AI without showing the user prompt in the chat.
+     * The prompt is stored in DB for conversation context, but only the AI response is displayed.
+     */
+    private fun sendHiddenFollowUp(content: String) {
+        val session = _uiState.value.currentSession ?: return
+        val userContext = _uiState.value.userContext ?: return
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isSending = true)
+            try {
+                chatRepository.sendMessage(
+                    sessionId = session.id,
+                    userMessage = content,
+                    userContext = userContext,
+                    relatedGoalId = null
+                )
+
+                // Reload all messages, then drop the hidden user prompt
+                val allMessages = chatRepository.getMessages(session.id)
+                val hiddenId = allMessages.lastOrNull {
+                    it.role == az.tribe.lifeplanner.domain.model.MessageRole.USER && it.content == content
+                }?.id
+                val visibleMessages = allMessages.filter { it.id != hiddenId }
+
+                val executedIds = allMessages
+                    .mapNotNull { it.metadata?.executedSuggestionIds }
+                    .flatten()
+                    .toSet()
+
+                _uiState.value = _uiState.value.copy(
+                    isSending = false,
+                    messages = visibleMessages,
+                    executedSuggestionIds = executedIds
+                )
+
+                loadSessions()
+            } catch (_: Exception) {
+                _uiState.value = _uiState.value.copy(isSending = false)
+            }
+        }
+    }
+
     fun deleteSession(session: ChatSession) {
         viewModelScope.launch {
             try {
@@ -598,12 +641,32 @@ class ChatViewModel(
 
                 // Refresh user context after action
                 loadUserContext()
+
+                // Auto-send hidden follow-up so the coach continues the conversation
+                val followUp = buildFollowUpMessage(suggestion)
+                if (followUp != null) {
+                    sendHiddenFollowUp(followUp)
+                }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     executingAction = false,
                     error = e.message ?: "Failed to execute action"
                 )
             }
+        }
+    }
+
+    private fun buildFollowUpMessage(suggestion: CoachSuggestion): String? {
+        return when (suggestion) {
+            is CoachSuggestion.CreateGoal ->
+                "I just added the goal \"${suggestion.title}\" to my list. What should I focus on first to get started?"
+            is CoachSuggestion.CreateHabit ->
+                "I just created the habit \"${suggestion.title}\". Any tips on how to stay consistent with it?"
+            is CoachSuggestion.CreateJournalEntry ->
+                "I just saved that journal entry. What else should I reflect on?"
+            is CoachSuggestion.CheckInHabit ->
+                "Done! I checked in for \"${suggestion.habitTitle}\". How am I doing overall?"
+            is CoachSuggestion.AskQuestion -> null
         }
     }
 

@@ -4,6 +4,8 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +24,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,6 +36,7 @@ import az.tribe.lifeplanner.domain.model.JournalPrompts
 import az.tribe.lifeplanner.ui.components.rememberHapticManager
 import az.tribe.lifeplanner.ui.journal.JournalViewModel
 import az.tribe.lifeplanner.ui.journal.generateAiJournalEntry
+import az.tribe.lifeplanner.util.NetworkConnectivityObserver
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -47,6 +52,7 @@ enum class JournalWizardStep {
 @Composable
 fun JournalCreationWizardScreen(
     onNavigateBack: () -> Unit,
+    preSelectedGoalId: String? = null,
     viewModel: JournalViewModel = koinViewModel(),
     goalViewModel: GoalViewModel = koinInject(),
     habitViewModel: az.tribe.lifeplanner.ui.habit.HabitViewModel = koinViewModel(),
@@ -57,13 +63,16 @@ fun JournalCreationWizardScreen(
     val habits = habitsWithStatus.map { it.habit }
     val haptic = rememberHapticManager()
     val coroutineScope = rememberCoroutineScope()
+    val connectivityObserver: NetworkConnectivityObserver = koinInject()
+    val isConnected by connectivityObserver.isConnected.collectAsState()
+    val isOffline = !isConnected
 
     // Wizard state
     var currentStep by remember { mutableStateOf(JournalWizardStep.MOOD) }
     var selectedMood by remember { mutableStateOf<Mood?>(null) }
     var selectedPrompt by remember { mutableStateOf<String?>(null) }
     var userNote by remember { mutableStateOf("") }
-    var selectedGoalId by remember { mutableStateOf<String?>(null) }
+    var selectedGoalId by remember { mutableStateOf<String?>(preSelectedGoalId) }
     var selectedHabitId by remember { mutableStateOf<String?>(null) }
     var isGenerating by remember { mutableStateOf(false) }
     var generatedTitle by remember { mutableStateOf("") }
@@ -134,6 +143,7 @@ fun JournalCreationWizardScreen(
                     selectedHabitId = selectedHabitId,
                     userNote = userNote,
                     isGenerating = isGenerating,
+                    isOffline = isOffline,
                     onGoalSelected = { selectedGoalId = it },
                     onHabitSelected = { selectedHabitId = it },
                     onNoteChanged = { userNote = it },
@@ -552,12 +562,14 @@ private fun ContextAndGenerateStep(
     selectedHabitId: String?,
     userNote: String,
     isGenerating: Boolean,
+    isOffline: Boolean = false,
     onGoalSelected: (String?) -> Unit,
     onHabitSelected: (String?) -> Unit,
     onNoteChanged: (String) -> Unit,
     onGenerateClick: () -> Unit,
     onSkipAiClick: () -> Unit
 ) {
+    val focusManager = LocalFocusManager.current
     var showGoalDropdown by remember { mutableStateOf(false) }
     var showHabitDropdown by remember { mutableStateOf(false) }
 
@@ -722,11 +734,24 @@ private fun ContextAndGenerateStep(
             label = { Text("Quick note (optional)") },
             placeholder = { Text("Any extra context for AI...") },
             singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp)
         )
 
         Spacer(modifier = Modifier.weight(1f))
+
+        // Offline hint
+        if (isOffline) {
+            Text(
+                text = "AI generation requires internet",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
+            )
+        }
 
         // Generate button
         Button(
@@ -735,7 +760,7 @@ private fun ContextAndGenerateStep(
                 .fillMaxWidth()
                 .height(56.dp),
             shape = RoundedCornerShape(16.dp),
-            enabled = !isGenerating
+            enabled = !isGenerating && !isOffline
         ) {
             Icon(Icons.Rounded.AutoAwesome, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
@@ -855,6 +880,7 @@ private fun ReviewAndSaveStep(
     onTagsChanged: (List<String>) -> Unit,
     onSave: () -> Unit
 ) {
+    val focusManager = LocalFocusManager.current
     var tagsText by remember(tags) { mutableStateOf(tags.joinToString(", ")) }
 
     LazyColumn(
@@ -904,6 +930,8 @@ private fun ReviewAndSaveStep(
                 label = { Text("Title") },
                 placeholder = { Text("Entry title") },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
             )
@@ -934,6 +962,8 @@ private fun ReviewAndSaveStep(
                 label = { Text("Tags") },
                 placeholder = { Text("gratitude, goals, reflection") },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
             )

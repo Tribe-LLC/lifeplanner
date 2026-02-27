@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -59,9 +60,333 @@ import az.tribe.lifeplanner.ui.theme.LifePlannerGradients
 import az.tribe.lifeplanner.ui.theme.gradient
 import az.tribe.lifeplanner.ui.theme.gradientColors
 import az.tribe.lifeplanner.ui.theme.backgroundColor
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.text.style.TextAlign
 import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+
+// ============== NEXT ACTION MODEL ==============
+
+sealed class NextAction {
+    data class GoalDueToday(val goal: Goal) : NextAction()
+    data class NextHabit(val habitWithStatus: HabitWithStatus) : NextAction()
+    data class ContinueGoal(val goal: Goal) : NextAction()
+    object AllCaughtUp : NextAction()
+}
+
+// ============== COMPACT WELCOME HEADER ==============
+
+@Composable
+fun CompactWelcomeHeader(
+    userName: String?,
+    streak: Int,
+    level: Int,
+    levelTitle: String
+) {
+    val greeting = remember {
+        val hour = Clock.System.now()
+            .toLocalDateTime(TimeZone.currentSystemDefault()).hour
+        when (hour) {
+            in 5..11 -> "Good morning"
+            in 12..16 -> "Good afternoon"
+            in 17..20 -> "Good evening"
+            else -> "Good night"
+        }
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(LifePlannerDesign.CornerRadius.large))
+            .background(LifePlannerGradients.primary)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "$greeting${userName?.let { ", $it" } ?: ""}!",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+        }
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Level badge
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = Color.White.copy(alpha = 0.2f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Lv.$level",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+
+            // Streak badge
+            if (streak > 0) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color.White.copy(alpha = 0.2f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "\uD83D\uDD25 $streak",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ============== NEXT ACTION CARD ==============
+
+@Composable
+fun NextActionCard(
+    nextAction: NextAction,
+    onGoalClick: (Goal) -> Unit,
+    onHabitCheckIn: (String) -> Unit
+) {
+    val (icon, title, subtitle, progress, gradientColors) = when (nextAction) {
+        is NextAction.GoalDueToday -> {
+            val goal = nextAction.goal
+            val p = (goal.progress ?: 0L).toInt()
+            ActionCardData(
+                icon = Icons.Rounded.Flag,
+                title = goal.title,
+                subtitle = "Due today \u2022 ${p}% complete",
+                progress = p / 100f,
+                gradientColors = listOf(Color(0xFFFF6B35), Color(0xFFFF8F65))
+            )
+        }
+        is NextAction.NextHabit -> {
+            val habit = nextAction.habitWithStatus.habit
+            ActionCardData(
+                icon = Icons.Rounded.Loop,
+                title = habit.title,
+                subtitle = "Next habit to check in",
+                progress = null,
+                gradientColors = listOf(Color(0xFF4CAF50), Color(0xFF66BB6A))
+            )
+        }
+        is NextAction.ContinueGoal -> {
+            val goal = nextAction.goal
+            val p = (goal.progress ?: 0L).toInt()
+            ActionCardData(
+                icon = Icons.AutoMirrored.Rounded.TrendingUp,
+                title = goal.title,
+                subtitle = "Continue \u2022 ${p}% complete",
+                progress = p / 100f,
+                gradientColors = listOf(Color(0xFF667EEA), Color(0xFF764BA2))
+            )
+        }
+        is NextAction.AllCaughtUp -> {
+            ActionCardData(
+                icon = Icons.Rounded.CheckCircle,
+                title = "All caught up!",
+                subtitle = "Great work \u2014 enjoy your day",
+                progress = null,
+                gradientColors = listOf(Color(0xFF11998E), Color(0xFF38EF7D))
+            )
+        }
+    }
+
+    GradientBorderCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                when (nextAction) {
+                    is NextAction.GoalDueToday -> onGoalClick(nextAction.goal)
+                    is NextAction.ContinueGoal -> onGoalClick(nextAction.goal)
+                    is NextAction.NextHabit -> onHabitCheckIn(nextAction.habitWithStatus.habit.id)
+                    is NextAction.AllCaughtUp -> {}
+                }
+            },
+        gradientColors = gradientColors,
+        borderWidth = 1.5.dp,
+        cornerRadius = LifePlannerDesign.CornerRadius.large,
+        backgroundColor = MaterialTheme.colorScheme.surface
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Icon
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(gradientColors)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            Spacer(Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Up Next",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = gradientColors.first()
+                )
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (progress != null) {
+                    Spacer(Modifier.height(6.dp))
+                    GradientProgressBar(
+                        progress = progress,
+                        gradient = Brush.horizontalGradient(gradientColors),
+                        modifier = Modifier.fillMaxWidth(),
+                        height = 4.dp
+                    )
+                }
+            }
+
+            if (nextAction !is NextAction.AllCaughtUp) {
+                Spacer(Modifier.width(8.dp))
+                Icon(
+                    Icons.AutoMirrored.Rounded.ArrowForward,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+private data class ActionCardData(
+    val icon: ImageVector,
+    val title: String,
+    val subtitle: String,
+    val progress: Float?,
+    val gradientColors: List<Color>
+)
+
+// ============== MERGED PROGRESS ROW ==============
+
+@Composable
+fun MergedProgressRow(
+    streak: Int,
+    habitsCompleted: Int,
+    totalHabits: Int,
+    goalsDueToday: Int,
+    totalProgress: Int
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        MiniStatCard(
+            emoji = "\uD83D\uDD25",
+            value = "$streak",
+            label = "streak",
+            modifier = Modifier.weight(1f)
+        )
+        MiniStatCard(
+            emoji = "\u2713",
+            value = "$habitsCompleted/$totalHabits",
+            label = "habits",
+            modifier = Modifier.weight(1f)
+        )
+        MiniStatCard(
+            emoji = "\uD83D\uDCCC",
+            value = "$goalsDueToday",
+            label = "due today",
+            modifier = Modifier.weight(1f)
+        )
+        MiniStatCard(
+            emoji = "\uD83D\uDCC8",
+            value = "$totalProgress%",
+            label = "overall",
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun MiniStatCard(
+    emoji: String,
+    value: String,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    GlassCard(
+        modifier = modifier,
+        cornerRadius = LifePlannerDesign.CornerRadius.medium
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 10.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    emoji,
+                    style = MaterialTheme.typography.labelMedium
+                )
+                Text(
+                    value,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
 
 @Composable
 fun DailyMotivationCard() {
@@ -1013,7 +1338,8 @@ fun CompactHabitRow(
 @Composable
 fun PriorityGoalsSection(
     upcomingGoals: List<Goal>,
-    onGoalClick: (Goal) -> Unit
+    onGoalClick: (Goal) -> Unit,
+    onSeeAllClick: (() -> Unit)? = null
 ) {
     Column {
         Row(
@@ -1026,7 +1352,30 @@ fun PriorityGoalsSection(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
-            if (upcomingGoals.isNotEmpty()) {
+            if (upcomingGoals.isNotEmpty() && onSeeAllClick != null) {
+                Surface(
+                    onClick = onSeeAllClick,
+                    shape = RoundedCornerShape(50),
+                    color = Color.Transparent
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "See all",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Icon(
+                            Icons.Rounded.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            } else if (upcomingGoals.isNotEmpty()) {
                 Text(
                     "${upcomingGoals.size} upcoming",
                     style = MaterialTheme.typography.labelMedium,
@@ -1071,7 +1420,7 @@ fun PriorityGoalsSection(
             }
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                upcomingGoals.take(3).forEach { goal ->
+                upcomingGoals.take(5).forEach { goal ->
                     CompactGoalCard(goal = goal, onClick = { onGoalClick(goal) })
                 }
             }
@@ -1238,6 +1587,312 @@ fun PersonalCoachCard(
                 contentDescription = "Open coach",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+// ============== HIGH-DENSITY HOME SCREEN COMPOSABLES ==============
+
+@Composable
+fun InlineGreetingRow(
+    userName: String?,
+    streak: Int,
+    level: Int,
+    levelTitle: String
+) {
+    val greeting = remember {
+        val hour = Clock.System.now()
+            .toLocalDateTime(TimeZone.currentSystemDefault()).hour
+        when (hour) {
+            in 5..11 -> "Good morning"
+            in 12..16 -> "Good afternoon"
+            in 17..20 -> "Good evening"
+            else -> "Good night"
+        }
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            "$greeting${userName?.let { ", $it" } ?: ""}!",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f, fill = false)
+        )
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Text(
+                    "Lv.$level",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+
+            if (streak > 0) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color(0xFFFF6B35).copy(alpha = 0.12f)
+                ) {
+                    Text(
+                        "\uD83D\uDD25 $streak",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFF6B35),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun QuickActionsPillRow(
+    onAddGoal: () -> Unit,
+    onAiSuggest: () -> Unit,
+    onNewHabit: () -> Unit,
+    onJournal: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        QuickActionPill(
+            icon = Icons.Rounded.Add,
+            label = "Goal",
+            gradientColors = listOf(Color(0xFF667EEA), Color(0xFF764BA2)),
+            onClick = onAddGoal,
+            modifier = Modifier.weight(1f)
+        )
+        QuickActionPill(
+            icon = Icons.Rounded.AutoAwesome,
+            label = "AI",
+            gradientColors = listOf(Color(0xFFF093FB), Color(0xFFF5576C)),
+            onClick = onAiSuggest,
+            modifier = Modifier.weight(1f)
+        )
+        QuickActionPill(
+            icon = Icons.Rounded.Loop,
+            label = "Habit",
+            gradientColors = listOf(Color(0xFF11998E), Color(0xFF38EF7D)),
+            onClick = onNewHabit,
+            modifier = Modifier.weight(1f)
+        )
+        QuickActionPill(
+            icon = Icons.Rounded.Edit,
+            label = "Journal",
+            gradientColors = listOf(Color(0xFFFC466B), Color(0xFF3F5EFB)),
+            onClick = onJournal,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun QuickActionPill(
+    icon: ImageVector,
+    label: String,
+    gradientColors: List<Color>,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(50),
+        color = Color.Transparent,
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier
+                .background(
+                    brush = Brush.horizontalGradient(gradientColors),
+                    shape = RoundedCornerShape(50)
+                )
+                .padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White
+            )
+        }
+    }
+}
+
+@Composable
+fun InlineStatsRow(
+    streak: Int,
+    habitsCompleted: Int,
+    totalHabits: Int,
+    goalsDueToday: Int,
+    totalProgress: Int
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(LifePlannerDesign.CornerRadius.medium))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .padding(vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        InlineStat(emoji = "\uD83D\uDD25", value = "$streak", label = "streak")
+        StatDivider()
+        InlineStat(emoji = "\u2713", value = "$habitsCompleted/$totalHabits", label = "habits")
+        StatDivider()
+        InlineStat(emoji = "\uD83D\uDCCC", value = "$goalsDueToday", label = "due today")
+        StatDivider()
+        InlineStat(emoji = "\uD83D\uDCC8", value = "$totalProgress%", label = "overall")
+    }
+}
+
+@Composable
+private fun InlineStat(emoji: String, value: String, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(emoji, style = MaterialTheme.typography.labelSmall)
+            Text(
+                value,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun StatDivider() {
+    Box(
+        modifier = Modifier
+            .width(1.dp)
+            .height(28.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant)
+    )
+}
+
+@Composable
+fun CompactGoalTile(
+    goal: Goal,
+    onClick: () -> Unit
+) {
+    val categoryGradientColors = goal.category.gradientColors()
+    val categoryColor = goal.category.backgroundColor()
+    val progress = (goal.progress ?: 0L).toInt()
+
+    GlassCard(
+        modifier = Modifier
+            .widthIn(min = 140.dp)
+            .width(140.dp)
+            .clickable(onClick = onClick),
+        cornerRadius = LifePlannerDesign.CornerRadius.medium
+    ) {
+        Column {
+            // Top accent bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .background(Brush.horizontalGradient(categoryGradientColors))
+            )
+
+            Column(
+                modifier = Modifier.padding(10.dp)
+            ) {
+                // Category icon
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            Brush.linearGradient(
+                                categoryGradientColors.map { it.copy(alpha = 0.15f) }
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = goal.category.getIcon(),
+                        contentDescription = null,
+                        tint = categoryColor,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                // Title
+                Text(
+                    goal.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                // Progress bar + percentage
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    GradientProgressBar(
+                        progress = progress / 100f,
+                        gradient = Brush.horizontalGradient(categoryGradientColors),
+                        modifier = Modifier.weight(1f),
+                        height = 4.dp
+                    )
+                    Text(
+                        "$progress%",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = categoryGradientColors.first()
+                    )
+                }
+
+                // Due date
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    goal.dueDate.toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

@@ -1,6 +1,10 @@
 package az.tribe.lifeplanner.ui.components
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -40,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -59,22 +64,65 @@ fun BadgeCard(
     onClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val isNew = badge?.isNew == true
+
+    // Enhanced scale for new badges: 1.12f with spring
     val scale by animateFloatAsState(
-        targetValue = if (badge?.isNew == true) 1.05f else 1f,
+        targetValue = if (isNew) 1.12f else 1f,
         animationSpec = spring()
+    )
+
+    // Wobble rotation for new badges: -3° to +3°
+    val infiniteTransition = rememberInfiniteTransition(label = "badgeWobble")
+    val wobbleRotation by infiniteTransition.animateFloat(
+        initialValue = -3f,
+        targetValue = 3f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "wobble"
+    )
+
+    // Pulse glow for new badges
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.7f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glow"
     )
 
     Column(
         modifier = modifier
             .scale(scale)
+            .graphicsLayer {
+                rotationZ = if (isNew) wobbleRotation else 0f
+            }
             .clickable(onClick = onClick)
             .padding(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Badge Icon
+        // Badge Icon with optional pulse glow
         Box(
             modifier = Modifier
                 .size(48.dp)
+                .then(
+                    if (isNew) {
+                        Modifier.border(
+                            width = 3.dp,
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primary.copy(alpha = glowAlpha),
+                                    Color(badgeType.color).copy(alpha = glowAlpha)
+                                )
+                            ),
+                            shape = CircleShape
+                        )
+                    } else Modifier
+                )
                 .clip(CircleShape)
                 .background(
                     if (isEarned) {
@@ -82,15 +130,6 @@ fun BadgeCard(
                     } else {
                         MaterialTheme.colorScheme.surfaceVariant
                     }
-                )
-                .then(
-                    if (badge?.isNew == true) {
-                        Modifier.border(
-                            width = 2.dp,
-                            color = MaterialTheme.colorScheme.primary,
-                            shape = CircleShape
-                        )
-                    } else Modifier
                 ),
             contentAlignment = Alignment.Center
         ) {
@@ -119,7 +158,7 @@ fun BadgeCard(
         )
 
         // New indicator
-        if (badge?.isNew == true) {
+        if (isNew) {
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = "NEW",

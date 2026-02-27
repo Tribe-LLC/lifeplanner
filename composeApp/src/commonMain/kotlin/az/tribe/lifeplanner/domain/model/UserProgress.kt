@@ -18,25 +18,36 @@ data class UserProgress(
     val longestStreak: Int = 0
 ) {
     /**
-     * XP needed to reach next level
-     * Level formula: 100 * level * 1.5
+     * Total XP required to complete the current level
      */
-    val xpForNextLevel: Int
-        get() = calculateXpForLevel(currentLevel + 1)
+    val xpForCurrentLevel: Int
+        get() = calculateXpForLevel(currentLevel)
 
     /**
-     * XP earned in current level
+     * XP needed to reach next level (alias for UI)
+     */
+    val xpForNextLevel: Int
+        get() = calculateXpForLevel(currentLevel)
+
+    /**
+     * XP earned within the current level
      */
     val xpInCurrentLevel: Int
-        get() = totalXp - calculateTotalXpForLevel(currentLevel)
+        get() = (totalXp - calculateTotalXpForLevel(currentLevel)).coerceAtLeast(0)
+
+    /**
+     * XP remaining to reach the next level
+     */
+    val xpRemainingForNextLevel: Int
+        get() = (xpForCurrentLevel - xpInCurrentLevel).coerceAtLeast(0)
 
     /**
      * Progress to next level (0.0 to 1.0)
      */
     val levelProgress: Float
         get() {
-            val xpNeeded = xpForNextLevel - calculateXpForLevel(currentLevel)
-            return if (xpNeeded > 0) xpInCurrentLevel.toFloat() / xpNeeded else 0f
+            val xpNeeded = xpForCurrentLevel
+            return if (xpNeeded > 0) (xpInCurrentLevel.toFloat() / xpNeeded).coerceIn(0f, 1f) else 0f
         }
 
     /**

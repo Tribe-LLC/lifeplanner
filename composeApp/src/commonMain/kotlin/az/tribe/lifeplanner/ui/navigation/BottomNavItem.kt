@@ -55,6 +55,6 @@ sealed class BottomNavItem(
     )
 
     companion object {
-        val items = listOf(Home, Goals, Habits, Journal, Profile)
+        val items = listOf(Home, Journal, Profile)
     }
 }
