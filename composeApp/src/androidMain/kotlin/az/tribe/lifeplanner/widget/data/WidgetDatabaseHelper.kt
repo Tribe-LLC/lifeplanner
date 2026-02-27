@@ -10,6 +10,9 @@ import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 
+private const val WIDGET_PREFS = "widget_pending_checkins"
+private const val KEY_PENDING_IDS = "pending_habit_ids"
+
 /**
  * Lightweight read-only SQLite helper for widget data queries.
  * Reads directly from the same DB file used by the main app.
@@ -183,6 +186,10 @@ object WidgetDatabaseHelper {
                 )
 
                 db.setTransactionSuccessful()
+
+                // Save pending check-in so app can sync gamification on resume
+                savePendingCheckIn(context, habitId)
+
                 true
             } finally {
                 db.endTransaction()
@@ -193,5 +200,27 @@ object WidgetDatabaseHelper {
         } finally {
             db.close()
         }
+    }
+
+    private fun savePendingCheckIn(context: Context, habitId: String) {
+        val prefs = context.getSharedPreferences(WIDGET_PREFS, Context.MODE_PRIVATE)
+        val current = prefs.getStringSet(KEY_PENDING_IDS, emptySet()) ?: emptySet()
+        prefs.edit().putStringSet(KEY_PENDING_IDS, current + habitId).apply()
+    }
+
+    fun getPendingCheckIns(context: Context): List<String> {
+        val prefs = context.getSharedPreferences(WIDGET_PREFS, Context.MODE_PRIVATE)
+        return (prefs.getStringSet(KEY_PENDING_IDS, emptySet()) ?: emptySet()).toList()
+    }
+
+    fun clearPendingCheckIns(context: Context) {
+        val prefs = context.getSharedPreferences(WIDGET_PREFS, Context.MODE_PRIVATE)
+        prefs.edit().remove(KEY_PENDING_IDS).apply()
+    }
+
+    fun removePendingCheckIn(context: Context, habitId: String) {
+        val prefs = context.getSharedPreferences(WIDGET_PREFS, Context.MODE_PRIVATE)
+        val current = prefs.getStringSet(KEY_PENDING_IDS, emptySet()) ?: emptySet()
+        prefs.edit().putStringSet(KEY_PENDING_IDS, current - habitId).apply()
     }
 }

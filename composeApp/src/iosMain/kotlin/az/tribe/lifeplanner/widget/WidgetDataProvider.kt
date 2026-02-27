@@ -37,6 +37,19 @@ object WidgetDataProvider {
         defaults.synchronize()
     }
 
+    fun removePendingCheckIn(habitId: String) {
+        val defaults = getSharedDefaults() ?: return
+        @Suppress("UNCHECKED_CAST")
+        val current = (defaults.stringArrayForKey(PENDING_CHECKINS_KEY) as? List<String>) ?: return
+        val updated = current.filter { it != habitId }
+        if (updated.isEmpty()) {
+            defaults.removeObjectForKey(PENDING_CHECKINS_KEY)
+        } else {
+            defaults.setObject(updated, forKey = PENDING_CHECKINS_KEY)
+        }
+        defaults.synchronize()
+    }
+
     fun writeDashboardData(data: WidgetDashboardData) {
         try {
             val defaults = getSharedDefaults()

@@ -278,6 +278,12 @@ class SharedDatabase(
         }
     }
 
+    suspend fun getGoalIdForMilestone(milestoneId: String): String? {
+        return this { db ->
+            db.lifePlannerDBQueries.getGoalIdForMilestone(milestoneId).executeAsOneOrNull()
+        }
+    }
+
     suspend fun deleteMilestone(id: String) {
         this { db ->
             db.lifePlannerDBQueries.deleteMilestone(id)
@@ -452,6 +458,18 @@ class SharedDatabase(
         }
     }
 
+    suspend fun insertHabitCheckInOrIgnore(checkIn: HabitCheckInEntity) {
+        this { db ->
+            db.lifePlannerDBQueries.insertHabitCheckInOrIgnore(
+                id = checkIn.id,
+                habitId = checkIn.habitId,
+                date = checkIn.date,
+                completed = checkIn.completed,
+                notes = checkIn.notes
+            )
+        }
+    }
+
     suspend fun getCheckInsByHabitId(habitId: String): List<HabitCheckInEntity> {
         return this { db -> db.lifePlannerDBQueries.getCheckInsByHabitId(habitId).executeAsList() }
     }
@@ -467,6 +485,15 @@ class SharedDatabase(
     }
 
     suspend fun deleteDuplicateCheckIns() {
+        this { db -> db.lifePlannerDBQueries.deleteDuplicateCheckIns() }
+    }
+
+    /**
+     * Force SQLDelight to invalidate cached queries on habit-related tables.
+     * Needed when external writers (e.g. Glance widget) modify the DB
+     * outside the SQLDelight driver.
+     */
+    suspend fun invalidateHabitCache() {
         this { db -> db.lifePlannerDBQueries.deleteDuplicateCheckIns() }
     }
 
@@ -752,6 +779,10 @@ class SharedDatabase(
 
     suspend fun incrementHabitsCompleted() {
         this { db -> db.lifePlannerDBQueries.incrementHabitsCompleted() }
+    }
+
+    suspend fun decrementHabitsCompleted() {
+        this { db -> db.lifePlannerDBQueries.decrementHabitsCompleted() }
     }
 
     suspend fun incrementJournalEntries() {

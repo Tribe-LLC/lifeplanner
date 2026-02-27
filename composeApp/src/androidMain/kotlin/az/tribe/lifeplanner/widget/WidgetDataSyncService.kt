@@ -26,11 +26,30 @@ actual class WidgetDataSyncService {
     }
 
     actual fun getPendingCheckIns(): List<String> {
-        // Android widgets write directly to DB, no pending queue needed
-        return emptyList()
+        return try {
+            val context: Context = KoinPlatform.getKoin().get()
+            az.tribe.lifeplanner.widget.data.WidgetDatabaseHelper.getPendingCheckIns(context)
+        } catch (e: Exception) {
+            Logger.w("WidgetDataSyncService") { "Failed to get pending check-ins: ${e.message}" }
+            emptyList()
+        }
     }
 
     actual fun clearPendingCheckIns() {
-        // No-op on Android
+        try {
+            val context: Context = KoinPlatform.getKoin().get()
+            az.tribe.lifeplanner.widget.data.WidgetDatabaseHelper.clearPendingCheckIns(context)
+        } catch (e: Exception) {
+            Logger.w("WidgetDataSyncService") { "Failed to clear pending check-ins: ${e.message}" }
+        }
+    }
+
+    actual fun removePendingCheckIn(habitId: String) {
+        try {
+            val context: Context = KoinPlatform.getKoin().get()
+            az.tribe.lifeplanner.widget.data.WidgetDatabaseHelper.removePendingCheckIn(context, habitId)
+        } catch (e: Exception) {
+            Logger.w("WidgetDataSyncService") { "Failed to remove pending check-in: ${e.message}" }
+        }
     }
 }

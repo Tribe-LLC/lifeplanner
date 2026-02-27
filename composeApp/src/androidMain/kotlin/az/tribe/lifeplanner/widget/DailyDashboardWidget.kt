@@ -1,13 +1,11 @@
 package az.tribe.lifeplanner.widget
 
 import android.content.Context
-import android.content.Intent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
-import androidx.glance.LocalContext
 import androidx.glance.LocalSize
 import androidx.glance.action.clickable
 import androidx.glance.action.actionStartActivity
@@ -28,7 +26,6 @@ import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
-import androidx.glance.layout.size
 import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
@@ -40,13 +37,8 @@ import az.tribe.lifeplanner.widget.theme.SuccessColor
 import az.tribe.lifeplanner.widget.theme.WidgetColorProviders
 import az.tribe.lifeplanner.widget.theme.XpBarBackground
 import az.tribe.lifeplanner.widget.theme.XpBarFill
-import androidx.compose.ui.graphics.Color
-import androidx.glance.appwidget.lazy.LazyColumn
-import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle as JavaTextStyle
-import java.util.Locale
 
 class DailyDashboardWidget : GlanceAppWidget() {
 
@@ -189,10 +181,9 @@ private fun MediumDashboard(data: WidgetDashboardData) {
         Spacer(modifier = GlanceModifier.height(8.dp))
 
         // XP progress bar
-        val xpForNext = az.tribe.lifeplanner.domain.model.UserProgress.calculateXpForLevel(data.currentLevel + 1)
         val xpForCurrent = az.tribe.lifeplanner.domain.model.UserProgress.calculateTotalXpForLevel(data.currentLevel)
-        val xpInLevel = data.totalXp - xpForCurrent
-        val xpNeeded = xpForNext - az.tribe.lifeplanner.domain.model.UserProgress.calculateXpForLevel(data.currentLevel)
+        val xpInLevel = (data.totalXp - xpForCurrent).coerceAtLeast(0)
+        val xpNeeded = az.tribe.lifeplanner.domain.model.UserProgress.calculateXpForLevel(data.currentLevel)
         val progress = if (xpNeeded > 0) (xpInLevel.toFloat() / xpNeeded).coerceIn(0f, 1f) else 0f
 
         Row(
@@ -208,22 +199,21 @@ private fun MediumDashboard(data: WidgetDashboardData) {
                 )
             )
             Spacer(modifier = GlanceModifier.width(4.dp))
-            Box(
+            Row(
                 modifier = GlanceModifier
                     .defaultWeight()
                     .height(6.dp)
                     .cornerRadius(3.dp)
                     .background(XpBarBackground)
             ) {
-                Box(
-                    modifier = GlanceModifier
-                        .height(6.dp)
-                        .fillMaxWidth()
-                        .cornerRadius(3.dp)
-                        .background(XpBarFill)
-                ) {
-                    // Glance doesn't support fraction width, so we use a visual trick
-                    // The inner box is a full-width fill; the actual progress is shown via text
+                if (progress > 0f) {
+                    Box(
+                        modifier = GlanceModifier
+                            .height(6.dp)
+                            .width((progress * 100).dp)
+                            .cornerRadius(3.dp)
+                            .background(XpBarFill)
+                    ) {}
                 }
             }
             Spacer(modifier = GlanceModifier.width(4.dp))

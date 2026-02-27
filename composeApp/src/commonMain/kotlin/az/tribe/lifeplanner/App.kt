@@ -56,7 +56,12 @@ import az.tribe.lifeplanner.ui.coach.CoachViewModel
 import az.tribe.lifeplanner.ui.coach.CreateCoachScreen
 import az.tribe.lifeplanner.ui.coach.CreateGroupScreen
 import az.tribe.lifeplanner.ui.components.BottomNavigationBar
+import az.tribe.lifeplanner.ui.components.CelebrationOverlay
+import az.tribe.lifeplanner.ui.components.CelebrationType
+import az.tribe.lifeplanner.ui.gamification.GamificationEvent
+import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
 import az.tribe.lifeplanner.ui.navigation.Screen
+import org.koin.compose.viewmodel.koinViewModel
 import az.tribe.lifeplanner.ui.theme.LifePlannerTheme
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
 import az.tribe.lifeplanner.widget.WidgetDataSyncService
@@ -119,6 +124,9 @@ fun App(
 
                 val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
 
+                // Force SQLDelight to re-read DB (picks up widget check-ins made via direct SQL)
+                habitRepo.invalidateCache()
+
                 // Process any pending check-ins from widget before syncing
                 val pendingCheckIns = widgetSync.getPendingCheckIns()
                 for (habitId in pendingCheckIns) {
@@ -127,9 +135,7 @@ fun App(
                     } catch (_: Exception) {
                         // Already checked in or invalid — skip
                     }
-                }
-                if (pendingCheckIns.isNotEmpty()) {
-                    widgetSync.clearPendingCheckIns()
+                    widgetSync.removePendingCheckIn(habitId)
                 }
 
                 val habitsWithStatus = habitRepo.getHabitsWithTodayStatus(today)
@@ -164,6 +170,39 @@ fun App(
 
         val isForceUpdateEnabled = viewModel.isForceUpdateEnabled.collectAsState().value ?: false
 
+        // Global celebration overlay state
+        val gamificationViewModel: GamificationViewModel = koinViewModel()
+        var showGlobalCelebration by remember { mutableStateOf(false) }
+        var globalCelebrationType by remember { mutableStateOf(CelebrationType.BADGE_UNLOCKED) }
+        var globalCelebrationMessage by remember { mutableStateOf("") }
+
+        // Collect gamification events for global celebrations
+        LaunchedEffect(Unit) {
+            gamificationViewModel.gamificationEvents.collect { event ->
+                when (event) {
+                    is GamificationEvent.BadgeEarned -> {
+                        globalCelebrationType = CelebrationType.BADGE_UNLOCKED
+                        globalCelebrationMessage = "Badge Unlocked: ${event.badge.type.displayName}"
+                        showGlobalCelebration = true
+                    }
+                    is GamificationEvent.LevelUp -> {
+                        globalCelebrationType = CelebrationType.LEVEL_UP
+                        globalCelebrationMessage = "Level ${event.newLevel}: ${event.title}"
+                        showGlobalCelebration = true
+                    }
+                    is GamificationEvent.StreakUpdated -> {
+                        val milestoneStreaks = listOf(7, 14, 30, 50, 100)
+                        if (event.newStreak in milestoneStreaks) {
+                            globalCelebrationType = CelebrationType.STREAK_MILESTONE
+                            globalCelebrationMessage = "${event.newStreak}-Day Streak!"
+                            showGlobalCelebration = true
+                        }
+                    }
+                    else -> { /* no-op for other events */ }
+                }
+            }
+        }
+
         val navController = rememberNavController()
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentRoute = navBackStackEntry?.destination?.route
@@ -178,8 +217,6 @@ fun App(
         // Routes where bottom navigation should be visible
         val mainRoutes = listOf(
             Screen.Home.route,
-            Screen.Goals.route,
-            Screen.HabitTracker.route,
             Screen.Journal.route,
             Screen.Profile.route
         )
@@ -226,13 +263,13 @@ fun App(
                                 launchSingleTop = true
                             }
                         },
-                        onNavigateToAchievements = {
-                            navController.navigate(Screen.Achievements.route) {
+                        onNavigateToGoals = {
+                            navController.navigate(Screen.Goals.route) {
                                 launchSingleTop = true
                             }
                         },
-                        onNavigateToCoach = {
-                            navController.navigate(Screen.AIChat.route) {
+                        onNavigateToAchievements = {
+                            navController.navigate(Screen.Achievements.route) {
                                 launchSingleTop = true
                             }
                         }
@@ -268,11 +305,10 @@ fun App(
                 )
             }
 
-            // Habits Screen (via bottom nav)
+            // Habits Screen
             composable(Screen.HabitTracker.route) {
                 HabitTrackerScreen(
-                    onNavigateBack = { navController.popBackStack() },
-                    isFromBottomNav = true
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
 
@@ -286,7 +322,7 @@ fun App(
                         }
                     },
                     onNavigateToWizard = {
-                        navController.navigate(Screen.JournalWizard.route) {
+                        navController.navigate("journal_wizard") {
                             launchSingleTop = true
                         }
                     },
@@ -295,9 +331,18 @@ fun App(
             }
 
             // Journal Creation Wizard
-            composable(Screen.JournalWizard.route) {
+            composable(
+                route = Screen.JournalWizard.route,
+                arguments = listOf(navArgument("goalId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                })
+            ) { backStackEntry ->
+                val goalId = backStackEntry.arguments?.getString("goalId")
                 JournalCreationWizardScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    preSelectedGoalId = goalId
                 )
             }
 
@@ -391,8 +436,7 @@ fun App(
                         }
                     },
                     onReflectOnGoal = { id ->
-                        // Navigate to Journal screen - the user can use the goal picker
-                        navController.navigate(Screen.Journal.route) {
+                        navController.navigate("journal_wizard?goalId=$id") {
                             launchSingleTop = true
                         }
                     }
@@ -643,11 +687,14 @@ fun App(
             composable(Screen.LifeBalance.route) {
                 LifeBalanceScreen(
                     onNavigateBack = { navController.popBackStack() },
-                    onCreateGoal = { area ->
-                        navController.navigate(Screen.AddGoal.route)
-                    },
                     onCreateHabit = { area ->
                         navController.navigate(Screen.HabitTracker.route)
+                    },
+                    onNavigateToCoach = { coachId, message ->
+                        az.tribe.lifeplanner.ui.balance.InsightMessageHolder.pendingMessage = message
+                        navController.navigate("ai_chat/$coachId") {
+                            launchSingleTop = true
+                        }
                     }
                 )
             }
@@ -683,6 +730,14 @@ fun App(
                 isVisible = showBottomNav
             )
         }
+
+        // Global celebration overlay (on top of everything)
+        CelebrationOverlay(
+            type = globalCelebrationType,
+            isVisible = showGlobalCelebration,
+            message = globalCelebrationMessage,
+            onDismiss = { showGlobalCelebration = false }
+        )
     }
     }
 }

@@ -164,6 +164,9 @@ UPDATE MilestoneEntity
 SET title = ?, isCompleted = ?, dueDate = ?
 WHERE id = ?;
 
+getGoalIdForMilestone:
+SELECT goalId FROM MilestoneEntity WHERE id = ?;
+
 deleteMilestone:
 DELETE FROM MilestoneEntity
 WHERE id = ?;
@@ -232,6 +235,11 @@ WHERE id = 1;
 incrementHabitsCompleted:
 UPDATE UserProgressEntity
 SET habitsCompleted = habitsCompleted + 1
+WHERE id = 1;
+
+decrementHabitsCompleted:
+UPDATE UserProgressEntity
+SET habitsCompleted = CASE WHEN habitsCompleted > 0 THEN habitsCompleted - 1 ELSE 0 END
 WHERE id = 1;
 
 incrementJournalEntries:
@@ -365,6 +373,10 @@ insertHabitCheckIn:
 INSERT OR REPLACE INTO HabitCheckInEntity(id, habitId, date, completed, notes)
 VALUES (?, ?, ?, ?, ?);
 
+insertHabitCheckInOrIgnore:
+INSERT OR IGNORE INTO HabitCheckInEntity(id, habitId, date, completed, notes)
+VALUES (?, ?, ?, ?, ?);
+
 getCheckInsByHabitId:
 SELECT * FROM HabitCheckInEntity WHERE habitId = ? ORDER BY date DESC;
 
@@ -406,6 +418,7 @@ GROUP BY habitId;
 CREATE INDEX IF NOT EXISTS idx_habits_category ON HabitEntity(category);
 CREATE INDEX IF NOT EXISTS idx_habits_linked_goal ON HabitEntity(linkedGoalId);
 CREATE INDEX IF NOT EXISTS idx_habits_active ON HabitEntity(isActive);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_checkins_habit_date ON HabitCheckInEntity(habitId, date);
 CREATE INDEX IF NOT EXISTS idx_checkins_habit ON HabitCheckInEntity(habitId);
 CREATE INDEX IF NOT EXISTS idx_checkins_date ON HabitCheckInEntity(date);
 

@@ -39,6 +39,10 @@ actual class WidgetDataSyncService {
         WidgetDataProvider.clearPendingCheckIns()
     }
 
+    actual fun removePendingCheckIn(habitId: String) {
+        WidgetDataProvider.removePendingCheckIn(habitId)
+    }
+
     companion object {
         val WIDGET_REFRESH_NOTIFICATION: NSNotificationName = "az.tribe.lifeplanner.refreshWidgets" as NSNotificationName
     }

@@ -88,22 +88,17 @@ class HabitRepositoryImpl(
     }
 
     override suspend fun checkIn(habitId: String, date: LocalDate, notes: String): HabitCheckIn {
-        // Check if already checked in to prevent duplicates
-        val existingCheckIn = getCheckInByHabitAndDate(habitId, date)
-        if (existingCheckIn != null) {
-            return existingCheckIn
-        }
-
         val checkIn = createNewCheckIn(
             habitId = habitId,
             date = date,
             completed = true,
             notes = notes
         )
-        database.insertHabitCheckIn(checkIn.toEntity())
+        // INSERT OR IGNORE: idempotent — won't duplicate if (habitId, date) already exists
+        database.insertHabitCheckInOrIgnore(checkIn.toEntity())
         updateStreakAfterCheckIn(habitId)
         notifyWidgets()
-        return checkIn
+        return getCheckInByHabitAndDate(habitId, date) ?: checkIn
     }
 
     override suspend fun getCheckInsByHabitId(habitId: String): List<HabitCheckIn> {
@@ -188,5 +183,9 @@ class HabitRepositoryImpl(
         val completedDays = checkIns.count { it.completed }
 
         return if (days > 0) (completedDays.toFloat() / days) * 100f else 0f
+    }
+
+    override suspend fun invalidateCache() {
+        database.invalidateHabitCache()
     }
 }

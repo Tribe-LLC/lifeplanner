@@ -13,4 +13,6 @@ expect class WidgetDataSyncService() {
     fun getPendingCheckIns(): List<String>
 
     fun clearPendingCheckIns()
+
+    fun removePendingCheckIn(habitId: String)
 }

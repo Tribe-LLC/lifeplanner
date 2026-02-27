@@ -99,7 +99,7 @@ class GoalRepositoryImpl(
     }
 
     override suspend fun updateProgress(id: String, progress: Int) {
-        // Calculate completion rate based on progress
+        // completionRate stored as 0-100 scale (same as progress)
         val completionRate = progress.toDouble()
         localGoalStore.updateGoalProgress(id, progress.toLong(), completionRate)
     }
@@ -196,8 +196,10 @@ class GoalRepositoryImpl(
     }
 
     override suspend fun updateMilestone(milestone: Milestone) {
-        // Note: You'll need to track goalId in Milestone or find another way to get it
-        localGoalStore.updateMilestone(milestone.toEntity("")) // Placeholder for goalId
+        val goalId = localGoalStore.getGoalIdForMilestone(milestone.id)
+        if (goalId != null) {
+            localGoalStore.updateMilestone(milestone.toEntity(goalId))
+        }
     }
 
     override suspend fun deleteMilestone(milestoneId: String) {
