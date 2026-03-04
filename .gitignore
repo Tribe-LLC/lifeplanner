@@ -24,3 +24,5 @@ firebase-debug.log
 .mcp.json
 supabase/.temp/
 .env*
+composeApp/google-services.json
+iosApp/iosApp/GoogleService-Info.plist
