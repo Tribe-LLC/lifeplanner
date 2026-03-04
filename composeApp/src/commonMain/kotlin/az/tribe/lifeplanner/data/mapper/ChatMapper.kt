@@ -23,7 +23,7 @@ fun ChatMessageEntity.toDomain(): ChatMessage = ChatMessage(
     id = id,
     content = content,
     role = MessageRole.valueOf(role),
-    timestamp = LocalDateTime.parse(timestamp),
+    timestamp = parseLocalDateTime(timestamp),
     relatedGoalId = relatedGoalId,
     metadata = metadata?.let {
         try {
@@ -44,7 +44,11 @@ fun ChatMessage.toEntity(sessionId: String): ChatMessageEntity = ChatMessageEnti
     role = role.name,
     timestamp = timestamp.toString(),
     relatedGoalId = relatedGoalId,
-    metadata = metadata?.let { json.encodeToString(ChatMessageMetadata.serializer(), it) }
+    metadata = metadata?.let { json.encodeToString(ChatMessageMetadata.serializer(), it) },
+    sync_updated_at = Clock.System.now().toString(),
+    is_deleted = 0L,
+    sync_version = 0L,
+    last_synced_at = null
 )
 
 /**
@@ -54,8 +58,8 @@ fun ChatSessionEntity.toDomain(messages: List<ChatMessage> = emptyList()): ChatS
     id = id,
     title = title,
     messages = messages,
-    createdAt = LocalDateTime.parse(createdAt),
-    lastMessageAt = LocalDateTime.parse(lastMessageAt),
+    createdAt = parseLocalDateTime(createdAt),
+    lastMessageAt = parseLocalDateTime(lastMessageAt),
     summary = summary,
     coachId = coachId
 )

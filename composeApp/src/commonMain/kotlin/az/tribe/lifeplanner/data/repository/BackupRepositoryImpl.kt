@@ -226,7 +226,11 @@ class BackupRepositoryImpl(
                             notes = goalBackup.notes ?: "",
                             createdAt = goalBackup.createdAt,
                             completionRate = 0.0,
-                            isArchived = 0L
+                            isArchived = 0L,
+                            sync_updated_at = Clock.System.now().toString(),
+                            is_deleted = 0L,
+                            sync_version = 0L,
+                            last_synced_at = null
                         )
                     )
                     goalsImported++
@@ -259,7 +263,11 @@ class BackupRepositoryImpl(
                             correlationScore = 0.0,
                             isActive = if (habitBackup.isActive) 1L else 0L,
                             createdAt = habitBackup.createdAt,
-                            reminderTime = habitBackup.reminderTime
+                            reminderTime = habitBackup.reminderTime,
+                            sync_updated_at = Clock.System.now().toString(),
+                            is_deleted = 0L,
+                            sync_version = 0L,
+                            last_synced_at = null
                         )
                     )
                     habitsImported++
@@ -288,7 +296,11 @@ class BackupRepositoryImpl(
                             tags = "",
                             date = journalBackup.createdAt.take(10),
                             createdAt = journalBackup.createdAt,
-                            updatedAt = journalBackup.updatedAt ?: journalBackup.createdAt
+                            updatedAt = journalBackup.updatedAt ?: journalBackup.createdAt,
+                            sync_updated_at = Clock.System.now().toString(),
+                            is_deleted = 0L,
+                            sync_version = 0L,
+                            last_synced_at = null
                         )
                     )
                     journalEntriesImported++

@@ -1,6 +1,7 @@
 package az.tribe.lifeplanner.ui
 
 import androidx.compose.animation.*
+import co.touchlab.kermit.Logger
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -25,8 +26,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import az.tribe.lifeplanner.BuildKonfig
-import az.tribe.lifeplanner.di.GEMINI_PRO
+import az.tribe.lifeplanner.data.network.AiProxyService
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.HabitFrequency
 import az.tribe.lifeplanner.domain.enum.Mood
@@ -37,12 +37,6 @@ import az.tribe.lifeplanner.ui.GoalViewModel
 import az.tribe.lifeplanner.ui.habit.HabitViewModel
 import az.tribe.lifeplanner.ui.journal.JournalViewModel
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
-import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.request.parameter
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.client.request.url
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.launch
@@ -50,7 +44,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
-import org.koin.core.qualifier.named
 
 // Habit template data class
 data class HabitTemplate(
@@ -138,7 +131,7 @@ fun HabitTrackerScreen(
     viewModel: HabitViewModel = koinViewModel(),
     journalViewModel: JournalViewModel = koinViewModel(),
     goalViewModel: GoalViewModel = koinInject(),
-    httpClient: HttpClient = koinInject(qualifier = named("gemini"))
+    aiProxy: AiProxyService = koinInject()
 ) {
     val habits by viewModel.habits.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -404,7 +397,7 @@ fun HabitTrackerScreen(
             QuickReflectionBottomSheet(
                 habit = habitForReflection!!,
                 linkedGoal = linkedGoalForReflection,
-                httpClient = httpClient,
+                aiProxy = aiProxy,
                 onDismiss = {
                     showReflectionSheet = false
                     habitForReflection = null
@@ -1252,7 +1245,7 @@ private fun EditHabitBottomSheet(
 private fun QuickReflectionBottomSheet(
     habit: Habit,
     linkedGoal: Goal?,
-    httpClient: HttpClient,
+    aiProxy: AiProxyService,
     onDismiss: () -> Unit,
     onSave: (String, String, Mood) -> Unit
 ) {
@@ -1271,7 +1264,7 @@ private fun QuickReflectionBottomSheet(
         isGenerating = true
         try {
             val aiContent = generateAiReflection(
-                httpClient = httpClient,
+                aiProxy = aiProxy,
                 habit = habit,
                 linkedGoal = linkedGoal,
                 mood = selectedMood
@@ -1377,7 +1370,7 @@ private fun QuickReflectionBottomSheet(
                                     coroutineScope.launch {
                                         try {
                                             val aiContent = generateAiReflection(
-                                                httpClient = httpClient,
+                                                aiProxy = aiProxy,
                                                 habit = habit,
                                                 linkedGoal = linkedGoal,
                                                 mood = mood
@@ -1536,7 +1529,7 @@ private fun QuickReflectionBottomSheet(
  * Generate AI reflection content based on habit, goal, and mood
  */
 private suspend fun generateAiReflection(
-    httpClient: HttpClient,
+    aiProxy: AiProxyService,
     habit: Habit,
     linkedGoal: Goal?,
     mood: Mood
@@ -1560,60 +1553,24 @@ private suspend fun generateAiReflection(
             append("\nAlso suggest a better, more personal title for this reflection (not just 'Reflection: habit name').")
         }
 
-        val requestBody = buildJsonObject {
-            putJsonArray("contents") {
-                addJsonObject {
-                    putJsonArray("parts") {
-                        addJsonObject {
-                            put("text", prompt)
-                        }
-                    }
-                }
+        val schema = buildJsonObject {
+            put("type", "object")
+            putJsonObject("properties") {
+                putJsonObject("title") { put("type", "string") }
+                putJsonObject("content") { put("type", "string") }
             }
-            putJsonObject("generationConfig") {
-                put("responseMimeType", "application/json")
-                putJsonObject("responseSchema") {
-                    put("type", "object")
-                    putJsonObject("properties") {
-                        putJsonObject("title") {
-                            put("type", "string")
-                        }
-                        putJsonObject("content") {
-                            put("type", "string")
-                        }
-                    }
-                    putJsonArray("required") {
-                        add("title")
-                        add("content")
-                    }
-                }
-            }
+            putJsonArray("required") { add("title"); add("content") }
         }
 
-        val response: JsonObject = httpClient.post {
-            url("v1beta/models/$GEMINI_PRO:generateContent")
-            parameter("key", BuildKonfig.GEMINI_API_KEY)
-            setBody(requestBody)
-        }.body()
+        val responseText = aiProxy.generateStructuredJson(prompt, schema)
 
-        // Parse response
-        val candidates = response["candidates"]?.jsonArray
-        val firstCandidate = candidates?.firstOrNull()?.jsonObject
-        val content = firstCandidate?.get("content")?.jsonObject
-        val parts = content?.get("parts")?.jsonArray
-        val textPart = parts?.firstOrNull()?.jsonObject?.get("text")?.jsonPrimitive?.content
-
-        if (textPart != null) {
-            val json = Json { ignoreUnknownKeys = true }
-            val parsed = json.parseToJsonElement(textPart).jsonObject
-            val aiTitle = parsed["title"]?.jsonPrimitive?.content ?: "Reflection: ${habit.title}"
-            val aiContent = parsed["content"]?.jsonPrimitive?.content ?: ""
-            Pair(aiTitle, aiContent)
-        } else {
-            null
-        }
+        val json = Json { ignoreUnknownKeys = true }
+        val parsed = json.parseToJsonElement(responseText).jsonObject
+        val aiTitle = parsed["title"]?.jsonPrimitive?.content ?: "Reflection: ${habit.title}"
+        val aiContent = parsed["content"]?.jsonPrimitive?.content ?: ""
+        Pair(aiTitle, aiContent)
     } catch (e: Exception) {
-        e.printStackTrace()
+        Logger.e("HabitTrackerScreen") { "AI habit reflection generation failed: ${e.message}" }
         null
     }
 }

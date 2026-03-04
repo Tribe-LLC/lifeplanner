@@ -75,7 +75,7 @@ class HabitViewModel(
     private val _recentCheckIn = MutableStateFlow<RecentCheckIn?>(null)
     val recentCheckIn: StateFlow<RecentCheckIn?> = _recentCheckIn.asStateFlow()
 
-    // No-op: data is now reactively observed via habitRepository.observeHabitsWithTodayStatus()
+    @Deprecated("No-op: data flows reactively via SQLDelight Flows", level = DeprecationLevel.WARNING)
     fun loadHabits() { }
 
     private var isCreatingHabit = false

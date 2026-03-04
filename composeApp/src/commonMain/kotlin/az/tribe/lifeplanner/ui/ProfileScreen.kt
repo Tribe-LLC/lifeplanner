@@ -27,9 +27,12 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.automirrored.rounded.Login
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,15 +41,21 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,6 +73,16 @@ import az.tribe.lifeplanner.ui.components.GlassCard
 import az.tribe.lifeplanner.ui.components.GradientProgressBar
 import az.tribe.lifeplanner.ui.components.PersonalCoachCard
 import az.tribe.lifeplanner.ui.components.getBadgeIcon
+import az.tribe.lifeplanner.ui.components.SyncStatusIndicator
+import az.tribe.lifeplanner.data.sync.SyncManager
+import az.tribe.lifeplanner.domain.enum.AiProvider
+import az.tribe.lifeplanner.domain.model.AiUsageStats
+import az.tribe.lifeplanner.domain.repository.AiUsageRepository
+import com.russhwolf.settings.Settings
+import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
 import az.tribe.lifeplanner.ui.theme.LifePlannerGradients
@@ -78,17 +97,29 @@ fun ProfileScreen(
     authViewModel: AuthViewModel = koinInject(),
     gamificationViewModel: GamificationViewModel = koinViewModel(),
     onNavigateToAchievements: () -> Unit,
-    onNavigateToReviews: () -> Unit,
+    onNavigateToReviewChat: () -> Unit,
     onNavigateToLifeBalance: () -> Unit,
     onNavigateToReminders: () -> Unit,
     onNavigateToBackup: () -> Unit,
+    onNavigateToRetrospective: () -> Unit = {},
     onNavigateToAICoach: () -> Unit,
     onNavigateToOnboarding: () -> Unit,
     onNavigateToSignIn: () -> Unit
 ) {
+    val syncManager: SyncManager = koinInject()
+    val settings: Settings = koinInject()
     val authState by authViewModel.authState.collectAsState()
+    val isLocalOnlyGuest by authViewModel.isLocalOnlyGuest.collectAsState()
     val userProgress by gamificationViewModel.userProgress.collectAsState()
     val badges by gamificationViewModel.badges.collectAsState()
+
+    var showAiProviderDialog by remember { mutableStateOf(false) }
+    var selectedAiProvider by remember {
+        val saved = settings.getStringOrNull("ai_provider")
+        mutableStateOf(saved?.let {
+            try { AiProvider.valueOf(it) } catch (_: Exception) { AiProvider.GEMINI }
+        } ?: AiProvider.GEMINI)
+    }
 
     val currentUser = when (authState) {
         is AuthState.Authenticated -> (authState as AuthState.Authenticated).user
@@ -113,6 +144,13 @@ fun ProfileScreen(
                         "Profile",
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold
+                    )
+                },
+                actions = {
+                    SyncStatusIndicator(
+                        syncStatus = syncManager.syncStatus,
+                        onRetryClick = { syncManager.requestSync() },
+                        compact = false
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -140,6 +178,47 @@ fun ProfileScreen(
                     userProgress = userProgress,
                     onEditProfile = onNavigateToOnboarding
                 )
+            }
+
+            // Offline mode warning banner
+            if (isLocalOnlyGuest) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        ),
+                        shape = RoundedCornerShape(LifePlannerDesign.CornerRadius.small)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(LifePlannerDesign.Padding.standard),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Rounded.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Offline Mode",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Text(
+                                    "Your data is stored locally only. Sign in to sync across devices.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             // Stats Overview (Level, XP, Streak)
@@ -192,6 +271,15 @@ fun ProfileScreen(
 
             item {
                 ProfileMenuItem(
+                    icon = Icons.Rounded.Psychology,
+                    title = "AI Provider",
+                    subtitle = selectedAiProvider.displayName,
+                    onClick = { showAiProviderDialog = true }
+                )
+            }
+
+            item {
+                ProfileMenuItem(
                     icon = Icons.Rounded.Notifications,
                     title = "Reminders",
                     subtitle = "Notification preferences",
@@ -208,24 +296,42 @@ fun ProfileScreen(
                 )
             }
 
+            item {
+                ProfileMenuItem(
+                    icon = Icons.Rounded.History,
+                    title = "Day Retrospective",
+                    subtitle = "Browse past days and activity",
+                    onClick = onNavigateToRetrospective
+                )
+            }
+
+            item {
+                ProfileMenuItem(
+                    icon = Icons.Rounded.Assessment,
+                    title = "Reviews",
+                    subtitle = "Weekly and monthly AI reviews",
+                    onClick = onNavigateToReviewChat
+                )
+            }
+
             // Account Section
             item {
                 ProfileSectionHeader("Account")
             }
 
             item {
-                if (currentUser?.isGuest == true) {
+                if (currentUser?.isGuest != false) {
                     ProfileMenuItem(
                         icon = Icons.AutoMirrored.Rounded.Login,
-                        title = "Sign In / Create Account",
-                        subtitle = "Sync your data across devices",
+                        title = "Create Account",
+                        subtitle = "Keep your data and sync across devices",
                         onClick = onNavigateToSignIn
                     )
                 } else {
                     ProfileMenuItem(
                         icon = Icons.AutoMirrored.Rounded.Logout,
                         title = "Sign Out",
-                        subtitle = currentUser?.email ?: "",
+                        subtitle = currentUser.email ?: "",
                         onClick = { authViewModel.signOut() }
                     )
                 }
@@ -233,6 +339,224 @@ fun ProfileScreen(
 
         }
     }
+
+    if (showAiProviderDialog) {
+        AiProviderDialog(
+            currentProvider = selectedAiProvider,
+            isGuest = currentUser?.isGuest != false,
+            onProviderSelected = { provider ->
+                selectedAiProvider = provider
+                settings.putString("ai_provider", provider.name)
+                showAiProviderDialog = false
+            },
+            onDismiss = { showAiProviderDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun AiProviderDialog(
+    currentProvider: AiProvider,
+    isGuest: Boolean,
+    onProviderSelected: (AiProvider) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val aiUsageRepository: AiUsageRepository = koinInject()
+    val scope = rememberCoroutineScope()
+    var usageStats by remember { mutableStateOf<AiUsageStats?>(null) }
+    var isLoadingStats by remember { mutableStateOf(!isGuest) }
+
+    LaunchedEffect(Unit) {
+        if (!isGuest) {
+            scope.launch {
+                usageStats = aiUsageRepository.getMonthlyStats()
+                isLoadingStats = false
+            }
+        }
+    }
+
+    val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+    val monthName = now.month.name.lowercase().replaceFirstChar { it.uppercase() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("AI Provider") },
+        text = {
+            Column {
+                // Usage stats section
+                if (isGuest) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "Sign in to track AI usage",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                } else if (isLoadingStats) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Loading usage stats...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else {
+                    usageStats?.let { stats ->
+                        Text(
+                            "$monthName ${now.year} Usage",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(Modifier.height(8.dp))
+
+                        // Top-level stats row
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp, horizontal = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                UsageStatItem(
+                                    value = "${stats.totalRequests}",
+                                    label = "Requests"
+                                )
+                                UsageStatItem(
+                                    value = formatTokenCount(stats.totalTokens),
+                                    label = "Tokens"
+                                )
+                                UsageStatItem(
+                                    value = formatCost(stats.estimatedCostUsd),
+                                    label = "Cost"
+                                )
+                            }
+                        }
+
+                        // Per-provider breakdown
+                        if (stats.byProvider.isNotEmpty()) {
+                            Spacer(Modifier.height(8.dp))
+                            stats.byProvider.forEach { summary ->
+                                val providerName = AiProvider.fromProviderName(summary.provider)
+                                    ?.displayName ?: summary.provider
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp, horizontal = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        providerName,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        "${summary.requestCount} req  ${formatCost(summary.estimatedCostUsd)}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(12.dp))
+
+                Text(
+                    "Choose provider:",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(4.dp))
+
+                AiProvider.entries.forEach { provider ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onProviderSelected(provider) }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = provider == currentProvider,
+                            onClick = { onProviderSelected(provider) }
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                provider.displayName,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                provider.modelInfo,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
+}
+
+@Composable
+private fun UsageStatItem(value: String, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+private fun formatTokenCount(tokens: Long): String = when {
+    tokens >= 1_000_000 -> String.format("%.1fM", tokens / 1_000_000.0)
+    tokens >= 1_000 -> String.format("%.1fK", tokens / 1_000.0)
+    else -> "$tokens"
+}
+
+private fun formatCost(cost: Double): String = when {
+    cost < 0.005 -> if (cost == 0.0) "$0.00" else "<$0.01"
+    cost < 1.0 -> String.format("$%.2f", cost)
+    else -> String.format("$%.2f", cost)
 }
 
 @Composable

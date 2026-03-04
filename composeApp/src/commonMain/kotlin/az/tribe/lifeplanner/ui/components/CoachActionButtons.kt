@@ -65,6 +65,7 @@ fun CoachSuggestionButtons(
     onExecute: (CoachSuggestion) -> Unit,
     isExecuting: Boolean = false,
     executedSuggestionIds: Set<String> = emptySet(),
+    onAnswerQuestion: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     if (suggestions.isEmpty()) return
@@ -135,8 +136,12 @@ fun CoachSuggestionButtons(
                 is CoachSuggestion.AskQuestion -> {
                     QuestionCard(
                         suggestion = suggestion,
-                        onOptionSelected = { onExecute(suggestion) },
-                        isExecuting = isExecuting
+                        onOptionSelected = { optionLabel ->
+                            onAnswerQuestion(optionLabel)
+                            onExecute(suggestion)
+                        },
+                        isExecuting = isExecuting,
+                        isAnswered = isAdded
                     )
                 }
                 else -> {}
@@ -641,8 +646,9 @@ private fun FrequencyBadge(frequency: String) {
 @Composable
 private fun QuestionCard(
     suggestion: CoachSuggestion.AskQuestion,
-    onOptionSelected: () -> Unit,
-    isExecuting: Boolean
+    onOptionSelected: (String) -> Unit,
+    isExecuting: Boolean,
+    isAnswered: Boolean = false
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -673,8 +679,8 @@ private fun QuestionCard(
             ) {
                 suggestion.options.forEach { option ->
                     Surface(
-                        onClick = onOptionSelected,
-                        enabled = !isExecuting,
+                        onClick = { onOptionSelected(option.label) },
+                        enabled = !isExecuting && !isAnswered,
                         shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.surface,
                         border = androidx.compose.foundation.BorderStroke(

@@ -1,6 +1,7 @@
 package az.tribe.lifeplanner.ui
 
 import androidx.compose.animation.*
+import co.touchlab.kermit.Logger
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -36,13 +37,12 @@ import az.tribe.lifeplanner.domain.model.JournalPrompts
 import az.tribe.lifeplanner.ui.components.rememberHapticManager
 import az.tribe.lifeplanner.ui.journal.JournalViewModel
 import az.tribe.lifeplanner.ui.journal.generateAiJournalEntry
+import az.tribe.lifeplanner.data.network.AiProxyService
 import az.tribe.lifeplanner.util.NetworkConnectivityObserver
-import io.ktor.client.HttpClient
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
-import org.koin.core.qualifier.named
 
 enum class JournalWizardStep {
     MOOD, PROMPT, CONTEXT_GENERATE, REVIEW_SAVE
@@ -56,7 +56,7 @@ fun JournalCreationWizardScreen(
     viewModel: JournalViewModel = koinViewModel(),
     goalViewModel: GoalViewModel = koinInject(),
     habitViewModel: az.tribe.lifeplanner.ui.habit.HabitViewModel = koinViewModel(),
-    httpClient: HttpClient = koinInject(qualifier = named("gemini"))
+    aiProxy: AiProxyService = koinInject()
 ) {
     val goals by goalViewModel.goals.collectAsState()
     val habitsWithStatus by habitViewModel.habits.collectAsState()
@@ -155,7 +155,7 @@ fun JournalCreationWizardScreen(
                                 val linkedGoal = selectedGoalId?.let { id -> goals.find { it.id == id } }
                                 val linkedHabit = selectedHabitId?.let { id -> habits.find { it.id == id } }
                                 val result = generateAiJournalEntry(
-                                    httpClient = httpClient,
+                                    aiProxy = aiProxy,
                                     mood = selectedMood ?: Mood.NEUTRAL,
                                     prompt = selectedPrompt ?: "",
                                     userNote = userNote,
@@ -168,7 +168,7 @@ fun JournalCreationWizardScreen(
                                     generatedTags = it.tags
                                 }
                             } catch (e: Exception) {
-                                e.printStackTrace()
+                                Logger.e("JournalCreationWizard") { "AI journal generation failed: ${e.message}" }
                             } finally {
                                 isGenerating = false
                             }

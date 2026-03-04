@@ -1,14 +1,4 @@
 package az.tribe.lifeplanner.di
 
-import az.tribe.lifeplanner.data.auth.AuthService
-import az.tribe.lifeplanner.data.auth.AuthServiceImpl
-import az.tribe.lifeplanner.data.network.AndroidFirebaseTokenProvider
-import az.tribe.lifeplanner.data.network.FirebaseTokenProvider
-
-actual fun createFirebaseTokenProvider(): FirebaseTokenProvider {
-    return AndroidFirebaseTokenProvider()
-}
-
-actual fun createAuthService(): AuthService {
-    return AuthServiceImpl()
-}
+// Auth and token provider are now in commonMain via Supabase SDK.
+// This file is kept for potential future platform-specific DI needs.

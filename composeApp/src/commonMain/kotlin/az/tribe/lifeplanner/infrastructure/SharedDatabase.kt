@@ -24,28 +24,71 @@ import az.tribe.lifeplanner.database.UserActivityPatternEntity
 import az.tribe.lifeplanner.database.CustomCoachEntity
 import az.tribe.lifeplanner.database.CoachGroupEntity
 import az.tribe.lifeplanner.database.CoachGroupMemberEntity
+import az.tribe.lifeplanner.database.FocusSessionEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.datetime.Clock
 
 class SharedDatabase(
     private val driverProvider: DatabaseDriverFactory,
 ) {
     private var database: LifePlannerDB? = null
+    private val dbMutex = Mutex()
+
+    private fun nowTimestamp(): String = Clock.System.now().toString()
 
     private suspend fun initDatabase() {
         if (database == null) {
-            database = LifePlannerDB.invoke(
-                driver = driverProvider.createDriver()
-            )
+            dbMutex.withLock {
+                if (database == null) {
+                    database = LifePlannerDB.invoke(
+                        driver = driverProvider.createDriver()
+                    )
+                }
+            }
         }
     }
 
     suspend operator fun <R> invoke(block: suspend (LifePlannerDB) -> R): R {
         initDatabase()
         return block(database!!)
+    }
+
+    /**
+     * Delete all local data from every table. Used on logout.
+     */
+    suspend fun clearAllLocalData() {
+        this { db ->
+            val q = db.lifePlannerDBQueries
+            // Tier 3 (depends on Tier 2)
+            q.deleteAllChatMessages()
+            // Tier 2 (depends on Tier 1)
+            q.deleteAllMilestones()
+            q.deleteAllGoalHistory()
+            q.deleteAllGoalDependencies()
+            q.deleteAllHabitCheckIns()
+            q.deleteAllJournalEntries()
+            q.deleteAllChatSessions()
+            q.deleteAllReminders()
+            q.deleteAllFocusSessions()
+            q.deleteAllChallenges()
+            q.deleteAllCoachGroupMembers()
+            q.deleteAllScheduledNotifications()
+            q.deleteAllReviewReports()
+            q.deleteAllUserProgress()
+            // Tier 1 (no deps)
+            q.deleteAllGoals()
+            q.deleteAllHabits()
+            q.deleteAllBadges()
+            q.deleteAllCustomCoaches()
+            q.deleteAllCoachGroups()
+            q.deleteAllUsers()
+        }
     }
 
     // --- GoalEntity accessors (Updated) ---
@@ -56,7 +99,9 @@ class SharedDatabase(
 
     suspend fun deleteAllGoals() {
         this { db ->
-            db.lifePlannerDBQueries.deleteAllGoals()
+            val goals = db.lifePlannerDBQueries.selectAll().executeAsList()
+            val now = nowTimestamp()
+            goals.forEach { goal -> db.lifePlannerDBQueries.softDeleteGoal(now, goal.id) }
         }
     }
 
@@ -75,7 +120,11 @@ class SharedDatabase(
                 notes = goal.notes ?: "",
                 createdAt = goal.createdAt,
                 completionRate = goal.completionRate ?: 0.0,
-                isArchived = goal.isArchived
+                isArchived = goal.isArchived,
+                sync_updated_at = nowTimestamp(),
+                is_deleted = 0L,
+                sync_version = 0L,
+                last_synced_at = null
             )
         }
     }
@@ -95,7 +144,11 @@ class SharedDatabase(
                     notes = goal.notes,
                     createdAt = goal.createdAt,
                     completionRate = goal.completionRate,
-                    isArchived = goal.isArchived
+                    isArchived = goal.isArchived,
+                    sync_updated_at = nowTimestamp(),
+                    is_deleted = 0L,
+                    sync_version = 0L,
+                    last_synced_at = null
                 )
             }
         }
@@ -115,7 +168,7 @@ class SharedDatabase(
 
     suspend fun deleteGoalById(id: String) {
         this { db ->
-            db.lifePlannerDBQueries.deleteGoalById(id)
+            db.lifePlannerDBQueries.softDeleteGoal(nowTimestamp(), id)
         }
     }
 
@@ -256,7 +309,11 @@ class SharedDatabase(
                 title = milestone.title,
                 isCompleted = milestone.isCompleted,
                 dueDate = milestone.dueDate,
-                createdAt = milestone.createdAt
+                createdAt = milestone.createdAt,
+                sync_updated_at = nowTimestamp(),
+                is_deleted = 0L,
+                sync_version = 0L,
+                last_synced_at = null
             )
         }
     }
@@ -286,7 +343,7 @@ class SharedDatabase(
 
     suspend fun deleteMilestone(id: String) {
         this { db ->
-            db.lifePlannerDBQueries.deleteMilestone(id)
+            db.lifePlannerDBQueries.softDeleteMilestone(nowTimestamp(), id)
         }
     }
 
@@ -326,6 +383,10 @@ class SharedDatabase(
                 oldValue = oldValue,
                 newValue = newValue,
                 changedAt = changedAt,
+                sync_updated_at = nowTimestamp(),
+                is_deleted = 0L,
+                sync_version = 0L,
+                last_synced_at = null
             )
         }
     }
@@ -380,7 +441,11 @@ class SharedDatabase(
                 correlationScore = habit.correlationScore,
                 isActive = habit.isActive,
                 createdAt = habit.createdAt,
-                reminderTime = habit.reminderTime
+                reminderTime = habit.reminderTime,
+                sync_updated_at = nowTimestamp(),
+                is_deleted = 0L,
+                sync_version = 0L,
+                last_synced_at = null
             )
         }
     }
@@ -441,7 +506,7 @@ class SharedDatabase(
     }
 
     suspend fun deleteHabit(id: String) {
-        this { db -> db.lifePlannerDBQueries.deleteHabit(id) }
+        this { db -> db.lifePlannerDBQueries.softDeleteHabit(nowTimestamp(), id) }
     }
 
     // --- Habit Check-in operations ---
@@ -453,7 +518,11 @@ class SharedDatabase(
                 habitId = checkIn.habitId,
                 date = checkIn.date,
                 completed = checkIn.completed,
-                notes = checkIn.notes
+                notes = checkIn.notes,
+                sync_updated_at = nowTimestamp(),
+                is_deleted = 0L,
+                sync_version = 0L,
+                last_synced_at = null
             )
         }
     }
@@ -465,7 +534,11 @@ class SharedDatabase(
                 habitId = checkIn.habitId,
                 date = checkIn.date,
                 completed = checkIn.completed,
-                notes = checkIn.notes
+                notes = checkIn.notes,
+                sync_updated_at = nowTimestamp(),
+                is_deleted = 0L,
+                sync_version = 0L,
+                last_synced_at = null
             )
         }
     }
@@ -504,7 +577,7 @@ class SharedDatabase(
     }
 
     suspend fun deleteCheckIn(id: String) {
-        this { db -> db.lifePlannerDBQueries.deleteCheckIn(id) }
+        this { db -> db.lifePlannerDBQueries.softDeleteHabitCheckIn(nowTimestamp(), id) }
     }
 
     // --- Journal Entry operations ---
@@ -556,7 +629,11 @@ class SharedDatabase(
                 tags = entry.tags,
                 date = entry.date,
                 createdAt = entry.createdAt,
-                updatedAt = entry.updatedAt
+                updatedAt = entry.updatedAt,
+                sync_updated_at = nowTimestamp(),
+                is_deleted = 0L,
+                sync_version = 0L,
+                last_synced_at = null
             )
         }
     }
@@ -578,7 +655,7 @@ class SharedDatabase(
     }
 
     suspend fun deleteJournalEntry(id: String) {
-        this { db -> db.lifePlannerDBQueries.deleteJournalEntry(id) }
+        this { db -> db.lifePlannerDBQueries.softDeleteJournalEntry(nowTimestamp(), id) }
     }
 
     suspend fun searchJournalEntries(query: String): List<JournalEntryEntity> {
@@ -652,7 +729,11 @@ class SharedDatabase(
                 id = badge.id,
                 badgeType = badge.badgeType,
                 earnedAt = badge.earnedAt,
-                isNew = badge.isNew
+                isNew = badge.isNew,
+                sync_updated_at = nowTimestamp(),
+                is_deleted = 0L,
+                sync_version = 0L,
+                last_synced_at = null
             )
         }
     }
@@ -708,7 +789,11 @@ class SharedDatabase(
                 targetProgress = challenge.targetProgress,
                 isCompleted = challenge.isCompleted,
                 completedAt = challenge.completedAt,
-                xpEarned = challenge.xpEarned
+                xpEarned = challenge.xpEarned,
+                sync_updated_at = nowTimestamp(),
+                is_deleted = 0L,
+                sync_version = 0L,
+                last_synced_at = null
             )
         }
     }
@@ -722,10 +807,11 @@ class SharedDatabase(
     }
 
     suspend fun deleteChallenge(id: String) {
-        this { db -> db.lifePlannerDBQueries.deleteChallenge(id) }
+        this { db -> db.lifePlannerDBQueries.softDeleteChallenge(nowTimestamp(), id) }
     }
 
     suspend fun deleteExpiredChallenges(today: String) {
+        // Expired challenges are soft-deleted; they can still sync
         this { db -> db.lifePlannerDBQueries.deleteExpiredChallenges(today) }
     }
 
@@ -754,7 +840,11 @@ class SharedDatabase(
                 goalsCompleted = goalsCompleted,
                 habitsCompleted = habitsCompleted,
                 journalEntriesCount = journalEntriesCount,
-                longestStreak = longestStreak
+                longestStreak = longestStreak,
+                sync_updated_at = nowTimestamp(),
+                is_deleted = 0L,
+                sync_version = 0L,
+                last_synced_at = null
             )
         }
     }
@@ -831,17 +921,28 @@ class SharedDatabase(
                 sourceGoalId = dependency.sourceGoalId,
                 targetGoalId = dependency.targetGoalId,
                 dependencyType = dependency.dependencyType,
-                createdAt = dependency.createdAt
+                createdAt = dependency.createdAt,
+                sync_updated_at = nowTimestamp(),
+                is_deleted = 0L,
+                sync_version = 0L,
+                last_synced_at = null
             )
         }
     }
 
     suspend fun deleteDependency(id: String) {
-        this { db -> db.lifePlannerDBQueries.deleteDependency(id) }
+        this { db -> db.lifePlannerDBQueries.softDeleteGoalDependency(nowTimestamp(), id) }
     }
 
     suspend fun deleteDependenciesByGoal(goalId: String) {
-        this { db -> db.lifePlannerDBQueries.deleteDependenciesByGoal(goalId, goalId) }
+        // Soft-delete all dependencies involving this goal
+        this { db ->
+            val deps = db.lifePlannerDBQueries.getDependenciesForGoal(goalId, goalId).executeAsList()
+            val now = nowTimestamp()
+            deps.forEach { dep ->
+                db.lifePlannerDBQueries.softDeleteGoalDependency(now, dep.id)
+            }
+        }
     }
 
     suspend fun getDependencyCount(): Long {
@@ -887,7 +988,10 @@ class SharedDatabase(
         coachId: String = "luna_general"
     ) {
         this { db ->
-            db.lifePlannerDBQueries.insertChatSession(id, title, createdAt, lastMessageAt, summary, coachId)
+            db.lifePlannerDBQueries.insertChatSession(
+                id, title, createdAt, lastMessageAt, summary, coachId,
+                nowTimestamp(), 0L, 0L, null
+            )
         }
     }
 
@@ -908,11 +1012,21 @@ class SharedDatabase(
     }
 
     suspend fun deleteChatSession(id: String) {
-        this { db -> db.lifePlannerDBQueries.deleteChatSession(id) }
+        this { db -> db.lifePlannerDBQueries.softDeleteChatSession(nowTimestamp(), id) }
     }
 
     suspend fun deleteOldChatSessions(beforeDate: String) {
-        this { db -> db.lifePlannerDBQueries.deleteOldChatSessions(beforeDate) }
+        // Soft-delete old sessions and their messages
+        this { db ->
+            val oldSessions = db.lifePlannerDBQueries.getAllChatSessions().executeAsList()
+                .filter { it.lastMessageAt < beforeDate }
+            val now = nowTimestamp()
+            oldSessions.forEach { session ->
+                val messages = db.lifePlannerDBQueries.getMessagesBySessionId(session.id).executeAsList()
+                messages.forEach { msg -> db.lifePlannerDBQueries.softDeleteChatMessage(now, msg.id) }
+                db.lifePlannerDBQueries.softDeleteChatSession(now, session.id)
+            }
+        }
     }
 
     suspend fun getChatSessionCount(): Long {
@@ -944,17 +1058,22 @@ class SharedDatabase(
     ) {
         this { db ->
             db.lifePlannerDBQueries.insertChatMessage(
-                id, sessionId, content, role, timestamp, relatedGoalId, metadata
+                id, sessionId, content, role, timestamp, relatedGoalId, metadata,
+                nowTimestamp(), 0L, 0L, null
             )
         }
     }
 
     suspend fun deleteMessage(id: String) {
-        this { db -> db.lifePlannerDBQueries.deleteMessage(id) }
+        this { db -> db.lifePlannerDBQueries.softDeleteChatMessage(nowTimestamp(), id) }
     }
 
     suspend fun deleteMessagesBySession(sessionId: String) {
-        this { db -> db.lifePlannerDBQueries.deleteMessagesBySession(sessionId) }
+        this { db ->
+            val messages = db.lifePlannerDBQueries.getMessagesBySessionId(sessionId).executeAsList()
+            val now = nowTimestamp()
+            messages.forEach { msg -> db.lifePlannerDBQueries.softDeleteChatMessage(now, msg.id) }
+        }
     }
 
     suspend fun getMessageCountBySession(sessionId: String): Long {
@@ -1011,7 +1130,8 @@ class SharedDatabase(
             db.lifePlannerDBQueries.insertReview(
                 id, type, periodStart, periodEnd, generatedAt, summary,
                 highlightsJson, insightsJson, recommendationsJson, statsJson,
-                feedbackRating, feedbackComment, feedbackAt, isRead
+                feedbackRating, feedbackComment, feedbackAt, isRead,
+                nowTimestamp(), 0L, 0L, null
             )
         }
     }
@@ -1025,7 +1145,7 @@ class SharedDatabase(
     }
 
     suspend fun deleteReview(id: String) {
-        this { db -> db.lifePlannerDBQueries.deleteReview(id) }
+        this { db -> db.lifePlannerDBQueries.softDeleteReviewReport(nowTimestamp(), id) }
     }
 
     suspend fun getUnreadReviewCount(): Long {
@@ -1079,7 +1199,8 @@ class SharedDatabase(
             db.lifePlannerDBQueries.insertReminder(
                 id, title, message, type, frequency, scheduledTime, scheduledDays,
                 linkedGoalId, linkedHabitId, isEnabled, isSmartTiming, lastTriggeredAt,
-                snoozedUntil, createdAt, updatedAt
+                snoozedUntil, createdAt, updatedAt,
+                nowTimestamp(), 0L, 0L, null
             )
         }
     }
@@ -1131,7 +1252,7 @@ class SharedDatabase(
     }
 
     suspend fun deleteReminder(id: String) {
-        this { db -> db.lifePlannerDBQueries.deleteReminder(id) }
+        this { db -> db.lifePlannerDBQueries.softDeleteReminder(nowTimestamp(), id) }
     }
 
     suspend fun getReminderCount(): Long {
@@ -1265,11 +1386,16 @@ class SharedDatabase(
     }
 
     suspend fun deleteScheduledNotification(id: String) {
-        this { db -> db.lifePlannerDBQueries.deleteScheduledNotification(id) }
+        // ScheduledNotificationEntity has no is_deleted column; dismiss instead
+        this { db -> db.lifePlannerDBQueries.dismissNotification(id) }
     }
 
     suspend fun deleteScheduledNotificationsByReminder(reminderId: String) {
-        this { db -> db.lifePlannerDBQueries.deleteScheduledNotificationsByReminder(reminderId) }
+        // Dismiss all notifications for the reminder (no soft-delete column on this table)
+        this { db ->
+            val notifications = db.lifePlannerDBQueries.getScheduledNotificationsByReminder(reminderId).executeAsList()
+            notifications.forEach { n -> db.lifePlannerDBQueries.dismissNotification(n.id) }
+        }
     }
 
     suspend fun deleteDeliveredNotifications(beforeDate: String) {
@@ -1299,7 +1425,8 @@ class SharedDatabase(
             db.lifePlannerDBQueries.insertCustomCoach(
                 id, name, icon, iconBackgroundColor, iconAccentColor,
                 systemPrompt, characteristics, isFromTemplate, templateId,
-                createdAt, updatedAt
+                createdAt, updatedAt,
+                nowTimestamp(), 0L, 0L, null
             )
         }
     }
@@ -1331,7 +1458,7 @@ class SharedDatabase(
     }
 
     suspend fun deleteCustomCoach(id: String) {
-        this { db -> db.lifePlannerDBQueries.deleteCustomCoach(id) }
+        this { db -> db.lifePlannerDBQueries.softDeleteCustomCoach(nowTimestamp(), id) }
     }
 
     suspend fun getCustomCoachCount(): Long {
@@ -1349,7 +1476,7 @@ class SharedDatabase(
         updatedAt: String?
     ) {
         this { db ->
-            db.lifePlannerDBQueries.insertCoachGroup(id, name, icon, description, createdAt, updatedAt)
+            db.lifePlannerDBQueries.insertCoachGroup(id, name, icon, description, createdAt, updatedAt, null, 0L, 0L, null)
         }
     }
 
@@ -1374,7 +1501,7 @@ class SharedDatabase(
     }
 
     suspend fun deleteCoachGroup(id: String) {
-        this { db -> db.lifePlannerDBQueries.deleteCoachGroup(id) }
+        this { db -> db.lifePlannerDBQueries.softDeleteCoachGroup(nowTimestamp(), id) }
     }
 
     suspend fun getCoachGroupCount(): Long {
@@ -1391,7 +1518,7 @@ class SharedDatabase(
         displayOrder: Long
     ) {
         this { db ->
-            db.lifePlannerDBQueries.insertCoachGroupMember(id, groupId, coachType, coachId, displayOrder)
+            db.lifePlannerDBQueries.insertCoachGroupMember(id, groupId, coachType, coachId, displayOrder, null, 0L, 0L, null)
         }
     }
 
@@ -1400,14 +1527,141 @@ class SharedDatabase(
     }
 
     suspend fun deleteCoachGroupMember(id: String) {
-        this { db -> db.lifePlannerDBQueries.deleteCoachGroupMember(id) }
+        this { db -> db.lifePlannerDBQueries.softDeleteCoachGroupMember(nowTimestamp(), id) }
     }
 
     suspend fun deleteCoachGroupMembersByGroup(groupId: String) {
-        this { db -> db.lifePlannerDBQueries.deleteCoachGroupMembersByGroup(groupId) }
+        this { db ->
+            val members = db.lifePlannerDBQueries.getCoachGroupMembers(groupId).executeAsList()
+            val now = nowTimestamp()
+            members.forEach { m -> db.lifePlannerDBQueries.softDeleteCoachGroupMember(now, m.id) }
+        }
     }
 
     suspend fun updateCoachGroupMemberOrder(displayOrder: Long, id: String) {
         this { db -> db.lifePlannerDBQueries.updateCoachGroupMemberOrder(displayOrder, id) }
+    }
+
+    // ===== Focus Session Operations =====
+
+    fun observeAllFocusSessions(): Flow<List<FocusSessionEntity>> = flow {
+        initDatabase()
+        emitAll(
+            database!!.lifePlannerDBQueries.selectAllFocusSessions()
+                .asFlow()
+                .mapToList(Dispatchers.IO)
+        )
+    }
+
+    suspend fun insertFocusSession(
+        id: String,
+        goalId: String,
+        milestoneId: String,
+        plannedDurationMinutes: Long,
+        actualDurationSeconds: Long,
+        wasCompleted: Long,
+        xpEarned: Long,
+        startedAt: String,
+        completedAt: String?,
+        createdAt: String,
+        mood: String? = null,
+        ambientSound: String? = null,
+        focusTheme: String? = null
+    ) {
+        this { db ->
+            db.lifePlannerDBQueries.insertFocusSession(
+                id, goalId, milestoneId, plannedDurationMinutes,
+                actualDurationSeconds, wasCompleted, xpEarned,
+                startedAt, completedAt, createdAt,
+                mood, ambientSound, focusTheme,
+                null, 0L, 0L, null
+            )
+        }
+    }
+
+    suspend fun updateFocusSession(
+        id: String,
+        actualDurationSeconds: Long,
+        wasCompleted: Long,
+        xpEarned: Long,
+        completedAt: String?,
+        mood: String? = null,
+        ambientSound: String? = null,
+        focusTheme: String? = null
+    ) {
+        this { db ->
+            db.lifePlannerDBQueries.updateFocusSession(
+                actualDurationSeconds, wasCompleted, xpEarned, completedAt,
+                mood, ambientSound, focusTheme, id
+            )
+        }
+    }
+
+    suspend fun getFocusSessionById(id: String): FocusSessionEntity? {
+        return this { db -> db.lifePlannerDBQueries.getFocusSessionById(id).executeAsOneOrNull() }
+    }
+
+    suspend fun getFocusSessionsByGoalId(goalId: String): List<FocusSessionEntity> {
+        return this { db -> db.lifePlannerDBQueries.getFocusSessionsByGoalId(goalId).executeAsList() }
+    }
+
+    suspend fun getFocusSessionsByMilestoneId(milestoneId: String): List<FocusSessionEntity> {
+        return this { db -> db.lifePlannerDBQueries.getFocusSessionsByMilestoneId(milestoneId).executeAsList() }
+    }
+
+    suspend fun getCompletedFocusSessions(): List<FocusSessionEntity> {
+        return this { db -> db.lifePlannerDBQueries.getCompletedFocusSessions().executeAsList() }
+    }
+
+    suspend fun getTotalFocusSeconds(): Long {
+        return this { db -> db.lifePlannerDBQueries.getTotalFocusSeconds().executeAsOne() }
+    }
+
+    suspend fun getTotalFocusSessionCount(): Long {
+        return this { db -> db.lifePlannerDBQueries.getTotalFocusSessionCount().executeAsOne() }
+    }
+
+    suspend fun getTodayFocusSessions(todayDate: String): List<FocusSessionEntity> {
+        return this { db -> db.lifePlannerDBQueries.getTodayFocusSessions(todayDate).executeAsList() }
+    }
+
+    // ===== Retrospective Operations =====
+
+    suspend fun getHabitCheckInsWithHabitForDate(date: String): List<az.tribe.lifeplanner.database.GetHabitCheckInsWithHabitForDate> {
+        return this { db -> db.lifePlannerDBQueries.getHabitCheckInsWithHabitForDate(date).executeAsList() }
+    }
+
+    suspend fun getFocusSessionsByDate(datePrefix: String): List<FocusSessionEntity> {
+        return this { db -> db.lifePlannerDBQueries.getFocusSessionsByDate(datePrefix).executeAsList() }
+    }
+
+    suspend fun getGoalChangesOnDate(datePrefix: String): List<az.tribe.lifeplanner.database.GetGoalChangesOnDate> {
+        return this { db -> db.lifePlannerDBQueries.getGoalChangesOnDate(datePrefix).executeAsList() }
+    }
+
+    suspend fun getBadgesEarnedOnDate(datePrefix: String): List<BadgeEntity> {
+        return this { db -> db.lifePlannerDBQueries.getBadgesEarnedOnDate(datePrefix).executeAsList() }
+    }
+
+    suspend fun getGoalsExistingOnDate(dateStr: String): List<GoalEntity> {
+        return this { db -> db.lifePlannerDBQueries.getGoalsExistingOnDate(dateStr).executeAsList() }
+    }
+
+    suspend fun getDatesWithActivity(
+        checkInStart: String, checkInEnd: String,
+        journalStart: String, journalEnd: String,
+        focusStart: String, focusEnd: String,
+        historyStart: String, historyEnd: String,
+        badgeStart: String, badgeEnd: String
+    ): List<String> {
+        return this { db ->
+            db.lifePlannerDBQueries.getDatesWithActivity(
+                checkInStart, checkInEnd,
+                journalStart, journalEnd,
+                focusStart, focusEnd,
+                historyStart, historyEnd,
+                badgeStart, badgeEnd
+            ).executeAsList().mapNotNull { it }
+        }
     }
 }

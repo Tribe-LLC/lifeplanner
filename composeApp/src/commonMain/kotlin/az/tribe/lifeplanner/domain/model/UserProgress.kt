@@ -97,6 +97,13 @@ data class UserProgress(
             }
             return level
         }
+
+        fun default() = UserProgress(
+            currentStreak = 0,
+            lastCheckInDate = null,
+            totalXp = 0,
+            currentLevel = 1
+        )
     }
 }
 
@@ -113,4 +120,10 @@ object XpRewards {
     const val DAILY_CHECK_IN = 5
     const val STREAK_BONUS_MULTIPLIER = 0.1f // 10% bonus per streak day
     const val PERFECT_DAY_BONUS = 25
+
+    // Focus session XP
+    const val FOCUS_SESSION_15 = 10
+    const val FOCUS_SESSION_25 = 20
+    const val FOCUS_SESSION_45 = 30
+    const val FOCUS_SESSION_60 = 40
 }

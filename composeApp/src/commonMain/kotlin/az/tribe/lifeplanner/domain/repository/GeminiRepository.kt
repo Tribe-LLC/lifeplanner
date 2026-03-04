@@ -13,4 +13,5 @@ interface GeminiRepository {
         originalPrompt: String,
         userAnswers: UserQuestionnaireAnswers,
     ): Result<List<Goal>, Remote>
+    suspend fun generateGoalsDirect(prompt: String): Result<List<Goal>, Remote>
 }

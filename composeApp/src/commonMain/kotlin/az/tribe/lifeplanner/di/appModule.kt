@@ -1,8 +1,12 @@
 package az.tribe.lifeplanner.di
 
-import az.tribe.lifeplanner.data.network.FirebaseTokenProvider
+import az.tribe.lifeplanner.data.auth.AuthService
+import az.tribe.lifeplanner.data.auth.SupabaseAuthService
+import az.tribe.lifeplanner.data.network.AiProxyService
+import az.tribe.lifeplanner.data.network.AiProxyServiceImpl
 import az.tribe.lifeplanner.data.network.GeminiService
 import az.tribe.lifeplanner.data.network.GeminiServiceImpl
+import az.tribe.lifeplanner.data.repository.AiUsageRepositoryImpl
 import az.tribe.lifeplanner.data.repository.BackupRepositoryImpl
 import az.tribe.lifeplanner.data.repository.ChatRepositoryImpl
 import az.tribe.lifeplanner.data.repository.CoachRepositoryImpl
@@ -12,13 +16,16 @@ import az.tribe.lifeplanner.data.repository.GamificationRepositoryImpl
 import az.tribe.lifeplanner.data.repository.GeminiRepositoryImp
 import az.tribe.lifeplanner.data.repository.GoalDependencyRepositoryImpl
 import az.tribe.lifeplanner.data.repository.GoalHistoryRepositoryImpl
+import az.tribe.lifeplanner.data.repository.FocusRepositoryImpl
+import az.tribe.lifeplanner.data.repository.RetrospectiveRepositoryImpl
 import az.tribe.lifeplanner.data.repository.GoalRepositoryImpl
 import az.tribe.lifeplanner.data.repository.HabitRepositoryImpl
 import az.tribe.lifeplanner.data.repository.JournalRepositoryImpl
 import az.tribe.lifeplanner.data.repository.LifeBalanceRepositoryImpl
 import az.tribe.lifeplanner.data.repository.ReminderRepositoryImpl
-import az.tribe.lifeplanner.data.repository.ReviewRepositoryImpl
+import az.tribe.lifeplanner.data.review.ReviewMessageBuilder
 import az.tribe.lifeplanner.data.repository.UserRepositoryImpl
+import az.tribe.lifeplanner.domain.repository.AiUsageRepository
 import az.tribe.lifeplanner.domain.repository.BackupRepository
 import az.tribe.lifeplanner.domain.repository.ChatRepository
 import az.tribe.lifeplanner.domain.repository.CoachRepository
@@ -26,12 +33,13 @@ import az.tribe.lifeplanner.domain.repository.GamificationRepository
 import az.tribe.lifeplanner.domain.repository.GeminiRepository
 import az.tribe.lifeplanner.domain.repository.GoalDependencyRepository
 import az.tribe.lifeplanner.domain.repository.GoalHistoryRepository
+import az.tribe.lifeplanner.domain.repository.FocusRepository
+import az.tribe.lifeplanner.domain.repository.RetrospectiveRepository
 import az.tribe.lifeplanner.domain.repository.GoalRepository
 import az.tribe.lifeplanner.domain.repository.HabitRepository
 import az.tribe.lifeplanner.domain.repository.JournalRepository
 import az.tribe.lifeplanner.domain.repository.LifeBalanceRepository
 import az.tribe.lifeplanner.domain.repository.ReminderRepository
-import az.tribe.lifeplanner.domain.repository.ReviewRepository
 import az.tribe.lifeplanner.domain.repository.UserRepository
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
 import az.tribe.lifeplanner.util.NetworkConnectivityObserver
@@ -43,10 +51,11 @@ import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
 import az.tribe.lifeplanner.ui.habit.HabitViewModel
 import az.tribe.lifeplanner.ui.journal.JournalViewModel
 import az.tribe.lifeplanner.ui.backup.BackupViewModel
+import az.tribe.lifeplanner.ui.focus.FocusViewModel
+import az.tribe.lifeplanner.ui.retrospective.RetrospectiveViewModel
 import az.tribe.lifeplanner.ui.balance.LifeBalanceViewModel
 import az.tribe.lifeplanner.ui.coach.CoachViewModel
 import az.tribe.lifeplanner.ui.reminder.ReminderViewModel
-import az.tribe.lifeplanner.ui.review.ReviewViewModel
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
 import az.tribe.lifeplanner.usecases.journal.CreateJournalEntryUseCase
 import az.tribe.lifeplanner.usecases.journal.DeleteJournalEntryUseCase
@@ -92,20 +101,9 @@ import az.tribe.lifeplanner.usecases.UpdateGoalUseCase
 import az.tribe.lifeplanner.usecases.UpdateMilestoneUseCase
 import com.russhwolf.settings.Settings
 import org.koin.core.module.dsl.viewModelOf
-import org.koin.core.qualifier.named
 import org.koin.dsl.module
 
 const val DB_NAME = "LifePlannerDB.db"
-
-/**
- * Platform-specific function to create FirebaseTokenProvider
- */
-expect fun createFirebaseTokenProvider(): FirebaseTokenProvider
-
-/**
- * Platform-specific function to create AuthService
- */
-expect fun createAuthService(): az.tribe.lifeplanner.data.auth.AuthService
 
 val appModule = module {
 
@@ -116,27 +114,30 @@ val appModule = module {
     single { WidgetDataSyncService() }
     single { NetworkConnectivityObserver() }
 
-    // Firebase Token Provider (platform-specific)
-    single<FirebaseTokenProvider> { createFirebaseTokenProvider() }
+    // Auth Service (Supabase — multiplatform, no platform-specific needed)
+    single<AuthService> { SupabaseAuthService(get()) }
 
-    // Auth Service (platform-specific)
-    single<az.tribe.lifeplanner.data.auth.AuthService> { createAuthService() }
+    // AI Proxy Service
+    single<AiProxyService> { AiProxyServiceImpl(get(), get(), get()) }
 
     // Repositories
-    single<GeminiService> { GeminiServiceImpl(get(named("gemini"))) }
+    single<GeminiService> { GeminiServiceImpl(get<AiProxyService>()) }
     single<GeminiRepository> { GeminiRepositoryImp(get()) }
 
-    single<GoalRepository> { GoalRepositoryImpl(get(), get()) }
-    single<GoalHistoryRepository> { GoalHistoryRepositoryImpl(get()) }
-    single<GamificationRepository> { GamificationRepositoryImpl(get(), get()) }
-    single<UserRepository> { UserRepositoryImpl(get()) }
-    single<HabitRepository> { HabitRepositoryImpl(get(), get()) }
-    single<JournalRepository> { JournalRepositoryImpl(get()) }
-    single<GoalDependencyRepository> { GoalDependencyRepositoryImpl(get()) }
-    single<CoachRepository> { CoachRepositoryImpl(get()) }
-    single<ChatRepository> { ChatRepositoryImpl(get(), get(named("gemini")), get()) }
-    single<ReviewRepository> { ReviewRepositoryImpl(get(), get(named("gemini"))) }
-    single<ReminderRepository> { ReminderRepositoryImpl(get()) }
+    single<GoalRepository> { GoalRepositoryImpl(get(), get(), get()) }
+    single<GoalHistoryRepository> { GoalHistoryRepositoryImpl(get(), get()) }
+    single<GamificationRepository> { GamificationRepositoryImpl(get(), get(), get()) }
+    single<UserRepository> { UserRepositoryImpl(get(), get()) }
+    single<HabitRepository> { HabitRepositoryImpl(get(), get(), get()) }
+    single<JournalRepository> { JournalRepositoryImpl(get(), get()) }
+    single<GoalDependencyRepository> { GoalDependencyRepositoryImpl(get(), get()) }
+    single<CoachRepository> { CoachRepositoryImpl(get(), get()) }
+    single<ChatRepository> { ChatRepositoryImpl(get(), get<AiProxyService>(), get(), get()) }
+    single { ReviewMessageBuilder(get()) }
+    single<ReminderRepository> { ReminderRepositoryImpl(get(), get()) }
+    single<FocusRepository> { FocusRepositoryImpl(get(), get()) }
+    single<AiUsageRepository> { AiUsageRepositoryImpl(get()) }
+    single<RetrospectiveRepository> { RetrospectiveRepositoryImpl(get()) }
 
     // Existing Use Cases
     factory { GetAllGoalsUseCase(get()) }
@@ -196,7 +197,7 @@ val appModule = module {
     factory { GetJournalEntriesByGoalUseCase(get()) }
 
     // Life Balance Repository
-    single<LifeBalanceRepository> { LifeBalanceRepositoryImpl(get(), get(), get(named("gemini"))) }
+    single<LifeBalanceRepository> { LifeBalanceRepositoryImpl(get(), get(), get<AiProxyService>()) }
 
     // Backup Repository
     single<BackupRepository> { BackupRepositoryImpl(get(), get()) }
@@ -210,8 +211,9 @@ val appModule = module {
     viewModelOf(::GoalDependencyViewModel)
     viewModelOf(::ChatViewModel)
     viewModelOf(::CoachViewModel)
-    viewModelOf(::ReviewViewModel)
     viewModelOf(::ReminderViewModel)
     viewModelOf(::LifeBalanceViewModel)
     viewModelOf(::BackupViewModel)
+    viewModelOf(::FocusViewModel)
+    viewModelOf(::RetrospectiveViewModel)
 }

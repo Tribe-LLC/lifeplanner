@@ -22,8 +22,8 @@ fun JournalEntryEntity.toDomain(): JournalEntry {
         promptUsed = promptUsed,
         tags = if (tags.isBlank()) emptyList() else tags.split(",").map { it.trim() },
         date = LocalDate.parse(date),
-        createdAt = LocalDateTime.parse(createdAt),
-        updatedAt = updatedAt?.let { LocalDateTime.parse(it) }
+        createdAt = parseLocalDateTime(createdAt),
+        updatedAt = updatedAt?.let { parseLocalDateTime(it) }
     )
 }
 
@@ -39,7 +39,11 @@ fun JournalEntry.toEntity(): JournalEntryEntity {
         tags = tags.joinToString(","),
         date = date.toString(),
         createdAt = createdAt.toString(),
-        updatedAt = updatedAt?.toString()
+        updatedAt = updatedAt?.toString(),
+        sync_updated_at = Clock.System.now().toString(),
+        is_deleted = 0L,
+        sync_version = 0L,
+        last_synced_at = null
     )
 }
 

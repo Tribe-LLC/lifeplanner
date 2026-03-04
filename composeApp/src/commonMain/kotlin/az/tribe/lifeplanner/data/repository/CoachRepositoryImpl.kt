@@ -1,5 +1,6 @@
 package az.tribe.lifeplanner.data.repository
 
+import az.tribe.lifeplanner.data.mapper.parseLocalDateTime
 import az.tribe.lifeplanner.database.CoachGroupEntity
 import az.tribe.lifeplanner.database.CoachGroupMemberEntity
 import az.tribe.lifeplanner.database.CustomCoachEntity
@@ -18,7 +19,8 @@ import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalUuidApi::class)
 class CoachRepositoryImpl(
-    private val database: SharedDatabase
+    private val database: SharedDatabase,
+    private val syncManager: az.tribe.lifeplanner.data.sync.SyncManager
 ) : CoachRepository {
 
     // ===== Custom Coaches =====
@@ -194,8 +196,8 @@ class CoachRepositoryImpl(
             characteristics = characteristics.split(",").filter { it.isNotBlank() },
             isFromTemplate = isFromTemplate == 1L,
             templateId = templateId,
-            createdAt = LocalDateTime.parse(createdAt),
-            updatedAt = updatedAt?.let { LocalDateTime.parse(it) }
+            createdAt = parseLocalDateTime(createdAt),
+            updatedAt = updatedAt?.let { parseLocalDateTime(it) }
         )
     }
 
@@ -206,8 +208,8 @@ class CoachRepositoryImpl(
             icon = icon,
             description = description,
             members = members,
-            createdAt = LocalDateTime.parse(createdAt),
-            updatedAt = updatedAt?.let { LocalDateTime.parse(it) }
+            createdAt = parseLocalDateTime(createdAt),
+            updatedAt = updatedAt?.let { parseLocalDateTime(it) }
         )
     }
 

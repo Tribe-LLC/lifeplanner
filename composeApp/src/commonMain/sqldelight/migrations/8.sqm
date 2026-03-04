@@ -1,0 +1,23 @@
+-- Migration from version 8 to 9
+-- Add focus session table for pomodoro-style focus timer
+
+CREATE TABLE IF NOT EXISTS FocusSessionEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    goalId TEXT NOT NULL,
+    milestoneId TEXT NOT NULL,
+    plannedDurationMinutes INTEGER NOT NULL,
+    actualDurationSeconds INTEGER NOT NULL DEFAULT 0,
+    wasCompleted INTEGER NOT NULL DEFAULT 0,
+    xpEarned INTEGER NOT NULL DEFAULT 0,
+    startedAt TEXT NOT NULL,
+    completedAt TEXT,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (goalId) REFERENCES GoalEntity(id) ON DELETE CASCADE,
+    FOREIGN KEY (milestoneId) REFERENCES MilestoneEntity(id) ON DELETE CASCADE
+);
+
+-- Indexes for focus sessions
+CREATE INDEX IF NOT EXISTS idx_focus_goal ON FocusSessionEntity(goalId);
+CREATE INDEX IF NOT EXISTS idx_focus_milestone ON FocusSessionEntity(milestoneId);
+CREATE INDEX IF NOT EXISTS idx_focus_completed ON FocusSessionEntity(wasCompleted);
+CREATE INDEX IF NOT EXISTS idx_focus_started ON FocusSessionEntity(startedAt);

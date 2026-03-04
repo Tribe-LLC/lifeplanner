@@ -10,6 +10,7 @@ import az.tribe.lifeplanner.domain.model.Badge
 import az.tribe.lifeplanner.domain.model.Challenge
 import az.tribe.lifeplanner.domain.model.UserProgress
 import az.tribe.lifeplanner.domain.repository.GamificationRepository
+import az.tribe.lifeplanner.data.sync.SyncManager
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
 import az.tribe.lifeplanner.widget.WidgetDataSyncService
 import co.touchlab.kermit.Logger
@@ -26,7 +27,8 @@ import kotlinx.datetime.toLocalDateTime
 
 class GamificationRepositoryImpl(
     private val database: SharedDatabase,
-    private val widgetSyncService: WidgetDataSyncService
+    private val widgetSyncService: WidgetDataSyncService,
+    private val syncManager: SyncManager
 ) : GamificationRepository {
 
     private suspend fun notifyWidgets() {
@@ -63,9 +65,13 @@ class GamificationRepositoryImpl(
         val progress = database.getUserProgressEntity()
             ?: run {
                 initializeProgress()
-                database.getUserProgressEntity()!!
+                database.getUserProgressEntity()
             }
-        emit(progress.toDomain())
+        if (progress != null) {
+            emit(progress.toDomain())
+        } else {
+            emit(UserProgress.default())
+        }
     }
 
     override suspend fun updateDailyStreak(): Flow<Int> = flow {
@@ -74,8 +80,13 @@ class GamificationRepositoryImpl(
         val progress = database.getUserProgressEntity()
             ?: run {
                 initializeProgress()
-                database.getUserProgressEntity()!!
+                database.getUserProgressEntity()
             }
+
+        if (progress == null) {
+            emit(0)
+            return@flow
+        }
 
         val lastCheckIn = progress.lastCheckInDate?.let { LocalDate.parse(it) }
 
@@ -95,6 +106,7 @@ class GamificationRepositoryImpl(
         )
 
         notifyWidgets()
+        syncManager.requestSync()
         emit(newStreak)
     }
 
@@ -102,8 +114,9 @@ class GamificationRepositoryImpl(
         val current = database.getUserProgressEntity()
             ?: run {
                 initializeProgress()
-                database.getUserProgressEntity()!!
+                database.getUserProgressEntity()
             }
+            ?: return UserProgress.default()
 
         val newTotalXp = current.totalXp + amount
         val newLevel = UserProgress.calculateLevelFromXp(newTotalXp.toInt())
@@ -111,15 +124,17 @@ class GamificationRepositoryImpl(
         database.updateUserXp(newTotalXp, newLevel.toLong())
 
         notifyWidgets()
-        return database.getUserProgressEntity()!!.toDomain()
+        syncManager.requestSync()
+        return database.getUserProgressEntity()?.toDomain() ?: UserProgress.default()
     }
 
     override suspend fun deductXp(amount: Int): UserProgress {
         val current = database.getUserProgressEntity()
             ?: run {
                 initializeProgress()
-                database.getUserProgressEntity()!!
+                database.getUserProgressEntity()
             }
+            ?: return UserProgress.default()
 
         val newTotalXp = (current.totalXp - amount).coerceAtLeast(0)
         val newLevel = UserProgress.calculateLevelFromXp(newTotalXp.toInt())
@@ -127,23 +142,28 @@ class GamificationRepositoryImpl(
         database.updateUserXp(newTotalXp, newLevel.toLong())
 
         notifyWidgets()
-        return database.getUserProgressEntity()!!.toDomain()
+        syncManager.requestSync()
+        return database.getUserProgressEntity()?.toDomain() ?: UserProgress.default()
     }
 
     override suspend fun incrementGoalsCompleted() {
         database.incrementGoalsCompleted()
+        syncManager.requestSync()
     }
 
     override suspend fun incrementHabitsCompleted() {
         database.incrementHabitsCompleted()
+        syncManager.requestSync()
     }
 
     override suspend fun decrementHabitsCompleted() {
         database.decrementHabitsCompleted()
+        syncManager.requestSync()
     }
 
     override suspend fun incrementJournalEntries() {
         database.incrementJournalEntries()
+        syncManager.requestSync()
     }
 
     // --- Badge Operations ---
@@ -165,15 +185,18 @@ class GamificationRepositoryImpl(
 
         val badge = createNewBadge(type)
         database.insertBadge(badge.toEntity())
+        syncManager.requestSync()
         return badge
     }
 
     override suspend fun markBadgeAsSeen(badgeId: String) {
         database.markBadgeAsSeen(badgeId)
+        syncManager.requestSync()
     }
 
     override suspend fun markAllBadgesAsSeen() {
         database.markAllBadgesAsSeen()
+        syncManager.requestSync()
     }
 
     override suspend fun getBadgeCount(): Int {
@@ -260,11 +283,13 @@ class GamificationRepositoryImpl(
         // Create a new challenge only if one doesn't exist
         val challenge = createNewChallenge(type)
         database.insertChallenge(challenge.toEntity())
+        syncManager.requestSync()
         return challenge
     }
 
     override suspend fun updateChallengeProgress(challengeId: String, progress: Int) {
         database.updateChallengeProgress(challengeId, progress.toLong())
+        syncManager.requestSync()
     }
 
     override suspend fun checkAndCompleteChallenge(challengeId: String): Challenge? {
@@ -280,6 +305,7 @@ class GamificationRepositoryImpl(
                 completedAt = now.toString(),
                 xpEarned = type.xpReward.toLong()
             )
+            syncManager.requestSync()
 
             // Award XP for completing the challenge
             addXp(type.xpReward)
@@ -293,6 +319,7 @@ class GamificationRepositoryImpl(
     override suspend fun cleanupExpiredChallenges() {
         val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date.toString()
         database.deleteExpiredChallenges(today)
+        syncManager.requestSync()
     }
 
     override suspend fun getAvailableChallenges(): List<ChallengeType> {

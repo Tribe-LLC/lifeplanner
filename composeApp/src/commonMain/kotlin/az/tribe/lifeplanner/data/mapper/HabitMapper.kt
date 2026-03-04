@@ -29,7 +29,7 @@ fun HabitEntity.toDomain(): Habit {
         linkedGoalId = linkedGoalId,
         correlationScore = correlationScore.toFloat(),
         isActive = isActive == 1L,
-        createdAt = LocalDateTime.parse(createdAt),
+        createdAt = parseLocalDateTime(createdAt),
         reminderTime = reminderTime
     )
 }
@@ -50,7 +50,11 @@ fun Habit.toEntity(): HabitEntity {
         correlationScore = correlationScore.toDouble(),
         isActive = if (isActive) 1L else 0L,
         createdAt = createdAt.toString(),
-        reminderTime = reminderTime
+        reminderTime = reminderTime,
+        sync_updated_at = Clock.System.now().toString(),
+        is_deleted = 0L,
+        sync_version = 0L,
+        last_synced_at = null
     )
 }
 
@@ -70,7 +74,11 @@ fun HabitCheckIn.toEntity(): HabitCheckInEntity {
         habitId = habitId,
         date = date.toString(),
         completed = if (completed) 1L else 0L,
-        notes = notes
+        notes = notes,
+        sync_updated_at = Clock.System.now().toString(),
+        is_deleted = 0L,
+        sync_version = 0L,
+        last_synced_at = null
     )
 }
 

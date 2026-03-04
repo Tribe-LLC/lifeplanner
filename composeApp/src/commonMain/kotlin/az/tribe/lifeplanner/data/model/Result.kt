@@ -23,7 +23,6 @@ inline fun <T, E: Error> Result<T, E>.onSuccess(action: (T) -> Unit): Result<T, 
     return when(this) {
         is Result.Error -> this
         is Result.Success -> {
-            println(data)
             action(data)
             this
         }

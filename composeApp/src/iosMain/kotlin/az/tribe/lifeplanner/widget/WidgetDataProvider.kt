@@ -54,15 +54,15 @@ object WidgetDataProvider {
         try {
             val defaults = getSharedDefaults()
             if (defaults == null) {
-                println("WidgetDataProvider: FAILED - Could not access App Group UserDefaults for suite '$APP_GROUP_ID'")
+                Logger.e("WidgetDataProvider") { "FAILED - Could not access App Group UserDefaults for suite '$APP_GROUP_ID'" }
                 return
             }
             val jsonString = json.encodeToString(data)
             defaults.setObject(jsonString, forKey = DASHBOARD_KEY)
             defaults.synchronize()
-            println("WidgetDataProvider: Wrote dashboard data - streak=${data.currentStreak}, habits=${data.habitsDoneToday}/${data.habitsTotal}")
+            Logger.d("WidgetDataProvider") { "Wrote dashboard data - streak=${data.currentStreak}, habits=${data.habitsDoneToday}/${data.habitsTotal}" }
         } catch (e: Exception) {
-            println("WidgetDataProvider: FAILED to write dashboard data: ${e.message}")
+            Logger.e("WidgetDataProvider", e) { "FAILED to write dashboard data: ${e.message}" }
         }
     }
 
@@ -70,15 +70,15 @@ object WidgetDataProvider {
         try {
             val defaults = getSharedDefaults()
             if (defaults == null) {
-                println("WidgetDataProvider: FAILED - Could not access App Group UserDefaults for suite '$APP_GROUP_ID'")
+                Logger.e("WidgetDataProvider") { "FAILED - Could not access App Group UserDefaults for suite '$APP_GROUP_ID'" }
                 return
             }
             val jsonString = json.encodeToString(habits)
             defaults.setObject(jsonString, forKey = HABITS_KEY)
             defaults.synchronize()
-            println("WidgetDataProvider: Wrote ${habits.size} habits to widget data")
+            Logger.d("WidgetDataProvider") { "Wrote ${habits.size} habits to widget data" }
         } catch (e: Exception) {
-            println("WidgetDataProvider: FAILED to write habits data: ${e.message}")
+            Logger.e("WidgetDataProvider", e) { "FAILED to write habits data: ${e.message}" }
         }
     }
 }

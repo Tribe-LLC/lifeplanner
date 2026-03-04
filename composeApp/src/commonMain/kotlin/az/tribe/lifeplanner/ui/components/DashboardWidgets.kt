@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.Loop
 import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.automirrored.rounded.TrendingUp
@@ -1666,7 +1667,8 @@ fun QuickActionsPillRow(
     onAddGoal: () -> Unit,
     onAiSuggest: () -> Unit,
     onNewHabit: () -> Unit,
-    onJournal: () -> Unit
+    onJournal: () -> Unit,
+    onFocus: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -1694,10 +1696,10 @@ fun QuickActionsPillRow(
             modifier = Modifier.weight(1f)
         )
         QuickActionPill(
-            icon = Icons.Rounded.Edit,
-            label = "Journal",
-            gradientColors = listOf(Color(0xFFFC466B), Color(0xFF3F5EFB)),
-            onClick = onJournal,
+            icon = Icons.Rounded.Timer,
+            label = "Focus",
+            gradientColors = listOf(Color(0xFFFF6B35), Color(0xFFFFA726)),
+            onClick = onFocus,
             modifier = Modifier.weight(1f)
         )
     }

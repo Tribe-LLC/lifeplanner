@@ -18,7 +18,7 @@ fun ReviewReportEntity.toDomain(): ReviewReport = ReviewReport(
     type = ReviewType.valueOf(type),
     periodStart = LocalDate.parse(periodStart),
     periodEnd = LocalDate.parse(periodEnd),
-    generatedAt = LocalDateTime.parse(generatedAt),
+    generatedAt = parseLocalDateTime(generatedAt),
     summary = summary,
     highlights = json.decodeFromString(highlightsJson),
     insights = json.decodeFromString(insightsJson),
@@ -28,8 +28,8 @@ fun ReviewReportEntity.toDomain(): ReviewReport = ReviewReport(
         ReviewFeedback(
             rating = FeedbackRating.valueOf(feedbackRating),
             comment = feedbackComment,
-            submittedAt = feedbackAt?.let { LocalDateTime.parse(it) }
-                ?: LocalDateTime.parse(generatedAt)
+            submittedAt = feedbackAt?.let { parseLocalDateTime(it) }
+                ?: parseLocalDateTime(generatedAt)
         )
     } else null,
     isRead = isRead != 0L

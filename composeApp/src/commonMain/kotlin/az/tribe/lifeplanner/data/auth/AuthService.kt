@@ -1,48 +1,257 @@
 package az.tribe.lifeplanner.data.auth
 
+import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.OtpType
+import io.github.jan.supabase.auth.providers.builtin.Email
+import co.touchlab.kermit.Logger
+
 /**
- * Authentication service interface for Firebase auth
+ * Authentication service interface
  */
 interface AuthService {
-    /**
-     * Sign in with email and password
-     */
     suspend fun signInWithEmail(email: String, password: String): AuthResult
-
-    /**
-     * Sign up with email and password
-     */
     suspend fun signUpWithEmail(email: String, password: String, displayName: String): AuthResult
-
-    /**
-     * Sign in with Google
-     */
     suspend fun signInWithGoogle(): AuthResult
-
-    /**
-     * Sign in anonymously
-     */
     suspend fun signInAnonymously(): AuthResult
-
-    /**
-     * Sign out
-     */
     suspend fun signOut()
-
-    /**
-     * Get current user
-     */
     suspend fun getCurrentUser(): FirebaseUser?
-
-    /**
-     * Get ID token
-     */
-    suspend fun getIdToken(forceRefresh: Boolean = false): String?
-
-    /**
-     * Send password reset email
-     */
     suspend fun sendPasswordResetEmail(email: String)
+    /** Restore the persisted Supabase session (auto-loads from storage in supabase-kt 3.x). */
+    suspend fun restoreSession(): FirebaseUser?
+    /** Link an email/password identity to the current anonymous account. */
+    suspend fun linkEmailToAnonymousAccount(email: String, password: String, displayName: String? = null): AuthResult
+    /** Resend the signup confirmation email. */
+    suspend fun resendVerificationEmail(email: String)
+}
+
+/**
+ * Common Supabase Auth implementation (multiplatform).
+ * Google OAuth is a stub here — platform-specific handling can be added later.
+ */
+class SupabaseAuthService(
+    private val supabase: SupabaseClient
+) : AuthService {
+
+    override suspend fun signInWithEmail(email: String, password: String): AuthResult {
+        return try {
+            supabase.auth.signInWith(Email) {
+                this.email = email
+                this.password = password
+            }
+            val user = supabase.auth.currentUserOrNull()
+            if (user != null) {
+                AuthResult.Success(
+                    FirebaseUser(
+                        uid = user.id,
+                        email = user.email,
+                        displayName = user.userMetadata?.get("display_name")?.toString()?.removeSurrounding("\""),
+                        photoUrl = null,
+                        isAnonymous = false
+                    )
+                )
+            } else {
+                AuthResult.Error("Sign in failed")
+            }
+        } catch (e: Exception) {
+            Logger.e("SupabaseAuth") { "Sign in failed: ${e.message}" }
+            // Provide user-friendly error messages for common cases
+            val message = when {
+                e.message?.contains("Invalid login credentials", ignoreCase = true) == true ->
+                    "Incorrect email or password. Please try again."
+                e.message?.contains("Email not confirmed", ignoreCase = true) == true ->
+                    "Please verify your email before signing in. Check your inbox for a verification link."
+                e.message?.contains("rate limit", ignoreCase = true) == true ->
+                    "Too many attempts. Please wait a moment and try again."
+                else -> e.message ?: "Sign in failed"
+            }
+            AuthResult.Error(message)
+        }
+    }
+
+    override suspend fun signUpWithEmail(
+        email: String,
+        password: String,
+        displayName: String
+    ): AuthResult {
+        return try {
+            val signUpResult = supabase.auth.signUpWith(Email) {
+                this.email = email
+                this.password = password
+                this.data = kotlinx.serialization.json.buildJsonObject {
+                    put("display_name", kotlinx.serialization.json.JsonPrimitive(displayName))
+                }
+            }
+
+            // Check if a session was created (means email verification is NOT required)
+            val currentUser = supabase.auth.currentUserOrNull()
+            when {
+                currentUser != null -> {
+                    // Session established — no email verification needed
+                    AuthResult.Success(
+                        FirebaseUser(
+                            uid = currentUser.id,
+                            email = currentUser.email,
+                            displayName = displayName,
+                            photoUrl = null,
+                            isAnonymous = false
+                        )
+                    )
+                }
+                signUpResult != null -> {
+                    // User was created but no session — email verification is pending
+                    AuthResult.EmailVerificationPending(email)
+                }
+                else -> {
+                    AuthResult.Error("Sign up failed — please try again.")
+                }
+            }
+        } catch (e: Exception) {
+            Logger.e("SupabaseAuth") { "Sign up failed: ${e.message}" }
+            val message = when {
+                e.message?.contains("already registered", ignoreCase = true) == true ->
+                    "An account with this email already exists. Try signing in instead."
+                e.message?.contains("password", ignoreCase = true) == true &&
+                        e.message?.contains("least", ignoreCase = true) == true ->
+                    "Password is too short. Please use at least 6 characters."
+                e.message?.contains("valid email", ignoreCase = true) == true ->
+                    "Please enter a valid email address."
+                e.message?.contains("rate limit", ignoreCase = true) == true ->
+                    "Too many attempts. Please wait a moment and try again."
+                else -> e.message ?: "Sign up failed"
+            }
+            AuthResult.Error(message)
+        }
+    }
+
+    override suspend fun signInWithGoogle(): AuthResult {
+        // Google OAuth requires platform-specific handling
+        // For now, return error — will be implemented per-platform if needed
+        return AuthResult.Error("Google Sign-In not yet configured for Supabase")
+    }
+
+    override suspend fun signInAnonymously(): AuthResult {
+        return try {
+            supabase.auth.signInAnonymously()
+            val user = supabase.auth.currentUserOrNull()
+            if (user != null) {
+                AuthResult.Success(
+                    FirebaseUser(
+                        uid = user.id,
+                        email = null,
+                        displayName = null,
+                        photoUrl = null,
+                        isAnonymous = true
+                    )
+                )
+            } else {
+                AuthResult.Error("Anonymous sign in failed")
+            }
+        } catch (e: Exception) {
+            Logger.e("SupabaseAuth") { "Anonymous sign in failed: ${e.message}" }
+            AuthResult.Error(e.message ?: "Anonymous sign in failed")
+        }
+    }
+
+    override suspend fun signOut() {
+        try {
+            supabase.auth.signOut()
+        } catch (e: Exception) {
+            Logger.e("SupabaseAuth") { "Sign out failed: ${e.message}" }
+        }
+    }
+
+    override suspend fun getCurrentUser(): FirebaseUser? {
+        val user = supabase.auth.currentUserOrNull() ?: return null
+        return FirebaseUser(
+            uid = user.id,
+            email = user.email,
+            displayName = user.userMetadata?.get("display_name")?.toString()?.removeSurrounding("\""),
+            photoUrl = null,
+            isAnonymous = user.email == null
+        )
+    }
+
+    override suspend fun sendPasswordResetEmail(email: String) {
+        try {
+            supabase.auth.resetPasswordForEmail(email)
+        } catch (e: Exception) {
+            Logger.e("SupabaseAuth") { "Password reset failed: ${e.message}" }
+        }
+    }
+
+    override suspend fun restoreSession(): FirebaseUser? {
+        return try {
+            // supabase-kt 3.x auto-loads the session from storage when you access currentUserOrNull()
+            val user = supabase.auth.currentUserOrNull()
+            if (user != null) {
+                FirebaseUser(
+                    uid = user.id,
+                    email = user.email,
+                    displayName = user.userMetadata?.get("display_name")?.toString()?.removeSurrounding("\""),
+                    photoUrl = null,
+                    isAnonymous = user.email == null
+                )
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Logger.e("SupabaseAuth") { "Session restore failed: ${e.message}" }
+            null
+        }
+    }
+
+    override suspend fun linkEmailToAnonymousAccount(
+        email: String,
+        password: String,
+        displayName: String?
+    ): AuthResult {
+        return try {
+            supabase.auth.updateUser {
+                this.email = email
+                this.password = password
+                if (displayName != null) {
+                    this.data = kotlinx.serialization.json.buildJsonObject {
+                        put("display_name", kotlinx.serialization.json.JsonPrimitive(displayName))
+                    }
+                }
+            }
+            val user = supabase.auth.currentUserOrNull()
+            if (user != null) {
+                AuthResult.Success(
+                    FirebaseUser(
+                        uid = user.id,
+                        email = user.email ?: email,
+                        displayName = displayName
+                            ?: user.userMetadata?.get("display_name")?.toString()?.removeSurrounding("\""),
+                        photoUrl = null,
+                        isAnonymous = false
+                    )
+                )
+            } else {
+                AuthResult.Error("Account linking failed")
+            }
+        } catch (e: Exception) {
+            Logger.e("SupabaseAuth") { "Account linking failed: ${e.message}" }
+            val message = when {
+                e.message?.contains("already registered", ignoreCase = true) == true ->
+                    "This email is already associated with another account. Try signing in instead."
+                e.message?.contains("valid email", ignoreCase = true) == true ->
+                    "Please enter a valid email address."
+                else -> e.message ?: "Account linking failed"
+            }
+            AuthResult.Error(message)
+        }
+    }
+
+    override suspend fun resendVerificationEmail(email: String) {
+        try {
+            supabase.auth.resendEmail(OtpType.Email.SIGNUP, email)
+        } catch (e: Exception) {
+            Logger.e("SupabaseAuth") { "Resend verification email failed: ${e.message}" }
+            throw e
+        }
+    }
 }
 
 /**
@@ -51,10 +260,12 @@ interface AuthService {
 sealed class AuthResult {
     data class Success(val user: FirebaseUser) : AuthResult()
     data class Error(val message: String) : AuthResult()
+    /** User was created but email verification is required before they can sign in. */
+    data class EmailVerificationPending(val email: String) : AuthResult()
 }
 
 /**
- * Firebase user data
+ * Auth user data (kept as FirebaseUser name for backwards compatibility with existing code)
  */
 data class FirebaseUser(
     val uid: String,

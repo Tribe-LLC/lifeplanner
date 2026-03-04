@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import co.touchlab.kermit.Logger
 
 @Composable
 actual fun rememberFilePicker(
@@ -52,7 +53,7 @@ private fun readFileContent(context: Context, uri: Uri): String? {
             inputStream.bufferedReader().readText()
         }
     } catch (e: Exception) {
-        e.printStackTrace()
+        Logger.e("FilePicker") { "Failed to read file content: ${e.message}" }
         null
     }
 }

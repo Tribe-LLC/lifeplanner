@@ -23,7 +23,7 @@ import kotlin.uuid.Uuid
 fun BadgeEntity.toDomain(): Badge = Badge(
     id = id,
     type = BadgeType.valueOf(badgeType),
-    earnedAt = LocalDateTime.parse(earnedAt),
+    earnedAt = parseLocalDateTime(earnedAt),
     isNew = isNew == 1L
 )
 
@@ -34,7 +34,11 @@ fun Badge.toEntity(): BadgeEntity = BadgeEntity(
     id = id,
     badgeType = type.name,
     earnedAt = earnedAt.toString(),
-    isNew = if (isNew) 1L else 0L
+    isNew = if (isNew) 1L else 0L,
+    sync_updated_at = Clock.System.now().toString(),
+    is_deleted = 0L,
+    sync_version = 0L,
+    last_synced_at = null
 )
 
 /**
@@ -48,7 +52,7 @@ fun ChallengeEntity.toDomain(): Challenge = Challenge(
     currentProgress = currentProgress.toInt(),
     targetProgress = targetProgress.toInt(),
     isCompleted = isCompleted == 1L,
-    completedAt = completedAt?.let { LocalDateTime.parse(it) },
+    completedAt = completedAt?.let { parseLocalDateTime(it) },
     xpEarned = xpEarned.toInt()
 )
 
@@ -64,7 +68,11 @@ fun Challenge.toEntity(): ChallengeEntity = ChallengeEntity(
     targetProgress = targetProgress.toLong(),
     isCompleted = if (isCompleted) 1L else 0L,
     completedAt = completedAt?.toString(),
-    xpEarned = xpEarned.toLong()
+    xpEarned = xpEarned.toLong(),
+    sync_updated_at = Clock.System.now().toString(),
+    is_deleted = 0L,
+    sync_version = 0L,
+    last_synced_at = null
 )
 
 /**

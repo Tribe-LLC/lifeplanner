@@ -4,10 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,7 +21,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -34,7 +30,6 @@ import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.ui.theme.modernColors
 import az.tribe.lifeplanner.util.NetworkConnectivityObserver
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
 // Life scenarios for quick selection
@@ -106,7 +101,7 @@ val lifeScenarios = listOf(
 )
 
 enum class GeneratorStep {
-    WELCOME, SCENARIO_SELECT, CUSTOM_INPUT, CATEGORIES, LOADING_QUESTIONS, ANSWERING, GENERATING, RESULTS
+    SCENARIO_SELECT, CUSTOM_INPUT, QUESTIONS, GENERATING, RESULTS
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -116,36 +111,28 @@ fun SmartGoalGeneratorScreen(
     onBackClick: () -> Unit,
     onComplete: () -> Unit
 ) {
-    var currentStep by remember { mutableStateOf(GeneratorStep.WELCOME) }
-    var selectedScenario by remember { mutableStateOf<LifeScenario?>(null) }
+    var currentStep by remember { mutableStateOf(GeneratorStep.SCENARIO_SELECT) }
     var customPrompt by remember { mutableStateOf("") }
-    var selectedCategories by remember { mutableStateOf<Set<GoalCategory>>(emptySet()) }
-    var answers by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-    var hasStartedGeneration by remember { mutableStateOf(false) }
     val connectivityObserver: NetworkConnectivityObserver = koinInject()
     val isConnected by connectivityObserver.isConnected.collectAsState()
     val isOffline = !isConnected
 
     val generatedGoals by viewModel.generatedGoalsFromAI.collectAsState()
-    val isLoading by viewModel.isLoadingQuestions.collectAsState()
     val questionnaireStep by viewModel.questionnaireStep.collectAsState()
     val questions by viewModel.questions.collectAsState()
+    val isLoadingQuestions by viewModel.isLoadingQuestions.collectAsState()
+    val error by viewModel.error.collectAsState()
 
-    // Reset everything when screen is first opened
+    // Reset when screen opens
     LaunchedEffect(Unit) {
         viewModel.resetQuestionnaire()
-        hasStartedGeneration = false
     }
 
-    // Watch for ViewModel state changes - only after user started generation
-    LaunchedEffect(questionnaireStep, hasStartedGeneration) {
-        if (!hasStartedGeneration) return@LaunchedEffect
-
+    // Watch ViewModel state for transitions
+    LaunchedEffect(questionnaireStep) {
         when (questionnaireStep) {
             QuestionnaireStep.ANSWERING -> {
-                if (currentStep == GeneratorStep.LOADING_QUESTIONS) {
-                    currentStep = GeneratorStep.ANSWERING
-                }
+                currentStep = GeneratorStep.QUESTIONS
             }
             QuestionnaireStep.GENERATING -> {
                 currentStep = GeneratorStep.GENERATING
@@ -153,38 +140,40 @@ fun SmartGoalGeneratorScreen(
             QuestionnaireStep.RESULTS -> {
                 currentStep = GeneratorStep.RESULTS
             }
-            else -> {}
+            QuestionnaireStep.INPUT -> {
+                // Error happened — go back to selection
+                if (currentStep == GeneratorStep.GENERATING || currentStep == GeneratorStep.QUESTIONS) {
+                    currentStep = GeneratorStep.SCENARIO_SELECT
+                }
+            }
+        }
+    }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Show error as snackbar
+    LaunchedEffect(error) {
+        val msg = error
+        if (msg != null) {
+            snackbarHostState.showSnackbar(msg)
         }
     }
 
     Scaffold(
         containerColor = MaterialTheme.modernColors.background,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             SmartGeneratorTopBar(
                 currentStep = currentStep,
                 onBackClick = {
                     when (currentStep) {
-                        GeneratorStep.WELCOME -> onBackClick()
-                        GeneratorStep.SCENARIO_SELECT -> currentStep = GeneratorStep.WELCOME
+                        GeneratorStep.SCENARIO_SELECT -> onBackClick()
                         GeneratorStep.CUSTOM_INPUT -> currentStep = GeneratorStep.SCENARIO_SELECT
-                        GeneratorStep.CATEGORIES -> {
-                            currentStep = if (selectedScenario != null) GeneratorStep.SCENARIO_SELECT
-                            else GeneratorStep.CUSTOM_INPUT
-                        }
-                        GeneratorStep.LOADING_QUESTIONS -> {
-                            viewModel.resetQuestionnaire()
-                            currentStep = GeneratorStep.CATEGORIES
-                        }
-                        GeneratorStep.ANSWERING -> {
-                            viewModel.resetQuestionnaire()
-                            answers = emptyMap()
-                            currentStep = GeneratorStep.CATEGORIES
-                        }
+                        GeneratorStep.QUESTIONS -> currentStep = GeneratorStep.SCENARIO_SELECT
                         GeneratorStep.GENERATING -> {} // Can't go back during generation
                         GeneratorStep.RESULTS -> {
                             viewModel.resetQuestionnaire()
-                            answers = emptyMap()
-                            currentStep = GeneratorStep.WELCOME
+                            currentStep = GeneratorStep.SCENARIO_SELECT
                         }
                     }
                 }
@@ -202,60 +191,37 @@ fun SmartGoalGeneratorScreen(
                 .padding(padding)
         ) { step ->
             when (step) {
-                GeneratorStep.WELCOME -> WelcomeStep(
-                    onGetStarted = { currentStep = GeneratorStep.SCENARIO_SELECT }
-                )
-
                 GeneratorStep.SCENARIO_SELECT -> ScenarioSelectStep(
                     scenarios = lifeScenarios,
+                    isOffline = isOffline,
                     onScenarioSelected = { scenario ->
-                        selectedScenario = scenario
-                        selectedCategories = scenario.suggestedCategories.toSet()
-                        currentStep = GeneratorStep.CATEGORIES
+                        val categoriesText = scenario.suggestedCategories.joinToString(", ") { it.name.lowercase() }
+                        customPrompt = "${scenario.prompt}. Focus areas: $categoriesText"
+                        currentStep = GeneratorStep.GENERATING
+                        viewModel.generateQuestionnaire(customPrompt)
                     },
                     onCustomClick = {
-                        selectedScenario = null
                         currentStep = GeneratorStep.CUSTOM_INPUT
                     }
                 )
 
                 GeneratorStep.CUSTOM_INPUT -> CustomInputStep(
                     prompt = customPrompt,
-                    onPromptChange = { customPrompt = it },
-                    onContinue = {
-                        currentStep = GeneratorStep.CATEGORIES
-                    }
-                )
-
-                GeneratorStep.CATEGORIES -> CategorySelectStep(
-                    selectedCategories = selectedCategories,
                     isOffline = isOffline,
-                    onCategoryToggle = { category ->
-                        selectedCategories = if (selectedCategories.contains(category)) {
-                            selectedCategories - category
-                        } else {
-                            selectedCategories + category
-                        }
-                    },
+                    onPromptChange = { customPrompt = it },
                     onGenerate = {
-                        hasStartedGeneration = true
-                        currentStep = GeneratorStep.LOADING_QUESTIONS
-                        val prompt = selectedScenario?.prompt ?: customPrompt
-                        val categoriesText = selectedCategories.joinToString(", ") { it.name.lowercase() }
-                        viewModel.generateQuestionnaire("$prompt. Focus areas: $categoriesText")
+                        currentStep = GeneratorStep.GENERATING
+                        viewModel.generateQuestionnaire(customPrompt)
                     }
                 )
 
-                GeneratorStep.LOADING_QUESTIONS -> LoadingQuestionsStep()
-
-                GeneratorStep.ANSWERING -> QuestionAnsweringStep(
+                GeneratorStep.QUESTIONS -> QuestionsStep(
                     questions = questions,
-                    answers = answers,
-                    onAnswerChange = { question, answer ->
-                        answers = answers + (question to answer)
-                        viewModel.answerQuestion(question, answer)
+                    onAnswerQuestion = { questionTitle, answer ->
+                        viewModel.answerQuestion(questionTitle, answer)
                     },
-                    onComplete = {
+                    isQuestionnaireComplete = viewModel.isQuestionnaireComplete(),
+                    onSubmitAnswers = {
                         viewModel.generatePersonalizedGoals()
                     }
                 )
@@ -284,13 +250,10 @@ private fun SmartGeneratorTopBar(
     onBackClick: () -> Unit
 ) {
     val progress = when (currentStep) {
-        GeneratorStep.WELCOME -> 0f
-        GeneratorStep.SCENARIO_SELECT -> 0.15f
-        GeneratorStep.CUSTOM_INPUT -> 0.3f
-        GeneratorStep.CATEGORIES -> 0.45f
-        GeneratorStep.LOADING_QUESTIONS -> 0.55f
-        GeneratorStep.ANSWERING -> 0.7f
-        GeneratorStep.GENERATING -> 0.85f
+        GeneratorStep.SCENARIO_SELECT -> 0f
+        GeneratorStep.CUSTOM_INPUT -> 0.2f
+        GeneratorStep.QUESTIONS -> 0.5f
+        GeneratorStep.GENERATING -> 0.75f
         GeneratorStep.RESULTS -> 1f
     }
 
@@ -299,12 +262,9 @@ private fun SmartGeneratorTopBar(
             title = {
                 Text(
                     when (currentStep) {
-                        GeneratorStep.WELCOME -> "Smart Goal Generator"
-                        GeneratorStep.SCENARIO_SELECT -> "Choose Your Path"
-                        GeneratorStep.CUSTOM_INPUT -> "Tell Us More"
-                        GeneratorStep.CATEGORIES -> "Focus Areas"
-                        GeneratorStep.LOADING_QUESTIONS -> "Preparing Questions"
-                        GeneratorStep.ANSWERING -> "Quick Questions"
+                        GeneratorStep.SCENARIO_SELECT -> "AI Goal Generator"
+                        GeneratorStep.CUSTOM_INPUT -> "Describe Your Goals"
+                        GeneratorStep.QUESTIONS -> "Answer Questions"
                         GeneratorStep.GENERATING -> "Creating Goals"
                         GeneratorStep.RESULTS -> "Your Goals"
                     },
@@ -312,7 +272,7 @@ private fun SmartGeneratorTopBar(
                 )
             },
             navigationIcon = {
-                if (currentStep != GeneratorStep.GENERATING && currentStep != GeneratorStep.LOADING_QUESTIONS) {
+                if (currentStep != GeneratorStep.GENERATING) {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
@@ -337,137 +297,9 @@ private fun SmartGeneratorTopBar(
 }
 
 @Composable
-private fun WelcomeStep(onGetStarted: () -> Unit) {
-    var isVisible by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        delay(100)
-        isVisible = true
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        AnimatedVisibility(
-            visible = isVisible,
-            enter = fadeIn() + scaleIn(initialScale = 0.8f)
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(24.dp)
-            ) {
-                // Animated icon
-                Box(
-                    modifier = Modifier
-                        .size(120.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.linearGradient(
-                                listOf(
-                                    MaterialTheme.colorScheme.primary,
-                                    MaterialTheme.colorScheme.tertiary
-                                )
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.AutoAwesome,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(56.dp)
-                    )
-                }
-
-                Text(
-                    text = "Let's Create Your\nPerfect Goals",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.modernColors.textPrimary
-                )
-
-                Text(
-                    text = "Our AI will help you create personalized, actionable goals based on your life situation and aspirations.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.modernColors.textSecondary,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Features list
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.padding(horizontal = 32.dp)
-                ) {
-                    FeatureItem(
-                        icon = Icons.Rounded.Psychology,
-                        text = "AI-powered personalization"
-                    )
-                    FeatureItem(
-                        icon = Icons.Rounded.Timeline,
-                        text = "Smart milestones included"
-                    )
-                    FeatureItem(
-                        icon = Icons.Rounded.Bolt,
-                        text = "Ready in under 2 minutes"
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(32.dp))
-
-                Button(
-                    onClick = onGetStarted,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    )
-                ) {
-                    Text(
-                        "Get Started",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = null)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun FeatureItem(icon: ImageVector, text: String) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(24.dp)
-        )
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.modernColors.textSecondary
-        )
-    }
-}
-
-@Composable
 private fun ScenarioSelectStep(
     scenarios: List<LifeScenario>,
+    isOffline: Boolean,
     onScenarioSelected: (LifeScenario) -> Unit,
     onCustomClick: () -> Unit
 ) {
@@ -477,17 +309,59 @@ private fun ScenarioSelectStep(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Text(
-                text = "What brings you here today?",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            Text(
-                text = "Choose a life moment or describe your own",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.modernColors.textSecondary
-            )
+            // AI hero section
+            Column(
+                modifier = Modifier.padding(bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.AutoAwesome,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Text(
+                        text = "Pick a path, AI does the rest",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Text(
+                    text = "Select a life moment and we'll create personalized goals with milestones instantly",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.modernColors.textSecondary
+                )
+            }
+        }
+
+        if (isOffline) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.errorContainer
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.WifiOff,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                        Text(
+                            text = "You're offline. Goal generation requires internet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            }
         }
 
         items(scenarios.chunked(2)) { rowScenarios ->
@@ -498,6 +372,7 @@ private fun ScenarioSelectStep(
                 rowScenarios.forEach { scenario ->
                     ScenarioCard(
                         scenario = scenario,
+                        enabled = !isOffline,
                         onClick = { onScenarioSelected(scenario) },
                         modifier = Modifier.weight(1f)
                     )
@@ -566,18 +441,25 @@ private fun ScenarioSelectStep(
 @Composable
 private fun ScenarioCard(
     scenario: LifeScenario,
+    enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
         modifier = modifier.height(160.dp),
         shape = RoundedCornerShape(16.dp),
-        onClick = onClick
+        onClick = onClick,
+        enabled = enabled
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Brush.linearGradient(scenario.gradientColors))
+                .background(
+                    Brush.linearGradient(
+                        if (enabled) scenario.gradientColors
+                        else scenario.gradientColors.map { it.copy(alpha = 0.4f) }
+                    )
+                )
                 .padding(16.dp)
         ) {
             Column(
@@ -610,8 +492,9 @@ private fun ScenarioCard(
 @Composable
 private fun CustomInputStep(
     prompt: String,
+    isOffline: Boolean,
     onPromptChange: (String) -> Unit,
-    onContinue: () -> Unit
+    onGenerate: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -620,15 +503,17 @@ private fun CustomInputStep(
             .padding(vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
-        Column(modifier = Modifier
-            .padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            modifier = Modifier.padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Text(
                 text = "Tell us about your goals",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "What would you like to achieve? Be as specific as you'd like.",
+                text = "Describe what you want to achieve and AI will create goals with milestones for you.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.modernColors.textSecondary
             )
@@ -667,113 +552,15 @@ private fun CustomInputStep(
             )
         }
 
-        // Suggestion chips
-        Column( verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                modifier = Modifier
-                    .padding(horizontal = 24.dp),
-                text = "Quick ideas:",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.modernColors.textSecondary
-            )
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(horizontal = 24.dp)
-            ) {
-                val suggestions = listOf(
-                    "Get in shape",
-                    "Learn new skills",
-                    "Save money",
-                    "Reduce stress",
-                    "Be more productive"
-                )
-                items(suggestions) { suggestion ->
-                    SuggestionChip(
-                        onClick = {
-                            onPromptChange(
-                                if (prompt.isEmpty()) "I want to $suggestion"
-                                else "$prompt, $suggestion"
-                            )
-                        },
-                        label = { Text(suggestion) }
-                    )
-                }
-            }
-        }
-
-        Button(
-            onClick = onContinue,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .height(56.dp),
-            shape = RoundedCornerShape(16.dp),
-            enabled = prompt.length >= 10
-        ) {
-            Text("Continue", fontWeight = FontWeight.SemiBold)
-            Spacer(modifier = Modifier.width(8.dp))
-            Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = null)
-        }
-    }
-}
-
-@Composable
-private fun CategorySelectStep(
-    selectedCategories: Set<GoalCategory>,
-    isOffline: Boolean = false,
-    onCategoryToggle: (GoalCategory) -> Unit,
-    onGenerate: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = "Focus Areas",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Select the life areas you want to focus on",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.modernColors.textSecondary
-            )
-        }
-
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            GoalCategory.entries.chunked(2).forEach { rowCategories ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    rowCategories.forEach { category ->
-                        CategoryChip(
-                            category = category,
-                            isSelected = selectedCategories.contains(category),
-                            onClick = { onCategoryToggle(category) },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                    if (rowCategories.size == 1) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-                }
-            }
-        }
-
         if (isOffline) {
             Text(
                 text = "Goal generation requires internet",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
             )
         }
 
@@ -781,64 +568,14 @@ private fun CategorySelectStep(
             onClick = onGenerate,
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(horizontal = 24.dp)
                 .height(56.dp),
             shape = RoundedCornerShape(16.dp),
-            enabled = selectedCategories.isNotEmpty() && !isOffline
+            enabled = prompt.length >= 10 && !isOffline
         ) {
             Icon(Icons.Rounded.AutoAwesome, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
             Text("Generate My Goals", fontWeight = FontWeight.SemiBold)
-        }
-    }
-}
-
-@Composable
-private fun CategoryChip(
-    category: GoalCategory,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val categoryColor = category.toColor()
-
-    Surface(
-        modifier = modifier.height(72.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = if (isSelected) categoryColor.copy(alpha = 0.15f)
-        else MaterialTheme.colorScheme.surfaceVariant,
-        border = if (isSelected) BorderStroke(2.dp, categoryColor)
-        else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-        onClick = onClick
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = category.emoji(),
-                fontSize = 24.sp
-            )
-
-            Text(
-                text = category.displayName(),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                color = if (isSelected) categoryColor else MaterialTheme.modernColors.textPrimary
-            )
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            if (isSelected) {
-                Icon(
-                    Icons.Rounded.CheckCircle,
-                    contentDescription = null,
-                    tint = categoryColor,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
         }
     }
 }
@@ -898,7 +635,7 @@ private fun GeneratingStep() {
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(
-            text = "Creating your personalized goals${".".repeat(dotCount)}",
+            text = "Creating your goals${".".repeat(dotCount)}",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center
@@ -907,7 +644,7 @@ private fun GeneratingStep() {
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "Our AI is analyzing your input and crafting goals tailored just for you",
+            text = "AI is crafting personalized goals with milestones tailored just for you",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.modernColors.textSecondary,
             textAlign = TextAlign.Center
@@ -920,6 +657,162 @@ private fun GeneratingStep() {
                 .fillMaxWidth(0.6f)
                 .clip(RoundedCornerShape(4.dp))
         )
+    }
+}
+
+@Composable
+private fun QuestionsStep(
+    questions: List<az.tribe.lifeplanner.data.model.GoalTypeQuestions>,
+    onAnswerQuestion: (String, String) -> Unit,
+    isQuestionnaireComplete: Boolean,
+    onSubmitAnswers: () -> Unit
+) {
+    val allQuestions = questions.flatMap { goalType ->
+        goalType.questions.map { q -> goalType.goalType to q }
+    }
+    val answers = remember { mutableStateMapOf<String, String>() }
+    var currentIndex by remember { mutableStateOf(0) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        if (allQuestions.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else {
+            val (goalType, question) = allQuestions[currentIndex]
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Progress
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Question ${currentIndex + 1} of ${allQuestions.size}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.modernColors.textSecondary
+                    )
+                    LinearProgressIndicator(
+                        progress = { (currentIndex + 1).toFloat() / allQuestions.size },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                }
+
+                // Goal type chip
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Text(
+                        text = goalType.replace("_", " "),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+
+                // Question title
+                Text(
+                    text = question.title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Options
+                question.options.forEach { option ->
+                    val isSelected = answers[question.title] == option
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+                        else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                        onClick = {
+                            answers[question.title] = option
+                            onAnswerQuestion(question.title, option)
+                        }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            RadioButton(
+                                selected = isSelected,
+                                onClick = {
+                                    answers[question.title] = option
+                                    onAnswerQuestion(question.title, option)
+                                }
+                            )
+                            Text(
+                                text = option,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Navigation buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (currentIndex > 0) {
+                    OutlinedButton(
+                        onClick = { currentIndex-- },
+                        modifier = Modifier.weight(1f).height(52.dp),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text("Previous")
+                    }
+                }
+
+                val isLastQuestion = currentIndex == allQuestions.size - 1
+                val hasCurrentAnswer = answers.containsKey(allQuestions[currentIndex].second.title)
+
+                Button(
+                    onClick = {
+                        if (isLastQuestion) {
+                            onSubmitAnswers()
+                        } else {
+                            currentIndex++
+                        }
+                    },
+                    modifier = Modifier.weight(1f).height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    enabled = hasCurrentAnswer
+                ) {
+                    if (isLastQuestion) {
+                        Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Generate Goals", fontWeight = FontWeight.SemiBold)
+                    } else {
+                        Text("Next", fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1141,286 +1034,6 @@ private fun GeneratedGoalCard(
     }
 }
 
-@Composable
-private fun LoadingQuestionsStep() {
-    var dotCount by remember { mutableStateOf(0) }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(500)
-            dotCount = (dotCount + 1) % 4
-        }
-    }
-
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val scale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "scale"
-    )
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Box(
-            modifier = Modifier
-                .size(80.dp)
-                .scale(scale)
-                .clip(CircleShape)
-                .background(
-                    Brush.linearGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.primary,
-                            MaterialTheme.colorScheme.secondary
-                        )
-                    )
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.Rounded.Psychology,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(40.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Text(
-            text = "Analyzing your goals${".".repeat(dotCount)}",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = "Creating personalized questions to understand you better",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.modernColors.textSecondary,
-            textAlign = TextAlign.Center
-        )
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun QuestionAnsweringStep(
-    questions: List<az.tribe.lifeplanner.data.model.GoalTypeQuestions>,
-    answers: Map<String, String>,
-    onAnswerChange: (String, String) -> Unit,
-    onComplete: () -> Unit
-) {
-    // Flatten all questions from all goal types
-    val allQuestions = questions.flatMap { goalType ->
-        goalType.questions.map { question ->
-            question to goalType.goalType
-        }
-    }
-
-    if (allQuestions.isEmpty()) {
-        // Loading state or error
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator()
-        }
-        return
-    }
-
-    val pagerState = rememberPagerState(pageCount = { allQuestions.size })
-    val coroutineScope = rememberCoroutineScope()
-    val currentQuestion = allQuestions.getOrNull(pagerState.currentPage)
-    val progress = (pagerState.currentPage + 1).toFloat() / allQuestions.size.toFloat()
-
-    Column(
-        modifier = Modifier.fillMaxSize()
-    ) {
-        // Question progress
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Question ${pagerState.currentPage + 1} of ${allQuestions.size}",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.modernColors.textSecondary
-                )
-
-                currentQuestion?.let { (_, goalType) ->
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = MaterialTheme.colorScheme.primaryContainer
-                    ) {
-                        Text(
-                            text = goalType,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp)),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant
-            )
-        }
-
-        // Questions pager
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            userScrollEnabled = false
-        ) { page ->
-            val (question, goalType) = allQuestions[page]
-            val selectedAnswer = answers[question.title]
-
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp)
-            ) {
-                Text(
-                    text = question.title,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.modernColors.textPrimary
-                )
-
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    question.options.forEach { option ->
-                        val isSelected = selectedAnswer == option
-
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                            else MaterialTheme.colorScheme.surfaceVariant,
-                            border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-                            else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
-                            onClick = { onAnswerChange(question.title, option) }
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = option,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
-                                    else MaterialTheme.modernColors.textPrimary,
-                                    modifier = Modifier.weight(1f)
-                                )
-
-                                if (isSelected) {
-                                    Icon(
-                                        Icons.Rounded.CheckCircle,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Navigation buttons
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Back button
-                if (pagerState.currentPage > 0) {
-                    OutlinedButton(
-                        onClick = {
-                            coroutineScope.launch {
-                                pagerState.animateScrollToPage(pagerState.currentPage - 1)
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Back")
-                    }
-                } else {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-
-                // Next/Complete button
-                val currentQuestionTitle = currentQuestion?.first?.title
-                val hasAnswer = currentQuestionTitle != null && answers.containsKey(currentQuestionTitle)
-                val isLastQuestion = pagerState.currentPage == allQuestions.lastIndex
-
-                Button(
-                    onClick = {
-                        if (isLastQuestion) {
-                            onComplete()
-                        } else {
-                            coroutineScope.launch {
-                                pagerState.animateScrollToPage(pagerState.currentPage + 1)
-                            }
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    enabled = hasAnswer
-                ) {
-                    Text(if (isLastQuestion) "Generate Goals" else "Next")
-                    if (!isLastQuestion) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(
-                            Icons.AutoMirrored.Rounded.ArrowForward,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-            }
-        }
-    }
-}
-
-// Extension functions for GoalCategory
 private fun GoalCategory.toColor(): Color = when (this) {
     GoalCategory.CAREER -> Color(0xFF667EEA)
     GoalCategory.FINANCIAL -> Color(0xFFF7971E)
@@ -1429,16 +1042,6 @@ private fun GoalCategory.toColor(): Color = when (this) {
     GoalCategory.EMOTIONAL -> Color(0xFF11998E)
     GoalCategory.SPIRITUAL -> Color(0xFF8E54E9)
     GoalCategory.FAMILY -> Color(0xFFFC5C7D)
-}
-
-private fun GoalCategory.emoji(): String = when (this) {
-    GoalCategory.CAREER -> "💼"
-    GoalCategory.FINANCIAL -> "💰"
-    GoalCategory.PHYSICAL -> "💪"
-    GoalCategory.SOCIAL -> "👥"
-    GoalCategory.EMOTIONAL -> "🧘"
-    GoalCategory.SPIRITUAL -> "✨"
-    GoalCategory.FAMILY -> "👨‍👩‍👧‍👦"
 }
 
 private fun GoalCategory.displayName(): String = name.lowercase().replaceFirstChar { it.uppercase() }

@@ -1,6 +1,7 @@
 package az.tribe.lifeplanner.ui
 
 import androidx.compose.animation.*
+import co.touchlab.kermit.Logger
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -38,12 +39,11 @@ import az.tribe.lifeplanner.ui.components.MoodCalendar
 import az.tribe.lifeplanner.ui.components.rememberHapticManager
 import az.tribe.lifeplanner.ui.GoalViewModel
 import az.tribe.lifeplanner.ui.habit.HabitViewModel
+import az.tribe.lifeplanner.data.network.AiProxyService
 import az.tribe.lifeplanner.ui.journal.JournalViewModel
-import io.ktor.client.HttpClient
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
-import org.koin.core.qualifier.named
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,7 +55,7 @@ fun JournalScreen(
     viewModel: JournalViewModel = koinViewModel(),
     goalViewModel: GoalViewModel = koinInject(),
     habitViewModel: HabitViewModel = koinViewModel(),
-    httpClient: HttpClient = koinInject(qualifier = named("gemini"))
+    aiProxy: AiProxyService = koinInject()
 ) {
     val entries by viewModel.entries.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -225,7 +225,7 @@ fun JournalScreen(
                 },
                 goals = goals,
                 habits = habits,
-                httpClient = httpClient
+                aiProxy = aiProxy
             )
         }
 
@@ -573,7 +573,7 @@ private fun NewJournalEntryBottomSheet(
     habits: List<Habit> = emptyList(),
     preselectedGoalId: String? = null,
     preselectedHabitId: String? = null,
-    httpClient: HttpClient
+    aiProxy: AiProxyService
 ) {
     var title by remember { mutableStateOf("") }
     var content by remember { mutableStateOf("") }
@@ -883,7 +883,7 @@ private fun NewJournalEntryBottomSheet(
                                         val linkedGoal = selectedGoalId?.let { id -> goals.find { it.id == id } }
                                         val linkedHabit = selectedHabitId?.let { id -> habits.find { it.id == id } }
                                         val result = az.tribe.lifeplanner.ui.journal.generateAiJournalEntry(
-                                            httpClient = httpClient,
+                                            aiProxy = aiProxy,
                                             mood = selectedMood,
                                             prompt = selectedPrompt ?: "",
                                             userNote = title,
@@ -900,7 +900,7 @@ private fun NewJournalEntryBottomSheet(
                                             }
                                         }
                                     } catch (e: Exception) {
-                                        e.printStackTrace()
+                                        Logger.e("JournalScreen") { "AI journal generation failed: ${e.message}" }
                                     } finally {
                                         isGeneratingAi = false
                                     }

@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.rounded.MarkEmailRead
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,20 +38,33 @@ fun SignInScreen(
 ) {
     val authViewModel: AuthViewModel = koinInject()
     val authState by authViewModel.authState.collectAsState()
+    val successMessage by authViewModel.successMessage.collectAsState()
 
     val focusManager = LocalFocusManager.current
-    var email by remember { mutableStateOf("") }
+    // TODO: Remove debug pre-fill before release
+    var email by remember { mutableStateOf("demo@lifeplanner.app") }
     var password by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
     var isSignUp by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
     var showResetPasswordDialog by remember { mutableStateOf(false) }
+    var showDataLossWarning by remember { mutableStateOf(false) }
 
     // Track if we've already navigated to prevent double navigation
     var hasNavigated by remember { mutableStateOf(false) }
 
-    // Handle auth state changes
+    // Skip the initial auth state so we don't bounce back if already Authenticated
+    var hasSeenInitialState by remember { mutableStateOf(false) }
+
+    // Detect if user is currently a guest
+    val isCurrentlyGuest = authState is AuthState.Guest
+
+    // Handle auth state changes — navigate on success (only on transitions, not initial state)
     LaunchedEffect(authState) {
+        if (!hasSeenInitialState) {
+            hasSeenInitialState = true
+            return@LaunchedEffect
+        }
         if (!hasNavigated) {
             when (authState) {
                 is AuthState.Authenticated, is AuthState.Guest -> {
@@ -62,10 +76,41 @@ fun SignInScreen(
         }
     }
 
+    // Snackbar for success messages (e.g., "Verification email resent")
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(successMessage) {
+        successMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            authViewModel.clearSuccessMessage()
+        }
+    }
+
+    // Derive title and subtitle based on state
+    val titleText = when {
+        isCurrentlyGuest && isSignUp -> "Link Your Account"
+        isSignUp -> "Create Your Account"
+        else -> "Welcome Back"
+    }
+    val subtitleText = when {
+        isCurrentlyGuest && isSignUp -> "Your existing data will be preserved and synced to your new account"
+        isSignUp -> "Sign up to start planning your life"
+        else -> "Sign in to continue your journey"
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text(if (isSignUp) "Create Account" else "Sign In") },
+                title = {
+                    Text(
+                        when {
+                            authState is AuthState.EmailVerificationPending -> "Verify Email"
+                            isCurrentlyGuest && isSignUp -> "Link Account"
+                            isSignUp -> "Create Account"
+                            else -> "Sign In"
+                        }
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -80,6 +125,120 @@ fun SignInScreen(
         },
         containerColor = MaterialTheme.modernColors.background
     ) { paddingValues ->
+
+        // ── Email Verification Pending Screen ──
+        if (authState is AuthState.EmailVerificationPending) {
+            val pendingEmail = (authState as AuthState.EmailVerificationPending).email
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.MarkEmailRead,
+                    contentDescription = null,
+                    modifier = Modifier.size(80.dp),
+                    tint = MaterialTheme.modernColors.primary
+                )
+
+                Spacer(Modifier.height(24.dp))
+
+                Text(
+                    text = "Check Your Email",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                Text(
+                    text = "We've sent a verification link to:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    text = pendingEmail,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.modernColors.primary,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    text = "Click the link in the email to activate your account, then come back and sign in.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(Modifier.height(32.dp))
+
+                // "I've Verified — Sign Me In" button
+                Button(
+                    onClick = {
+                        if (password.isNotBlank()) {
+                            authViewModel.signInWithEmail(pendingEmail, password)
+                        } else {
+                            // If password was cleared, go back to sign-in form
+                            authViewModel.refreshAuthState()
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.modernColors.primary
+                    )
+                ) {
+                    Text("I've Verified — Sign Me In", style = MaterialTheme.typography.titleSmall)
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // Resend email button
+                OutlinedButton(
+                    onClick = { authViewModel.resendVerificationEmail(pendingEmail) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.modernColors.primary
+                    )
+                ) {
+                    Text("Resend Verification Email", style = MaterialTheme.typography.titleSmall)
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // Use different email
+                TextButton(
+                    onClick = {
+                        // Go back to the sign-up form
+                        authViewModel.refreshAuthState()
+                    }
+                ) {
+                    Text(
+                        "Use a Different Email",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            return@Scaffold
+        }
+
+        // ── Main Sign In / Sign Up Form ──
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -89,7 +248,7 @@ fun SignInScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Logo or Icon
+            // Logo
             Icon(
                 imageVector = Icons.Default.Person,
                 contentDescription = null,
@@ -99,9 +258,8 @@ fun SignInScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // Title
             Text(
-                text = if (isSignUp) "Create Your Account" else "Welcome Back",
+                text = titleText,
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground
@@ -110,10 +268,7 @@ fun SignInScreen(
             Spacer(Modifier.height(8.dp))
 
             Text(
-                text = if (isSignUp)
-                    "Sign up to start planning your life"
-                else
-                    "Sign in to continue your journey",
+                text = subtitleText,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -121,15 +276,13 @@ fun SignInScreen(
 
             Spacer(Modifier.height(32.dp))
 
-            // Display Name Field (only for sign up)
+            // Display Name (sign up only)
             if (isSignUp) {
                 OutlinedTextField(
                     value = displayName,
                     onValueChange = { displayName = it },
                     label = { Text("Display Name") },
-                    leadingIcon = {
-                        Icon(Icons.Default.Person, contentDescription = null)
-                    },
+                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
@@ -143,14 +296,12 @@ fun SignInScreen(
                 Spacer(Modifier.height(16.dp))
             }
 
-            // Email Field
+            // Email
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it },
                 label = { Text("Email") },
-                leadingIcon = {
-                    Icon(Icons.Default.Email, contentDescription = null)
-                },
+                leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
@@ -164,14 +315,12 @@ fun SignInScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // Password Field
+            // Password
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
                 label = { Text("Password") },
-                leadingIcon = {
-                    Icon(Icons.Default.Lock, contentDescription = null)
-                },
+                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                 trailingIcon = {
                     IconButton(onClick = { passwordVisible = !passwordVisible }) {
                         Icon(
@@ -193,33 +342,39 @@ fun SignInScreen(
                 )
             )
 
-            // Forgot Password (only for sign in)
+            // Forgot Password (sign in only)
             if (!isSignUp) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
                     TextButton(onClick = { showResetPasswordDialog = true }) {
-                        Text(
-                            "Forgot Password?",
-                            color = MaterialTheme.modernColors.primary
-                        )
+                        Text("Forgot Password?", color = MaterialTheme.modernColors.primary)
                     }
                 }
             }
 
             Spacer(Modifier.height(24.dp))
 
-            // Sign In/Sign Up Button
+            // Primary action button
             Button(
                 onClick = {
+                    focusManager.clearFocus()
                     if (isSignUp) {
                         if (displayName.isNotBlank() && email.isNotBlank() && password.isNotBlank()) {
-                            authViewModel.signUpWithEmail(email, password, displayName)
+                            if (isCurrentlyGuest) {
+                                authViewModel.linkGuestAccount(email, password, displayName)
+                            } else {
+                                authViewModel.signUpWithEmail(email, password, displayName)
+                            }
                         }
                     } else {
                         if (email.isNotBlank() && password.isNotBlank()) {
-                            authViewModel.signInWithEmail(email, password)
+                            if (isCurrentlyGuest) {
+                                showDataLossWarning = true
+                            } else {
+                                authViewModel.signInWithEmail(email, password)
+                            }
                         }
                     }
                 },
@@ -241,7 +396,11 @@ fun SignInScreen(
                     )
                 } else {
                     Text(
-                        if (isSignUp) "Sign Up" else "Sign In",
+                        when {
+                            isCurrentlyGuest && isSignUp -> "Link Account"
+                            isSignUp -> "Sign Up"
+                            else -> "Sign In"
+                        },
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
@@ -249,43 +408,41 @@ fun SignInScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // Divider
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                HorizontalDivider(modifier = Modifier.weight(1f))
-                Text(
-                    "OR",
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall
-                )
-                HorizontalDivider(modifier = Modifier.weight(1f))
-            }
+            // Guest option (only if NOT already a guest)
+            if (!isCurrentlyGuest) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    HorizontalDivider(modifier = Modifier.weight(1f))
+                    Text(
+                        "OR",
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    HorizontalDivider(modifier = Modifier.weight(1f))
+                }
 
-            Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(16.dp))
 
-            // Continue as Guest Button
-            OutlinedButton(
-                onClick = { authViewModel.signInAsGuest() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                enabled = authState !is AuthState.Loading,
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.modernColors.primary
-                )
-            ) {
-                Text(
-                    "Continue as Guest",
-                    style = MaterialTheme.typography.titleMedium
-                )
+                OutlinedButton(
+                    onClick = { authViewModel.signInAsGuest() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    enabled = authState !is AuthState.Loading,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.modernColors.primary
+                    )
+                ) {
+                    Text("Continue as Guest", style = MaterialTheme.typography.titleMedium)
+                }
             }
 
             Spacer(Modifier.height(24.dp))
 
-            // Toggle Sign In/Sign Up
+            // Toggle Sign In / Sign Up
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -297,8 +454,9 @@ fun SignInScreen(
                 )
                 TextButton(onClick = {
                     isSignUp = !isSignUp
-                    // Clear error when switching
-                    authViewModel.refreshAuthState()
+                    if (authState is AuthState.Error) {
+                        authViewModel.refreshAuthState()
+                    }
                 }) {
                     Text(
                         if (isSignUp) "Sign In" else "Sign Up",
@@ -308,7 +466,7 @@ fun SignInScreen(
                 }
             }
 
-            // Error Message
+            // Error message
             if (authState is AuthState.Error) {
                 Spacer(Modifier.height(16.dp))
                 Card(
@@ -326,6 +484,35 @@ fun SignInScreen(
                 }
             }
         }
+    }
+
+    // Data Loss Warning Dialog
+    if (showDataLossWarning) {
+        AlertDialog(
+            onDismissRequest = { showDataLossWarning = false },
+            title = { Text("Replace Guest Data?") },
+            text = {
+                Text(
+                    "Signing in to an existing account will replace your guest data. " +
+                    "If you want to keep your current data, go back and choose \"Sign Up\" to link your guest account instead."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDataLossWarning = false
+                        authViewModel.signInWithEmail(email, password)
+                    }
+                ) {
+                    Text("Sign In Anyway")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDataLossWarning = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     // Password Reset Dialog
@@ -353,7 +540,7 @@ fun SignInScreen(
                             singleLine = true
                         )
                     } else {
-                        Text("Password reset email sent! Please check your inbox.")
+                        Text("Password reset email sent! Check your inbox for a link to reset your password.")
                     }
                 }
             },
@@ -392,3 +579,4 @@ fun SignInScreen(
         )
     }
 }
+

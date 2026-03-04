@@ -14,6 +14,7 @@ import az.tribe.lifeplanner.domain.model.ReminderType
 import az.tribe.lifeplanner.domain.model.ScheduledNotification
 import az.tribe.lifeplanner.domain.model.UserActivityPattern
 import az.tribe.lifeplanner.domain.repository.ReminderRepository
+import az.tribe.lifeplanner.data.sync.SyncManager
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DateTimeUnit
@@ -27,7 +28,8 @@ import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalUuidApi::class)
 class ReminderRepositoryImpl(
-    private val database: SharedDatabase
+    private val database: SharedDatabase,
+    private val syncManager: SyncManager
 ) : ReminderRepository {
 
     override suspend fun createReminder(reminder: Reminder): Reminder {
@@ -49,6 +51,7 @@ class ReminderRepositoryImpl(
             createdAt = now.toString(),
             updatedAt = null
         )
+        syncManager.requestSync()
         return reminder.copy(createdAt = now)
     }
 
@@ -68,11 +71,13 @@ class ReminderRepositoryImpl(
             isSmartTiming = if (reminder.isSmartTiming) 1L else 0L,
             updatedAt = now.toString()
         )
+        syncManager.requestSync()
     }
 
     override suspend fun deleteReminder(reminderId: String) {
         database.deleteScheduledNotificationsByReminder(reminderId)
         database.deleteReminder(reminderId)
+        syncManager.requestSync()
     }
 
     override suspend fun getReminderById(id: String): Reminder? {
@@ -143,6 +148,7 @@ class ReminderRepositoryImpl(
             weeklyReviewDay = settings.weeklyReviewDay.name,
             weeklyReviewTime = settings.weeklyReviewTime.toString()
         )
+        syncManager.requestSync()
     }
 
     override suspend fun getUserActivityPattern(): UserActivityPattern {
@@ -269,10 +275,12 @@ class ReminderRepositoryImpl(
             isSnoozed = if (notification.isSnoozed) 1L else 0L,
             isDismissed = if (notification.isDismissed) 1L else 0L
         )
+        syncManager.requestSync()
     }
 
     override suspend fun cancelScheduledNotification(notificationId: String) {
         database.deleteScheduledNotification(notificationId)
+        syncManager.requestSync()
     }
 
     override suspend fun getScheduledNotifications(): List<ScheduledNotification> {
@@ -282,18 +290,22 @@ class ReminderRepositoryImpl(
     override suspend fun markNotificationDelivered(notificationId: String) {
         val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
         database.markNotificationDelivered(notificationId, now.toString())
+        syncManager.requestSync()
     }
 
     override suspend fun snoozeReminder(reminderId: String, snoozeUntil: LocalDateTime) {
         database.snoozeReminder(reminderId, snoozeUntil.toString())
+        syncManager.requestSync()
     }
 
     override suspend fun enableAllReminders() {
         database.enableAllReminders()
+        syncManager.requestSync()
     }
 
     override suspend fun disableAllReminders() {
         database.disableAllReminders()
+        syncManager.requestSync()
     }
 
     override suspend fun rescheduleAllReminders() {

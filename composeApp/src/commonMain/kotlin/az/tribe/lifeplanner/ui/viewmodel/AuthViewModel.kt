@@ -4,17 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import az.tribe.lifeplanner.data.auth.AuthResult
 import az.tribe.lifeplanner.data.auth.AuthService
-import az.tribe.lifeplanner.data.network.dto.AuthTokenRequest
-import az.tribe.lifeplanner.data.network.LifePlannerApiService
 import az.tribe.lifeplanner.domain.model.User
 import az.tribe.lifeplanner.domain.repository.UserRepository
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
-import kotlin.uuid.ExperimentalUuidApi
-import kotlin.uuid.Uuid
 
 /**
  * Authentication state
@@ -24,16 +21,17 @@ sealed class AuthState {
     data object Unauthenticated : AuthState()
     data class Authenticated(val user: User) : AuthState()
     data class Guest(val user: User) : AuthState()
+    /** Email signup succeeded but the user must verify their email before signing in. */
+    data class EmailVerificationPending(val email: String) : AuthState()
     data class Error(val message: String) : AuthState()
 }
 
 /**
- * ViewModel for authentication
+ * ViewModel for authentication (Supabase-based)
  */
 class AuthViewModel(
     private val authService: AuthService,
-    private val userRepository: UserRepository,
-    private val apiService: LifePlannerApiService
+    private val userRepository: UserRepository
 ) : ViewModel() {
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Loading)
@@ -42,149 +40,197 @@ class AuthViewModel(
     private val _hasCompletedOnboarding = MutableStateFlow<Boolean?>(null)
     val hasCompletedOnboarding: StateFlow<Boolean?> = _hasCompletedOnboarding.asStateFlow()
 
+    /** True when anonymous auth failed and user is in local-only mode (no sync). */
+    private val _isLocalOnlyGuest = MutableStateFlow(false)
+    val isLocalOnlyGuest: StateFlow<Boolean> = _isLocalOnlyGuest.asStateFlow()
+
+    /** Transient success message shown briefly after operations like account linking. */
+    private val _successMessage = MutableStateFlow<String?>(null)
+    val successMessage: StateFlow<String?> = _successMessage.asStateFlow()
+
     init {
         checkAuthStatus()
     }
 
+    fun clearSuccessMessage() {
+        _successMessage.value = null
+    }
+
     /**
-     * Check if user is already authenticated and onboarding status
+     * Check if user is already authenticated.
+     * Tries to restore the Supabase session first, then reconciles with local DB.
      */
     private fun checkAuthStatus() {
         viewModelScope.launch {
             try {
-                // Check onboarding status
-                _hasCompletedOnboarding.value = userRepository.hasCompletedOnboarding()
+                val supabaseUser = try {
+                    authService.restoreSession()
+                } catch (e: Exception) {
+                    Logger.w("AuthViewModel", e) { "Session restore failed - ${e.message}" }
+                    null
+                }
 
-                val currentUser = userRepository.getCurrentUser()
-                if (currentUser != null) {
-                    _authState.value = if (currentUser.isGuest) {
-                        AuthState.Guest(currentUser)
-                    } else {
-                        AuthState.Authenticated(currentUser)
+                val localUser = userRepository.getCurrentUser()
+
+                when {
+                    // Both exist and match — use local user (preserves onboarding data)
+                    supabaseUser != null && localUser != null && localUser.firebaseUid == supabaseUser.uid -> {
+                        _hasCompletedOnboarding.value = localUser.hasCompletedOnboarding
+                        _isLocalOnlyGuest.value = false
+                        _authState.value = if (supabaseUser.isAnonymous) {
+                            AuthState.Guest(localUser)
+                        } else {
+                            AuthState.Authenticated(localUser)
+                        }
                     }
-                } else {
-                    _authState.value = AuthState.Unauthenticated
+                    // Supabase session exists but no matching local user — recreate locally
+                    supabaseUser != null -> {
+                        val recreated = User(
+                            id = supabaseUser.uid,
+                            firebaseUid = supabaseUser.uid,
+                            email = supabaseUser.email,
+                            displayName = supabaseUser.displayName ?: if (supabaseUser.isAnonymous) "Guest User" else "User",
+                            isGuest = supabaseUser.isAnonymous,
+                            hasCompletedOnboarding = false,
+                            createdAt = Clock.System.now()
+                        )
+                        userRepository.deleteAllUsers()
+                        userRepository.createUser(recreated)
+                        _hasCompletedOnboarding.value = false
+                        _isLocalOnlyGuest.value = false
+                        _authState.value = if (supabaseUser.isAnonymous) {
+                            AuthState.Guest(recreated)
+                        } else {
+                            AuthState.Authenticated(recreated)
+                        }
+                    }
+                    // No Supabase session but local user exists — degraded (local-only) mode
+                    localUser != null -> {
+                        _hasCompletedOnboarding.value = localUser.hasCompletedOnboarding
+                        _isLocalOnlyGuest.value = true
+                        _authState.value = if (localUser.isGuest) {
+                            AuthState.Guest(localUser)
+                        } else {
+                            AuthState.Authenticated(localUser)
+                        }
+                    }
+                    // Neither — unauthenticated
+                    else -> {
+                        _hasCompletedOnboarding.value = false
+                        _authState.value = AuthState.Unauthenticated
+                    }
                 }
             } catch (e: Exception) {
                 _authState.value = AuthState.Error(e.message ?: "Unknown error")
             }
         }
+    }
+
+    /**
+     * Find or create a local user matching the Supabase auth UID.
+     * Ensures single-user invariant: clears other rows before inserting.
+     */
+    private suspend fun findOrCreateLocalUser(
+        uid: String,
+        email: String?,
+        displayName: String,
+        isGuest: Boolean
+    ): User {
+        val existing = userRepository.getUserByFirebaseUid(uid)
+        if (existing != null) {
+            // Update mutable fields if needed
+            val updated = existing.copy(
+                email = email ?: existing.email,
+                displayName = displayName,
+                isGuest = isGuest
+            )
+            if (updated != existing) {
+                userRepository.updateUser(updated)
+            }
+            return updated
+        }
+
+        // New user — clear all old data and sync timestamps first
+        userRepository.clearAllLocalData()
+        val user = User(
+            id = uid,
+            firebaseUid = uid,
+            email = email,
+            displayName = displayName,
+            isGuest = isGuest,
+            hasCompletedOnboarding = false,
+            createdAt = Clock.System.now()
+        )
+        userRepository.createUser(user)
+        return user
     }
 
     /**
      * Sign in with email and password
      */
-    @OptIn(ExperimentalUuidApi::class)
     fun signInWithEmail(email: String, password: String) {
         viewModelScope.launch {
             try {
                 _authState.value = AuthState.Loading
-                println("AuthViewModel: Starting email sign-in for $email")
+                Logger.d("AuthViewModel") { "Starting email sign-in for $email" }
 
                 when (val result = authService.signInWithEmail(email, password)) {
                     is AuthResult.Success -> {
-                        println("AuthViewModel: Email sign-in successful, UID: ${result.user.uid}")
-
-                        // Get Firebase ID token
-                        val firebaseToken = authService.getIdToken(forceRefresh = true)
-
-                        if (firebaseToken != null) {
-                            try {
-                                // Send token to backend
-                                val response = apiService.authenticateWithToken(
-                                    AuthTokenRequest(
-                                        firebaseToken = firebaseToken,
-                                        deviceInfo = "mobile"
-                                    )
-                                )
-                                println("Backend authentication successful: ${response.message}")
-                            } catch (e: Exception) {
-                                println("Backend authentication failed: ${e.message}")
-                            }
-                        }
-
-                        // Create or update user in local database
-                        val user = User(
-                            id = Uuid.random().toString(),
-                            firebaseUid = result.user.uid,
+                        Logger.d("AuthViewModel") { "Email sign-in successful, UID: ${result.user.uid}" }
+                        val user = findOrCreateLocalUser(
+                            uid = result.user.uid,
                             email = result.user.email,
                             displayName = result.user.displayName ?: "User",
-                            isGuest = false,
-                            hasCompletedOnboarding = false,
-                            createdAt = Clock.System.now()
+                            isGuest = false
                         )
-
-                        userRepository.createUser(user)
+                        _isLocalOnlyGuest.value = false
                         _authState.value = AuthState.Authenticated(user)
-                        println("AuthViewModel: User created successfully")
+                    }
+                    is AuthResult.EmailVerificationPending -> {
+                        _authState.value = AuthState.EmailVerificationPending(result.email)
                     }
                     is AuthResult.Error -> {
                         _authState.value = AuthState.Error(result.message)
-                        println("AuthViewModel: Email sign-in failed - ${result.message}")
                     }
                 }
             } catch (e: Exception) {
                 _authState.value = AuthState.Error(e.message ?: "Unknown error")
-                println("AuthViewModel: Exception during email sign-in - ${e.message}")
             }
         }
     }
 
     /**
-     * Sign up with email and password
+     * Sign up with email and password.
+     * If email verification is required, transitions to EmailVerificationPending state.
      */
-    @OptIn(ExperimentalUuidApi::class)
     fun signUpWithEmail(email: String, password: String, displayName: String) {
         viewModelScope.launch {
             try {
                 _authState.value = AuthState.Loading
-                println("AuthViewModel: Starting email sign-up for $email")
+                Logger.d("AuthViewModel") { "Starting email sign-up for $email" }
 
                 when (val result = authService.signUpWithEmail(email, password, displayName)) {
                     is AuthResult.Success -> {
-                        println("AuthViewModel: Email sign-up successful, UID: ${result.user.uid}")
-
-                        // Get Firebase ID token
-                        val firebaseToken = authService.getIdToken(forceRefresh = true)
-
-                        if (firebaseToken != null) {
-                            try {
-                                // Send token to backend
-                                val response = apiService.authenticateWithToken(
-                                    AuthTokenRequest(
-                                        firebaseToken = firebaseToken,
-                                        deviceInfo = "mobile"
-                                    )
-                                )
-                                println("Backend authentication successful: ${response.message}")
-                            } catch (e: Exception) {
-                                println("Backend authentication failed: ${e.message}")
-                            }
-                        }
-
-                        // Create user in local database
-                        val user = User(
-                            id = Uuid.random().toString(),
-                            firebaseUid = result.user.uid,
+                        Logger.d("AuthViewModel") { "Email sign-up successful, UID: ${result.user.uid}" }
+                        val user = findOrCreateLocalUser(
+                            uid = result.user.uid,
                             email = result.user.email,
                             displayName = displayName,
-                            isGuest = false,
-                            hasCompletedOnboarding = false,
-                            createdAt = Clock.System.now()
+                            isGuest = false
                         )
-
-                        userRepository.createUser(user)
+                        _isLocalOnlyGuest.value = false
                         _authState.value = AuthState.Authenticated(user)
-                        println("AuthViewModel: User created successfully")
+                    }
+                    is AuthResult.EmailVerificationPending -> {
+                        Logger.d("AuthViewModel") { "Email verification pending for ${result.email}" }
+                        _authState.value = AuthState.EmailVerificationPending(result.email)
                     }
                     is AuthResult.Error -> {
                         _authState.value = AuthState.Error(result.message)
-                        println("AuthViewModel: Email sign-up failed - ${result.message}")
                     }
                 }
             } catch (e: Exception) {
                 _authState.value = AuthState.Error(e.message ?: "Unknown error")
-                println("AuthViewModel: Exception during email sign-up - ${e.message}")
             }
         }
     }
@@ -192,135 +238,85 @@ class AuthViewModel(
     /**
      * Sign in with Google
      */
-    @OptIn(ExperimentalUuidApi::class)
     fun signInWithGoogle() {
         viewModelScope.launch {
             try {
                 _authState.value = AuthState.Loading
-                println("AuthViewModel: Starting Google sign-in")
+                Logger.d("AuthViewModel") { "Starting Google sign-in" }
 
                 when (val result = authService.signInWithGoogle()) {
                     is AuthResult.Success -> {
-                        println("AuthViewModel: Google sign-in successful, UID: ${result.user.uid}")
-
-                        // Get Firebase ID token
-                        val firebaseToken = authService.getIdToken(forceRefresh = true)
-
-                        if (firebaseToken != null) {
-                            try {
-                                // Send token to backend
-                                val response = apiService.authenticateWithToken(
-                                    AuthTokenRequest(
-                                        firebaseToken = firebaseToken,
-                                        deviceInfo = "mobile"
-                                    )
-                                )
-                                println("Backend authentication successful: ${response.message}")
-                            } catch (e: Exception) {
-                                println("Backend authentication failed: ${e.message}")
-                            }
-                        }
-
-                        // Create or update user in local database
-                        val user = User(
-                            id = Uuid.random().toString(),
-                            firebaseUid = result.user.uid,
+                        Logger.d("AuthViewModel") { "Google sign-in successful, UID: ${result.user.uid}" }
+                        val user = findOrCreateLocalUser(
+                            uid = result.user.uid,
                             email = result.user.email,
                             displayName = result.user.displayName ?: "User",
-                            isGuest = false,
-                            hasCompletedOnboarding = false,
-                            createdAt = Clock.System.now()
+                            isGuest = false
                         )
-
-                        userRepository.createUser(user)
+                        _isLocalOnlyGuest.value = false
                         _authState.value = AuthState.Authenticated(user)
-                        println("AuthViewModel: User created successfully")
+                    }
+                    is AuthResult.EmailVerificationPending -> {
+                        _authState.value = AuthState.EmailVerificationPending(result.email)
                     }
                     is AuthResult.Error -> {
                         _authState.value = AuthState.Error(result.message)
-                        println("AuthViewModel: Google sign-in failed - ${result.message}")
                     }
                 }
             } catch (e: Exception) {
                 _authState.value = AuthState.Error(e.message ?: "Unknown error")
-                println("AuthViewModel: Exception during Google sign-in - ${e.message}")
             }
         }
     }
 
     /**
-     * Sign in as guest using Firebase Anonymous Authentication
-     * Falls back to local-only guest if Firebase fails
+     * Sign in as guest using Supabase anonymous auth.
+     * Falls back to local-only guest if Supabase fails.
      */
-    @OptIn(ExperimentalUuidApi::class)
     fun signInAsGuest() {
         viewModelScope.launch {
             try {
                 _authState.value = AuthState.Loading
-                println("AuthViewModel: Starting anonymous sign-in")
+                Logger.d("AuthViewModel") { "Starting anonymous sign-in" }
 
                 when (val result = authService.signInAnonymously()) {
                     is AuthResult.Success -> {
-                        println("AuthViewModel: Anonymous sign-in successful, UID: ${result.user.uid}")
-
-                        // Get Firebase ID token (optional - don't block on this)
-                        try {
-                            val firebaseToken = authService.getIdToken(forceRefresh = true)
-                            if (firebaseToken != null) {
-                                try {
-                                    val response = apiService.authenticateWithToken(
-                                        AuthTokenRequest(
-                                            firebaseToken = firebaseToken,
-                                            deviceInfo = "mobile"
-                                        )
-                                    )
-                                    println("Backend authentication successful: ${response.message}")
-                                } catch (e: Exception) {
-                                    println("Backend authentication failed: ${e.message}")
-                                }
-                            }
-                        } catch (e: Exception) {
-                            println("Token retrieval failed: ${e.message}")
-                        }
-
-                        // Create guest user in local database
-                        val guestUser = User(
-                            id = Uuid.random().toString(),
-                            firebaseUid = result.user.uid,
+                        Logger.d("AuthViewModel") { "Anonymous sign-in successful, UID: ${result.user.uid}" }
+                        val user = findOrCreateLocalUser(
+                            uid = result.user.uid,
                             email = null,
                             displayName = "Guest User",
-                            isGuest = true,
-                            hasCompletedOnboarding = false,
-                            createdAt = Clock.System.now()
+                            isGuest = true
                         )
-
-                        userRepository.createUser(guestUser)
-                        _authState.value = AuthState.Guest(guestUser)
-                        println("AuthViewModel: Guest user created successfully")
+                        _isLocalOnlyGuest.value = false
+                        _authState.value = AuthState.Guest(user)
+                    }
+                    is AuthResult.EmailVerificationPending -> {
+                        // Should never happen for anonymous, but handle gracefully
+                        _authState.value = AuthState.Error("Unexpected state")
                     }
                     is AuthResult.Error -> {
-                        // Fallback: Create local-only guest user without Firebase
-                        println("AuthViewModel: Firebase anonymous sign-in failed, using local guest - ${result.message}")
+                        Logger.w("AuthViewModel") { "Anonymous sign-in failed, using local guest - ${result.message}" }
                         createLocalGuestUser()
                     }
                 }
             } catch (e: Exception) {
-                // Fallback: Create local-only guest user without Firebase
-                println("AuthViewModel: Exception during anonymous sign-in, using local guest - ${e.message}")
+                Logger.w("AuthViewModel", e) { "Exception during anonymous sign-in, using local guest - ${e.message}" }
                 createLocalGuestUser()
             }
         }
     }
 
     /**
-     * Create a local-only guest user (fallback when Firebase is unavailable)
+     * Create a local-only guest user (fallback when Supabase is unavailable)
      */
-    @OptIn(ExperimentalUuidApi::class)
     private suspend fun createLocalGuestUser() {
         try {
+            val localId = "local_guest"
+            userRepository.deleteAllUsers()
             val guestUser = User(
-                id = Uuid.random().toString(),
-                firebaseUid = "local_guest_${Uuid.random()}",
+                id = localId,
+                firebaseUid = localId,
                 email = null,
                 displayName = "Guest User",
                 isGuest = true,
@@ -328,11 +324,89 @@ class AuthViewModel(
                 createdAt = Clock.System.now()
             )
             userRepository.createUser(guestUser)
+            _isLocalOnlyGuest.value = true
             _authState.value = AuthState.Guest(guestUser)
-            println("AuthViewModel: Local guest user created successfully")
+            Logger.d("AuthViewModel") { "Local guest user created (offline mode)" }
         } catch (e: Exception) {
             _authState.value = AuthState.Error("Failed to create guest user: ${e.message}")
-            println("AuthViewModel: Failed to create local guest user - ${e.message}")
+        }
+    }
+
+    /**
+     * Link a guest account to an email/password identity.
+     * Preserves the same Supabase auth UID so all synced data stays linked.
+     * A verification email will be sent to the new address.
+     */
+    fun linkGuestAccount(email: String, password: String, displayName: String) {
+        viewModelScope.launch {
+            try {
+                _authState.value = AuthState.Loading
+                Logger.d("AuthViewModel") { "Linking guest account to $email" }
+
+                when (val result = authService.linkEmailToAnonymousAccount(email, password, displayName)) {
+                    is AuthResult.Success -> {
+                        Logger.d("AuthViewModel") { "Account linked successfully, UID: ${result.user.uid}" }
+                        // Update EXISTING local user — same ID preserved
+                        val currentUser = userRepository.getCurrentUser()
+                        if (currentUser != null) {
+                            val updatedUser = currentUser.copy(
+                                isGuest = false,
+                                email = email,
+                                displayName = displayName
+                            )
+                            userRepository.updateUser(updatedUser)
+                            _isLocalOnlyGuest.value = false
+                            _successMessage.value = "Account linked! A verification email has been sent to $email."
+                            _authState.value = AuthState.Authenticated(updatedUser)
+                        } else {
+                            val user = findOrCreateLocalUser(
+                                uid = result.user.uid,
+                                email = email,
+                                displayName = displayName,
+                                isGuest = false
+                            )
+                            _isLocalOnlyGuest.value = false
+                            _successMessage.value = "Account linked! A verification email has been sent to $email."
+                            _authState.value = AuthState.Authenticated(user)
+                        }
+                    }
+                    is AuthResult.EmailVerificationPending -> {
+                        // Account linking with email verification — session stays valid
+                        val currentUser = userRepository.getCurrentUser()
+                        if (currentUser != null) {
+                            val updatedUser = currentUser.copy(
+                                isGuest = false,
+                                email = email,
+                                displayName = displayName
+                            )
+                            userRepository.updateUser(updatedUser)
+                            _successMessage.value = "Check your email! Verify $email to complete linking."
+                            _authState.value = AuthState.Authenticated(updatedUser)
+                        }
+                    }
+                    is AuthResult.Error -> {
+                        _authState.value = AuthState.Error(result.message)
+                    }
+                }
+            } catch (e: Exception) {
+                _authState.value = AuthState.Error(e.message ?: "Failed to link account")
+            }
+        }
+    }
+
+    /**
+     * Resend verification email for a pending signup.
+     */
+    fun resendVerificationEmail(email: String) {
+        viewModelScope.launch {
+            try {
+                authService.resendVerificationEmail(email)
+                _successMessage.value = "Verification email resent to $email"
+                Logger.d("AuthViewModel") { "Verification email resent to $email" }
+            } catch (e: Exception) {
+                _successMessage.value = "Could not resend email. Please try again."
+                Logger.e("AuthViewModel", e) { "Failed to resend verification - ${e.message}" }
+            }
         }
     }
 
@@ -343,41 +417,27 @@ class AuthViewModel(
         viewModelScope.launch {
             try {
                 authService.sendPasswordResetEmail(email)
-                println("AuthViewModel: Password reset email sent to $email")
+                Logger.d("AuthViewModel") { "Password reset email sent to $email" }
             } catch (e: Exception) {
-                println("AuthViewModel: Failed to send password reset email - ${e.message}")
+                Logger.e("AuthViewModel", e) { "Failed to send password reset email - ${e.message}" }
             }
         }
     }
 
     /**
-     * Get Firebase ID token for backend API requests
-     */
-    suspend fun getIdToken(forceRefresh: Boolean = false): String? {
-        return try {
-            authService.getIdToken(forceRefresh)
-        } catch (e: Exception) {
-            println("AuthViewModel: Failed to get ID token - ${e.message}")
-            null
-        }
-    }
-
-    /**
-     * Sign out
+     * Sign out — clears all local user records and Supabase session
      */
     fun signOut() {
         viewModelScope.launch {
             try {
-                val currentUser = userRepository.getCurrentUser()
-                if (currentUser != null) {
-                    userRepository.deleteUser(currentUser.id)
-                }
+                userRepository.clearAllLocalData()
                 authService.signOut()
+                _isLocalOnlyGuest.value = false
+                _hasCompletedOnboarding.value = false
                 _authState.value = AuthState.Unauthenticated
-                println("AuthViewModel: Sign out successful")
+                Logger.d("AuthViewModel") { "Sign out successful" }
             } catch (e: Exception) {
                 _authState.value = AuthState.Error(e.message ?: "Failed to sign out")
-                println("AuthViewModel: Sign out failed - ${e.message}")
             }
         }
     }

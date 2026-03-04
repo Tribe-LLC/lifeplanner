@@ -58,6 +58,8 @@ import az.tribe.lifeplanner.ui.components.NextAction
 import az.tribe.lifeplanner.ui.components.NextActionCard
 import az.tribe.lifeplanner.ui.components.GlassCard
 import az.tribe.lifeplanner.ui.components.QuickActionsPillRow
+import az.tribe.lifeplanner.ui.components.SyncStatusIndicator
+import az.tribe.lifeplanner.data.sync.SyncManager
 import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
 import az.tribe.lifeplanner.ui.habit.HabitViewModel
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
@@ -81,6 +83,7 @@ fun HomeScreen(
     onNavigateToJournal: () -> Unit = {},
     onNavigateToGoals: () -> Unit = {},
     onNavigateToAchievements: () -> Unit = {},
+    onNavigateToFocus: () -> Unit = {},
 ) {
     val snackBarHostState = remember { SnackbarHostState() }
 
@@ -88,6 +91,7 @@ fun HomeScreen(
     val authViewModel: AuthViewModel = koinInject()
     val gamificationViewModel: GamificationViewModel = koinViewModel()
     val habitViewModel: HabitViewModel = koinViewModel()
+    val syncManager: SyncManager = koinInject()
 
     val authState by authViewModel.authState.collectAsState()
     val userProgress by gamificationViewModel.userProgress.collectAsState()
@@ -160,6 +164,13 @@ fun HomeScreen(
                         color = MaterialTheme.colorScheme.primary
                     )
                 },
+                actions = {
+                    SyncStatusIndicator(
+                        syncStatus = syncManager.syncStatus,
+                        onRetryClick = { syncManager.requestSync() },
+                        compact = true
+                    )
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
@@ -207,7 +218,8 @@ fun HomeScreen(
                     onAddGoal = onAddGoalClick,
                     onAiSuggest = goToAiGeneration,
                     onNewHabit = onNavigateToHabits,
-                    onJournal = onNavigateToJournal
+                    onJournal = onNavigateToJournal,
+                    onFocus = onNavigateToFocus
                 )
             }
 

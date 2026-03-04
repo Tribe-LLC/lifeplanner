@@ -47,5 +47,11 @@ enum class BadgeType(
     EARLY_BIRD("Early Bird", "Check in before 7 AM", "sun", 0xFFFFC107),
     NIGHT_OWL("Night Owl", "Check in after 10 PM", "moon", 0xFF673AB7),
     COMEBACK("Comeback King", "Return after a 7+ day break", "refresh", 0xFF00BCD4),
-    PERFECTIONIST("Perfectionist", "Complete a goal at 100% progress", "check-circle", 0xFF4CAF50)
+    PERFECTIONIST("Perfectionist", "Complete a goal at 100% progress", "check-circle", 0xFF4CAF50),
+
+    // Focus Badges
+    FOCUS_FIRST("First Focus", "Complete your first focus session", "timer", 0xFFFF6B35),
+    FOCUS_HOUR("Hour Power", "Complete a 60-minute focus session", "timer", 0xFFE65100),
+    FOCUS_10("Focus Pro", "Complete 10 focus sessions", "timer", 0xFFFF9800),
+    FOCUS_50("Deep Worker", "Complete 50 focus sessions", "timer", 0xFFEF6C00)
 }

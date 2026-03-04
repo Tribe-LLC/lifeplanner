@@ -36,6 +36,9 @@ actual class DatabaseDriverFactory {
                     migrateToVersion8(db)
                     migrateToVersion9(db)
                     migrateToVersion10(db)
+                    migrateToVersion11(db)
+                    migrateToVersion12(db)
+                    migrateToSyncColumns(db)
                 }
 
                 override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -501,6 +504,76 @@ actual class DatabaseDriverFactory {
                     db.execSQL("CREATE INDEX IF NOT EXISTS idx_custom_coach_template ON CustomCoachEntity(templateId)")
                     db.execSQL("CREATE INDEX IF NOT EXISTS idx_coach_group_member_group ON CoachGroupMemberEntity(groupId)")
                     db.execSQL("CREATE INDEX IF NOT EXISTS idx_coach_group_member_coach ON CoachGroupMemberEntity(coachId)")
+                }
+
+                private fun migrateToVersion12(db: SupportSQLiteDatabase) {
+                    // Add mood, ambientSound, focusTheme columns to FocusSessionEntity
+                    try {
+                        db.execSQL("ALTER TABLE FocusSessionEntity ADD COLUMN mood TEXT")
+                    } catch (_: Exception) { /* Column already exists */ }
+                    try {
+                        db.execSQL("ALTER TABLE FocusSessionEntity ADD COLUMN ambientSound TEXT")
+                    } catch (_: Exception) { /* Column already exists */ }
+                    try {
+                        db.execSQL("ALTER TABLE FocusSessionEntity ADD COLUMN focusTheme TEXT")
+                    } catch (_: Exception) { /* Column already exists */ }
+                }
+
+                private fun migrateToSyncColumns(db: SupportSQLiteDatabase) {
+                    val tablesWithLastSynced = listOf(
+                        "GoalEntity", "MilestoneEntity", "GoalHistoryEntity",
+                        "UserProgressEntity", "HabitEntity", "HabitCheckInEntity",
+                        "JournalEntryEntity", "BadgeEntity", "ChallengeEntity",
+                        "GoalDependencyEntity", "ChatSessionEntity", "ChatMessageEntity",
+                        "ReviewReportEntity", "ReminderEntity", "CustomCoachEntity",
+                        "CoachGroupEntity", "CoachGroupMemberEntity", "FocusSessionEntity"
+                    )
+                    for (table in tablesWithLastSynced) {
+                        addColumnSafe(db, table, "sync_updated_at", "TEXT")
+                        addColumnSafe(db, table, "is_deleted", "INTEGER NOT NULL DEFAULT 0")
+                        addColumnSafe(db, table, "sync_version", "INTEGER NOT NULL DEFAULT 0")
+                        addColumnSafe(db, table, "last_synced_at", "TEXT")
+                    }
+                    // UserEntity gets the same minus last_synced_at (already has lastSyncedAt)
+                    addColumnSafe(db, "UserEntity", "sync_updated_at", "TEXT")
+                    addColumnSafe(db, "UserEntity", "is_deleted", "INTEGER NOT NULL DEFAULT 0")
+                    addColumnSafe(db, "UserEntity", "sync_version", "INTEGER NOT NULL DEFAULT 0")
+                }
+
+                private fun addColumnSafe(db: SupportSQLiteDatabase, table: String, column: String, def: String) {
+                    if (!columnExists(db, table, column)) {
+                        try {
+                            db.execSQL("ALTER TABLE $table ADD COLUMN $column $def")
+                        } catch (_: Exception) { }
+                    }
+                }
+
+                private fun migrateToVersion11(db: SupportSQLiteDatabase) {
+                    // Create FocusSessionEntity table
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS FocusSessionEntity (
+                            id TEXT PRIMARY KEY NOT NULL,
+                            goalId TEXT NOT NULL,
+                            milestoneId TEXT NOT NULL,
+                            plannedDurationMinutes INTEGER NOT NULL,
+                            actualDurationSeconds INTEGER NOT NULL DEFAULT 0,
+                            wasCompleted INTEGER NOT NULL DEFAULT 0,
+                            xpEarned INTEGER NOT NULL DEFAULT 0,
+                            startedAt TEXT NOT NULL,
+                            completedAt TEXT,
+                            createdAt TEXT NOT NULL,
+                            FOREIGN KEY (goalId) REFERENCES GoalEntity(id) ON DELETE CASCADE,
+                            FOREIGN KEY (milestoneId) REFERENCES MilestoneEntity(id) ON DELETE CASCADE
+                        )
+                        """.trimIndent()
+                    )
+
+                    // Create indexes
+                    db.execSQL("CREATE INDEX IF NOT EXISTS idx_focus_goal ON FocusSessionEntity(goalId)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS idx_focus_milestone ON FocusSessionEntity(milestoneId)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS idx_focus_completed ON FocusSessionEntity(wasCompleted)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS idx_focus_started ON FocusSessionEntity(startedAt)")
                 }
             }
         )

@@ -472,6 +472,10 @@ private fun getBadgeHint(badgeType: BadgeType): String {
         BadgeType.NIGHT_OWL -> "Check in after 10 PM"
         BadgeType.COMEBACK -> "Return after being away for 7+ days"
         BadgeType.PERFECTIONIST -> "Complete a goal at exactly 100% progress"
+        BadgeType.FOCUS_FIRST -> "Complete your first focus session"
+        BadgeType.FOCUS_HOUR -> "Complete a 60-minute focus session"
+        BadgeType.FOCUS_10 -> "Complete 10 focus sessions"
+        BadgeType.FOCUS_50 -> "Complete 50 focus sessions"
     }
 }
 

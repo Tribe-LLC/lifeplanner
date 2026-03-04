@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.data.model.GoalTypeQuestions
 import az.tribe.lifeplanner.domain.model.Goal
+import co.touchlab.kermit.Logger
 import az.tribe.lifeplanner.ui.components.AiGoalHeader
 import az.tribe.lifeplanner.ui.components.GoalCard
 import az.tribe.lifeplanner.ui.components.LoadingCard
@@ -85,7 +86,7 @@ fun AiGoalGenerationScreen(
 // Show error if any
     vmError?.let { error ->
         LaunchedEffect(error) {
-            println("Error: $error")
+            Logger.e("AiGoalGenerationScreen") { "Error: $error" }
         }
     }
 
@@ -197,7 +198,7 @@ fun AiGoalGenerationScreen(
                                         generatedGoals = vmGeneratedGoalsFromAI,
                                         onGoHome = onHomeClick, // Changed from onCreateNew to onGoHome
                                         onAddGoalToList = { goal ->
-                                            println("Goal trying to add ${goal.title}")
+                                            Logger.d("AiGoalGenerationScreen") { "Goal trying to add ${goal.title}" }
                                             viewModel.addGeneratedGoalToList(goal)
                                         },
                                         onAddAllGoalsToList = {

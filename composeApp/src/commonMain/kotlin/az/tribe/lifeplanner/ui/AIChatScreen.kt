@@ -39,6 +39,7 @@ import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Groups
@@ -69,6 +70,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -91,8 +93,11 @@ import az.tribe.lifeplanner.domain.model.MessageRole
 import az.tribe.lifeplanner.data.repository.ChatRepositoryImpl
 import az.tribe.lifeplanner.domain.model.CoachGroup
 import az.tribe.lifeplanner.domain.model.CustomCoach
+import az.tribe.lifeplanner.data.review.ReviewMessageBuilder
+import az.tribe.lifeplanner.domain.model.ReviewType
 import az.tribe.lifeplanner.ui.balance.InsightMessageHolder
 import az.tribe.lifeplanner.ui.chat.ChatViewModel
+import kotlinx.coroutines.launch
 import az.tribe.lifeplanner.ui.components.CoachListContent
 import az.tribe.lifeplanner.ui.components.CoachListContentExtended
 import az.tribe.lifeplanner.ui.components.CoachSuggestionButtons
@@ -116,6 +121,9 @@ fun AIChatScreen(
     val connectivityObserver: NetworkConnectivityObserver = koinInject()
     val isConnected by connectivityObserver.isConnected.collectAsState()
     val isOffline = !isConnected
+    val reviewMessageBuilder: ReviewMessageBuilder = koinInject()
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         viewModel.loadSessions()
@@ -131,7 +139,7 @@ fun AIChatScreen(
 
     // Auto-send pending insight message from Life Balance screen (skip when offline)
     LaunchedEffect(uiState.showSessionList, uiState.isLoading, isOffline) {
-        if (!isOffline && !uiState.showSessionList && !uiState.isLoading && uiState.messages.isEmpty()) {
+        if (!isOffline && !uiState.showSessionList && !uiState.isLoading) {
             val pending = InsightMessageHolder.pendingMessage
             if (pending != null) {
                 InsightMessageHolder.pendingMessage = null
@@ -140,11 +148,20 @@ fun AIChatScreen(
         }
     }
 
+
     // Show feedback snackbar when action is executed
     LaunchedEffect(uiState.actionFeedback) {
         uiState.actionFeedback?.let { feedback ->
             snackbarHostState.showSnackbar(feedback)
             viewModel.clearActionFeedback()
+        }
+    }
+
+    // Show error snackbar
+    LaunchedEffect(uiState.error) {
+        uiState.error?.let { error ->
+            snackbarHostState.showSnackbar(error)
+            viewModel.clearError()
         }
     }
 
@@ -293,7 +310,15 @@ fun AIChatScreen(
                     onExecuteSuggestion = { viewModel.executeCoachSuggestion(it) },
                     executedSuggestionIds = uiState.executedSuggestionIds,
                     isCouncilMode = uiState.isCouncilMode,
-                    isOffline = isOffline
+                    isOffline = isOffline,
+                    coach = uiState.currentCoach,
+                    reviewMessageBuilder = reviewMessageBuilder,
+                    onCopyMessage = { text ->
+                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
+                        scope.launch {
+                            snackbarHostState.showSnackbar("Copied to clipboard")
+                        }
+                    }
                 )
             }
 
@@ -324,7 +349,10 @@ fun ChatContent(
     goals: List<Goal> = emptyList(),
     habits: List<Habit> = emptyList(),
     isCouncilMode: Boolean = false,
-    isOffline: Boolean = false
+    isOffline: Boolean = false,
+    coach: CoachPersona? = null,
+    reviewMessageBuilder: ReviewMessageBuilder? = null,
+    onCopyMessage: (String) -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     var inputText by remember { mutableStateOf("") }
@@ -382,9 +410,18 @@ fun ChatContent(
         }
     }
 
+    val reviewCoroutineScope = rememberCoroutineScope()
+    var reviewLoadingType by remember { mutableStateOf<ReviewType?>(null) }
+
     Column(modifier = Modifier.fillMaxSize()) {
         if (messages.isEmpty()) {
-            // Welcome message
+            // Welcome message — personalized per coach
+            val coachName = coach?.name ?: "Luna"
+            val coachEmoji = coach?.emoji ?: "✨"
+            val coachGreeting = coach?.greeting ?: "Hey! I'm Luna, your personal life coach. What's on your mind today?"
+            val coachSpecialties = coach?.specialties ?: listOf("Goal setting", "Motivation", "Life balance")
+            val isLuna = coach == null || coach.id == "luna_general"
+
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -410,33 +447,56 @@ fun ChatContent(
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            Icons.Rounded.Psychology,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(40.dp)
+                        Text(
+                            text = coachEmoji,
+                            style = MaterialTheme.typography.headlineLarge
                         )
                     }
 
                     Text(
-                        text = "Hi! I'm Luna",
+                        text = "$coachEmoji Hi! I'm $coachName",
                         style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
                     )
 
                     Text(
-                        text = "I'm here to help you stay motivated, overcome obstacles, and achieve your goals. What's on your mind today?",
+                        text = coachGreeting,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
                     )
 
-                    // Suggestion chips
+                    // Suggestion chips based on coach specialties
                     Column(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        SuggestionChip("How do I stay motivated?") { onSendMessage(it) }
-                        SuggestionChip("Help me break down my goals") { onSendMessage(it) }
-                        SuggestionChip("I'm feeling stuck") { onSendMessage(it) }
+                        coachSpecialties.take(3).forEach { specialty ->
+                            SuggestionChip("Help me with ${specialty.lowercase()}") { onSendMessage(it) }
+                        }
+                    }
+
+                    // Review prompt chips — only for Luna
+                    if (isLuna && reviewMessageBuilder != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Reviews",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        ReviewPromptChips(
+                            onSelect = { type ->
+                                reviewLoadingType = type
+                                reviewCoroutineScope.launch {
+                                    try {
+                                        val message = reviewMessageBuilder.buildReviewMessage(type)
+                                        onSendMessage(message)
+                                    } finally {
+                                        reviewLoadingType = null
+                                    }
+                                }
+                            },
+                            isLoading = reviewLoadingType != null,
+                            loadingType = reviewLoadingType
+                        )
                     }
                 }
             }
@@ -471,7 +531,9 @@ fun ChatContent(
                         suggestions = suggestions,
                         onExecuteSuggestion = onExecuteSuggestion,
                         isExecutingAction = isExecutingAction,
-                        executedSuggestionIds = executedSuggestionIds
+                        executedSuggestionIds = executedSuggestionIds,
+                        onAnswerQuestion = onSendMessage,
+                        onCopyMessage = onCopyMessage
                     )
                 }
 
@@ -511,6 +573,7 @@ fun ChatContent(
             },
             isSending = isSending,
             isOffline = isOffline,
+            coachName = coach?.name ?: "Luna",
             attachedGoal = attachedGoal,
             attachedHabit = attachedHabit,
             onAttachClick = { showAttachmentSheet = true },
@@ -526,6 +589,7 @@ fun ChatContent(
         AttachmentSelectionSheet(
             goals = goals,
             habits = habits,
+            coachName = coach?.name ?: "Luna",
             onGoalSelected = { goal ->
                 attachedGoal = goal
                 attachedHabit = null
@@ -546,6 +610,7 @@ fun ChatContent(
 private fun AttachmentSelectionSheet(
     goals: List<Goal>,
     habits: List<Habit>,
+    coachName: String = "Luna",
     onGoalSelected: (Goal) -> Unit,
     onHabitSelected: (Habit) -> Unit,
     onDismiss: () -> Unit
@@ -560,7 +625,7 @@ private fun AttachmentSelectionSheet(
                 .padding(bottom = 32.dp)
         ) {
             Text(
-                text = "Discuss with Luna",
+                text = "Discuss with $coachName",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
@@ -769,7 +834,9 @@ fun MessageBubble(
     suggestions: List<CoachSuggestion> = emptyList(),
     onExecuteSuggestion: (CoachSuggestion) -> Unit = {},
     isExecutingAction: Boolean = false,
-    executedSuggestionIds: Set<String> = emptySet()
+    executedSuggestionIds: Set<String> = emptySet(),
+    onAnswerQuestion: (String) -> Unit = {},
+    onCopyMessage: (String) -> Unit = {}
 ) {
     val isUser = message.role == MessageRole.USER
 
@@ -885,6 +952,41 @@ fun MessageBubble(
                         modifier = Modifier.padding(12.dp)
                     )
                 }
+
+                // Copy button for assistant messages
+                if (!isUser) {
+                    val cleanContent = remember(messageText) {
+                        stripMarkdown(messageText)
+                    }
+                    Row(
+                        modifier = Modifier.padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.Start
+                    ) {
+                        Surface(
+                            onClick = { onCopyMessage(cleanContent) },
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color.Transparent
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.ContentCopy,
+                                    contentDescription = "Copy",
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                                Text(
+                                    text = "Copy",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -895,6 +997,7 @@ fun MessageBubble(
                 onExecute = onExecuteSuggestion,
                 isExecuting = isExecutingAction,
                 executedSuggestionIds = executedSuggestionIds,
+                onAnswerQuestion = onAnswerQuestion,
                 modifier = Modifier.padding(start = 40.dp) // Align with message
             )
         }
@@ -1059,12 +1162,82 @@ fun CoachTypingIndicator(coachName: String? = null) {
 }
 
 @Composable
+private fun ReviewPromptChips(
+    onSelect: (ReviewType) -> Unit,
+    isLoading: Boolean,
+    loadingType: ReviewType?
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "Choose a review type",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            listOf(
+                ReviewType.WEEKLY to "Weekly",
+                ReviewType.MONTHLY to "Monthly",
+                ReviewType.QUARTERLY to "Quarterly"
+            ).forEach { (type, label) ->
+                val isThisLoading = isLoading && loadingType == type
+                Surface(
+                    onClick = { if (!isLoading) onSelect(type) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    tonalElevation = 2.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (isThisLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                        } else {
+                            Icon(
+                                imageVector = Icons.Rounded.Flag,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun ChatInputField(
     value: String,
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
     isSending: Boolean,
     isOffline: Boolean = false,
+    coachName: String = "Luna",
     attachedGoal: Goal? = null,
     attachedHabit: Habit? = null,
     onAttachClick: () -> Unit = {},
@@ -1118,7 +1291,7 @@ fun ChatInputField(
                             if (isOffline) "You're offline"
                             else if (attachedGoal != null) "Ask about this goal..."
                             else if (attachedHabit != null) "Ask about this habit..."
-                            else "Message Luna...",
+                            else "Message $coachName...",
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
                     },
@@ -1227,7 +1400,16 @@ private fun AttachmentPreview(
 }
 
 @Composable
-fun EmptyChatState(onNewChat: () -> Unit) {
+fun EmptyChatState(
+    onNewChat: () -> Unit,
+    coach: CoachPersona? = null
+) {
+    val coachName = coach?.name ?: "Luna"
+    val coachEmoji = coach?.emoji ?: "✨"
+    val coachTitle = coach?.title ?: "Life Coach"
+    val specialtiesText = coach?.specialties?.joinToString(", ")?.lowercase()
+        ?: "goals, habits, and personal growth"
+
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
@@ -1251,21 +1433,19 @@ fun EmptyChatState(onNewChat: () -> Unit) {
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Rounded.Psychology,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(50.dp)
+                Text(
+                    text = coachEmoji,
+                    style = MaterialTheme.typography.displaySmall
                 )
             }
 
             Text(
-                text = "Your Personal Coach Awaits",
+                text = "$coachName — $coachTitle",
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
             )
 
             Text(
-                text = "Start a conversation with Luna to get personalized guidance on your goals, habits, and personal growth journey.",
+                text = "Start a conversation with $coachName to get personalized guidance on $specialtiesText.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -1290,7 +1470,7 @@ fun EmptyChatState(onNewChat: () -> Unit) {
                         tint = MaterialTheme.colorScheme.onPrimary
                     )
                     Text(
-                        text = "Start New Chat",
+                        text = "Chat with $coachName",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onPrimary
                     )

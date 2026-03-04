@@ -65,7 +65,7 @@ class JournalViewModel(
     private val _selectedDay = MutableStateFlow<LocalDate?>(null)
     val selectedDay: StateFlow<LocalDate?> = _selectedDay.asStateFlow()
 
-    // No-op: data is now reactively observed via journalRepository.observeAllEntries()
+    @Deprecated("No-op: data flows reactively via SQLDelight Flows", level = DeprecationLevel.WARNING)
     fun loadEntries() { }
 
     fun createEntry(

@@ -1,0 +1,3 @@
+ALTER TABLE FocusSessionEntity ADD COLUMN mood TEXT;
+ALTER TABLE FocusSessionEntity ADD COLUMN ambientSound TEXT;
+ALTER TABLE FocusSessionEntity ADD COLUMN focusTheme TEXT;

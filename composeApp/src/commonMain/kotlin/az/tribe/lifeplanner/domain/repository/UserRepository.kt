@@ -42,4 +42,19 @@ interface UserRepository {
      * Delete user (for testing/logout)
      */
     suspend fun deleteUser(userId: String)
+
+    /**
+     * Delete all users (for sign-out cleanup)
+     */
+    suspend fun deleteAllUsers()
+
+    /**
+     * Get user by Firebase/Supabase UID
+     */
+    suspend fun getUserByFirebaseUid(uid: String): User?
+
+    /**
+     * Clear all local data and sync timestamps. Called on logout.
+     */
+    suspend fun clearAllLocalData()
 }

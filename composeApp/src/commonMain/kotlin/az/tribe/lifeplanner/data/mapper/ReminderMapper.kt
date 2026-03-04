@@ -29,10 +29,10 @@ fun ReminderEntity.toDomain(): Reminder {
         linkedHabitId = linkedHabitId,
         isEnabled = isEnabled == 1L,
         isSmartTiming = isSmartTiming == 1L,
-        lastTriggeredAt = lastTriggeredAt?.let { LocalDateTime.parse(it) },
-        snoozedUntil = snoozedUntil?.let { LocalDateTime.parse(it) },
-        createdAt = LocalDateTime.parse(createdAt),
-        updatedAt = updatedAt?.let { LocalDateTime.parse(it) }
+        lastTriggeredAt = lastTriggeredAt?.let { parseLocalDateTime(it) },
+        snoozedUntil = snoozedUntil?.let { parseLocalDateTime(it) },
+        createdAt = parseLocalDateTime(createdAt),
+        updatedAt = updatedAt?.let { parseLocalDateTime(it) }
     )
 }
 
@@ -74,9 +74,9 @@ fun ScheduledNotificationEntity.toDomain(): ScheduledNotification {
         reminderId = reminderId,
         title = title,
         message = message,
-        scheduledAt = LocalDateTime.parse(scheduledAt),
+        scheduledAt = parseLocalDateTime(scheduledAt),
         isDelivered = isDelivered == 1L,
-        deliveredAt = deliveredAt?.let { LocalDateTime.parse(it) },
+        deliveredAt = deliveredAt?.let { parseLocalDateTime(it) },
         isSnoozed = isSnoozed == 1L,
         isDismissed = isDismissed == 1L
     )

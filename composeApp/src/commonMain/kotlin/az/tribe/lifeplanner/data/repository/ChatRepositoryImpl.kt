@@ -1,12 +1,12 @@
 package az.tribe.lifeplanner.data.repository
 
-import az.tribe.lifeplanner.BuildKonfig
 import az.tribe.lifeplanner.data.mapper.createChatMessage
 import az.tribe.lifeplanner.data.mapper.createChatSession
 import az.tribe.lifeplanner.data.mapper.toDomain
 import az.tribe.lifeplanner.data.mapper.toDomainMessages
 import az.tribe.lifeplanner.data.mapper.toDomainSessions
-import az.tribe.lifeplanner.di.GEMINI_PRO
+import az.tribe.lifeplanner.data.network.AiProxyService
+import co.touchlab.kermit.Logger
 import az.tribe.lifeplanner.domain.model.ChatMessage
 import az.tribe.lifeplanner.domain.model.ChatMessageMetadata
 import az.tribe.lifeplanner.domain.model.ChatSession
@@ -22,15 +22,10 @@ import az.tribe.lifeplanner.domain.model.SuggestedMilestone
 import az.tribe.lifeplanner.domain.model.UserContext
 import az.tribe.lifeplanner.domain.repository.ChatRepository
 import az.tribe.lifeplanner.domain.repository.CoachRepository
+import az.tribe.lifeplanner.data.sync.SyncManager
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
-import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.request.parameter
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.client.request.url
 import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -131,34 +126,15 @@ data class OptionData(
     val description: String? = null
 )
 
-@Serializable
-data class GeminiApiResponse(
-    val candidates: List<Candidate> = emptyList()
-)
-
-@Serializable
-data class Candidate(
-    val content: Content = Content()
-)
-
-@Serializable
-data class Content(
-    val parts: List<Part> = emptyList()
-)
-
-@Serializable
-data class Part(
-    val text: String = ""
-)
-
 // ============================================================================
 // REPOSITORY IMPLEMENTATION
 // ============================================================================
 
 class ChatRepositoryImpl(
     private val database: SharedDatabase,
-    private val httpClient: HttpClient,
-    private val coachRepository: CoachRepository? = null  // Optional for backward compatibility
+    private val aiProxy: AiProxyService,
+    private val coachRepository: CoachRepository? = null,
+    private val syncManager: SyncManager? = null
 ) : ChatRepository {
 
     private val json = Json {
@@ -425,6 +401,7 @@ Use this context to personalize your responses and make relevant suggestions.
             summary = session.summary,
             coachId = session.coachId
         )
+        syncManager?.requestSync()
         return session
     }
 
@@ -468,6 +445,7 @@ Use this context to personalize your responses and make relevant suggestions.
     override suspend fun deleteSession(sessionId: String) {
         database.deleteMessagesBySession(sessionId)
         database.deleteChatSession(sessionId)
+        syncManager?.requestSync()
     }
 
     override suspend fun getMessages(sessionId: String): List<ChatMessage> {
@@ -502,6 +480,7 @@ Use this context to personalize your responses and make relevant suggestions.
         val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
         val newTitle = if (content.length > 30) content.take(30) + "..." else content
         database.updateChatSessionLastMessage(sessionId, now.toString(), newTitle)
+        syncManager?.requestSync()
 
         return message
     }
@@ -525,6 +504,7 @@ Use this context to personalize your responses and make relevant suggestions.
             relatedGoalId = null,
             metadata = metadata
         )
+        syncManager?.requestSync()
 
         return message
     }
@@ -776,17 +756,14 @@ IMPORTANT: If user explained what they want to achieve, CREATE the goal/habit im
         }
 
         return try {
-            val response = httpClient.post {
-                url("v1beta/models/$GEMINI_PRO:generateContent")
-                parameter("key", BuildKonfig.GEMINI_API_KEY)
-                setBody(requestBody)
-            }
-
-            val responseBody: GeminiApiResponse = response.body()
-            val rawText = extractResponseText(responseBody)
+            val rawText = aiProxy.chat(
+                messages = buildAiProxyMessages(requestBody),
+                systemPrompt = extractSystemPrompt(requestBody),
+                responseSchema = extractResponseSchema(requestBody)
+            )
             parseCoachResponse(rawText)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Logger.e("ChatRepositoryImpl") { "Coach chat request failed: ${e.message}" }
             CoachResponse(
                 messages = listOf("I'm having trouble connecting right now. Could you try again in a moment?"),
                 suggestions = emptyList()
@@ -913,17 +890,14 @@ Current User Context:
         }
 
         return try {
-            val response = httpClient.post {
-                url("v1beta/models/$GEMINI_PRO:generateContent")
-                parameter("key", BuildKonfig.GEMINI_API_KEY)
-                setBody(requestBody)
-            }
-
-            val responseBody: GeminiApiResponse = response.body()
-            val rawText = extractResponseText(responseBody)
+            val rawText = aiProxy.chat(
+                messages = buildAiProxyMessages(requestBody),
+                systemPrompt = extractSystemPrompt(requestBody),
+                responseSchema = extractResponseSchema(requestBody)
+            )
             parseCoachResponse(rawText)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Logger.e("ChatRepositoryImpl") { "Custom coach chat request failed: ${e.message}" }
             CoachResponse(
                 messages = listOf("I'm having trouble connecting right now. Could you try again?"),
                 suggestions = emptyList()
@@ -951,17 +925,14 @@ Current User Context:
         }
 
         return try {
-            val response = httpClient.post {
-                url("v1beta/models/$GEMINI_PRO:generateContent")
-                parameter("key", BuildKonfig.GEMINI_API_KEY)
-                setBody(requestBody)
-            }
-
-            val responseBody: GeminiApiResponse = response.body()
-            val rawText = extractResponseText(responseBody)
+            val rawText = aiProxy.chat(
+                messages = buildAiProxyMessages(requestBody),
+                systemPrompt = extractSystemPrompt(requestBody),
+                responseSchema = extractResponseSchema(requestBody)
+            )
             parseCouncilResponse(rawText, coachNames)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Logger.e("ChatRepositoryImpl") { "Council chat request failed: ${e.message}" }
             CoachResponse(
                 messages = listOf("We're having trouble connecting right now. Please try again."),
                 suggestions = emptyList()
@@ -1112,17 +1083,14 @@ If user explained their goal clearly, one coach should propose a goal/habit sugg
         }
 
         return try {
-            val response = httpClient.post {
-                url("v1beta/models/$GEMINI_PRO:generateContent")
-                parameter("key", BuildKonfig.GEMINI_API_KEY)
-                setBody(requestBody)
-            }
-
-            val responseBody: GeminiApiResponse = response.body()
-            val rawText = extractResponseText(responseBody)
+            val rawText = aiProxy.chat(
+                messages = buildAiProxyMessages(requestBody),
+                systemPrompt = extractSystemPrompt(requestBody),
+                responseSchema = extractResponseSchema(requestBody)
+            )
             parseCouncilResponse(rawText)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Logger.e("ChatRepositoryImpl") { "Council meeting request failed: ${e.message}" }
             CoachResponse(
                 messages = listOf("Luna: The council is having a moment. Let me help you directly!"),
                 suggestions = emptyList()
@@ -1172,7 +1140,7 @@ If user explained their goal clearly, one coach should propose a goal/habit sugg
 
             CoachResponse(messages = messages, suggestions = suggestions)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Logger.e("ChatRepositoryImpl") { "Council response parsing failed: ${e.message}" }
             CoachResponse(
                 messages = listOf("$fallbackCoach: Let me try again... What would you like help with?"),
                 suggestions = emptyList()
@@ -1180,18 +1148,26 @@ If user explained their goal clearly, one coach should propose a goal/habit sugg
         }
     }
 
-    private fun extractResponseText(response: GeminiApiResponse): String {
-        return try {
-            response.candidates
-                .firstOrNull()
-                ?.content
-                ?.parts
-                ?.firstOrNull()
-                ?.text
-                ?: "I couldn't generate a response. Please try again."
-        } catch (e: Exception) {
-            "Something went wrong parsing the response. Let's try again!"
+    private fun buildAiProxyMessages(requestBody: JsonObject): List<AiProxyService.ChatMessage> {
+        val contents = requestBody["contents"]?.jsonArray ?: return emptyList()
+        return contents.mapNotNull { content ->
+            val obj = content.jsonObject
+            val role = obj["role"]?.jsonPrimitive?.content ?: "user"
+            val text = obj["parts"]?.jsonArray?.firstOrNull()
+                ?.jsonObject?.get("text")?.jsonPrimitive?.content ?: return@mapNotNull null
+            AiProxyService.ChatMessage(role = role, content = text)
         }
+    }
+
+    private fun extractSystemPrompt(requestBody: JsonObject): String? {
+        val systemInstruction = requestBody["systemInstruction"]?.jsonObject ?: return null
+        return systemInstruction["parts"]?.jsonArray?.firstOrNull()
+            ?.jsonObject?.get("text")?.jsonPrimitive?.content
+    }
+
+    private fun extractResponseSchema(requestBody: JsonObject): JsonObject? {
+        val config = requestBody["generationConfig"]?.jsonObject ?: return null
+        return config["responseSchema"]?.jsonObject
     }
 
     @OptIn(ExperimentalUuidApi::class)
@@ -1218,7 +1194,7 @@ If user explained their goal clearly, one coach should propose a goal/habit sugg
 
             CoachResponse(messages = messages, suggestions = suggestions)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Logger.e("ChatRepositoryImpl") { "Coach response parsing failed: ${e.message}" }
             CoachResponse(
                 messages = listOf("Let me try that again... What would you like help with?"),
                 suggestions = emptyList()
@@ -1303,10 +1279,12 @@ If user explained their goal clearly, one coach should propose a goal/habit sugg
 
     override suspend fun updateSessionSummary(sessionId: String, summary: String) {
         database.updateChatSessionSummary(sessionId, summary)
+        syncManager?.requestSync()
     }
 
     override suspend fun deleteOldSessions(beforeDate: String) {
         database.deleteOldChatSessions(beforeDate)
+        syncManager?.requestSync()
     }
 
     override suspend fun getSessionCount(): Long {
@@ -1330,5 +1308,6 @@ If user explained their goal clearly, one coach should propose a goal/habit sugg
 
         val updatedMetadataJson = json.encodeToString(ChatMessageMetadata.serializer(), updatedMetadata)
         database.updateChatMessageMetadata(messageId, updatedMetadataJson)
+        syncManager?.requestSync()
     }
 }

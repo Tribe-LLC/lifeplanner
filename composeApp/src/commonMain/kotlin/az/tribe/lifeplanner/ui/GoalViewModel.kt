@@ -15,8 +15,10 @@ import az.tribe.lifeplanner.domain.model.XpRewards
 import az.tribe.lifeplanner.domain.enum.GoalFilter
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.repository.GamificationRepository
+import az.tribe.lifeplanner.domain.repository.GeminiRepository
 import az.tribe.lifeplanner.domain.repository.GoalRepository
 import az.tribe.lifeplanner.usecases.*
+import co.touchlab.kermit.Logger
 import dev.gitlive.firebase.Firebase
 import dev.gitlive.firebase.remoteconfig.FirebaseRemoteConfig
 import dev.gitlive.firebase.remoteconfig.remoteConfig
@@ -63,7 +65,8 @@ class GoalViewModel(
 
     private val generateAiQuestionnaireUseCase: GenerateAiQuestionnaireUseCase,
     private val generateAiGoalsUseCase: GenerateAiGoalsUseCase,
-    private val gamificationRepository: GamificationRepository
+    private val gamificationRepository: GamificationRepository,
+    private val geminiRepository: GeminiRepository
 ) : ViewModel() {
 
     // State Management
@@ -391,7 +394,7 @@ class GoalViewModel(
         }
     }
 
-    // No-op: data is now reactively observed via goalRepository.observeAllGoals()
+    @Deprecated("No-op: data flows reactively via SQLDelight Flows", level = DeprecationLevel.WARNING)
     fun loadAllGoals() { }
 
     fun loadAnalytics() {
@@ -432,7 +435,7 @@ class GoalViewModel(
                 _isForceUpdateEnabled.value =
                     Firebase.remoteConfig.getValue("isForceUpdateEnabled").asBoolean()
             } catch (e: Exception) {
-                println("Failed to check config: ${e.message}")
+                Logger.e("GoalViewModel", e) { "Failed to check config: ${e.message}" }
             }
         }
     }
@@ -521,11 +524,11 @@ class GoalViewModel(
                         // Don't automatically add them here
 
                         _questionnaireStep.value = QuestionnaireStep.RESULTS
-                        println("Generated ${goals.size} personalized goals")
+                        Logger.d("GoalViewModel") { "Generated ${goals.size} personalized goals" }
                         goals.forEach { goal ->
-                            println("Goal: ${goal.title}")
+                            Logger.d("GoalViewModel") { "Goal: ${goal.title}" }
                             goal.milestones.forEach { milestone ->
-                                println("  - Milestone: ${milestone.title}")
+                                Logger.d("GoalViewModel") { "  - Milestone: ${milestone.title}" }
                             }
                         }
                     }
@@ -536,6 +539,47 @@ class GoalViewModel(
             } catch (e: Exception) {
                 _error.value = "Failed to generate personalized goals: ${e.message}"
                 _questionnaireStep.value = QuestionnaireStep.ANSWERING
+            } finally {
+                _isGeneratingPersonalizedGoals.value = false
+            }
+        }
+    }
+
+    /**
+     * AI-first: Generate goals directly from a prompt without questionnaire
+     */
+    fun generateGoalsDirectly(prompt: String) {
+        viewModelScope.launch {
+            try {
+                _isGeneratingPersonalizedGoals.value = true
+                _error.value = null
+                _questionnaireStep.value = QuestionnaireStep.GENERATING
+
+                Logger.d("GoalViewModel") { "AI Goal Generation: Starting direct generation with prompt: $prompt" }
+
+                geminiRepository.generateGoalsDirect(prompt)
+                    .onSuccess { goals ->
+                        Logger.d("GoalViewModel") { "AI Goal Generation: Received ${goals.size} goals" }
+                        if (goals.isEmpty()) {
+                            _error.value = "AI returned no goals. Please try again."
+                            _questionnaireStep.value = QuestionnaireStep.INPUT
+                        } else {
+                            _generatedGoalsFromAI.value = goals
+                            goals.forEach { goal ->
+                                Logger.d("GoalViewModel") { "  Goal: ${goal.title} (${goal.milestones.size} milestones)" }
+                            }
+                            _questionnaireStep.value = QuestionnaireStep.RESULTS
+                        }
+                    }
+                    .onError { error ->
+                        Logger.e("GoalViewModel") { "AI Goal Generation: Error - $error" }
+                        _error.value = "Could not generate goals. Check your internet connection and try again."
+                        _questionnaireStep.value = QuestionnaireStep.INPUT
+                    }
+            } catch (e: Exception) {
+                Logger.e("GoalViewModel", e) { "AI Goal Generation: Exception - ${e.message}" }
+                _error.value = "Something went wrong. Please try again."
+                _questionnaireStep.value = QuestionnaireStep.INPUT
             } finally {
                 _isGeneratingPersonalizedGoals.value = false
             }

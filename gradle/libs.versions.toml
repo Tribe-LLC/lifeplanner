@@ -8,8 +8,8 @@ androidx-lifecycle = "2.9.0"
 compose-multiplatform = "1.8.1"
 desugar_jdk_libs = "2.1.5"
 firebaseCommon = "2.1.0"
+supabase = "3.1.1"
 kotlin = "2.1.21"
-resources = "1.6.10"
 sqldelight = "2.0.2"
 
 kermit = "2.0.5"
@@ -24,7 +24,6 @@ accompanistSystemuicontroller = "0.30.1"
 
 buildkonfig = "0.17.0"
 
-firebaseAuthKtx = "23.2.1"
 firebaseCommonKtx = "21.0.0"
 
 googleGmsGoogleServices = "4.4.2"
@@ -35,7 +34,6 @@ kmpnotifier = "1.5.1"
 workmanager = "2.10.0"
 glance = "1.1.1"
 kotlinTest = "2.1.21"
-mockk = "1.13.14"
 turbine = "1.2.0"
 
 [libraries]
@@ -46,20 +44,19 @@ desugar_jdk_libs = { module = "com.android.tools:desugar_jdk_libs", version.ref 
 
 firebase-common = { module = "dev.gitlive:firebase-common", version.ref = "firebaseCommon" }
 firebase-crashlytics = { module = "dev.gitlive:firebase-crashlytics", version.ref = "firebaseCommon" }
-firebase-messaging = { module = "dev.gitlive:firebase-messaging", version.ref = "firebaseCommon" }
 firebase-perf = { module = "dev.gitlive:firebase-perf", version.ref = "firebaseCommon" }
 gitlive-firebase-analytics = { module = "dev.gitlive:firebase-analytics", version.ref = "firebaseCommon" }
 gitlive-firebase-config = { module = "dev.gitlive:firebase-config", version.ref = "firebaseCommon" }
-gitlive-firebase-auth = { module = "dev.gitlive:firebase-auth", version.ref = "firebaseCommon" }
+
+supabase-postgrest = { module = "io.github.jan-tennert.supabase:postgrest-kt", version.ref = "supabase" }
+supabase-gotrue = { module = "io.github.jan-tennert.supabase:auth-kt", version.ref = "supabase" }
+supabase-compose-auth = { module = "io.github.jan-tennert.supabase:compose-auth", version.ref = "supabase" }
 
 navigation-compose = { module = "org.jetbrains.androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
 core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "core-splashscreen" }
 accompanist-systemuicontroller = { module = "com.google.accompanist:accompanist-systemuicontroller", version.ref = "accompanistSystemuicontroller" }
 
-firebase-auth-ktx = { module = "com.google.firebase:firebase-auth-ktx", version.ref = "firebaseAuthKtx" }
 firebase-common-ktx = { module = "com.google.firebase:firebase-common-ktx", version.ref = "firebaseCommonKtx" }
-
-resources = { module = "org.jetbrains.compose.resources:resources", version.ref = "resources" }
 
 sqldelight-android = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
 sqldelight-ios = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
@@ -69,8 +66,6 @@ ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "kto
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
 ktor-client-core = {module = "io.ktor:ktor-client-core", version.ref = "ktor"}
 ktor-client-content-negotiation = {module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor"}
-ktor-client-js = { module = "io.ktor:ktor-client-js", version.ref = "ktor" }
-ktor-client-java = {module = "io.ktor:ktor-client-java", version.ref = "ktor"}
 ktor-client-serialization = {module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor"}
 ktor-client-logging = {module = "io.ktor:ktor-client-logging", version.ref = "ktor"}
 ktor-client-auth = {module = "io.ktor:ktor-client-auth", version.ref = "ktor"}

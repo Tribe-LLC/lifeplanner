@@ -9,6 +9,7 @@ import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.model.Habit
 import az.tribe.lifeplanner.domain.model.HabitCheckIn
 import az.tribe.lifeplanner.domain.repository.HabitRepository
+import az.tribe.lifeplanner.data.sync.SyncManager
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
 import az.tribe.lifeplanner.widget.WidgetDataSyncService
 import co.touchlab.kermit.Logger
@@ -23,7 +24,8 @@ import kotlinx.datetime.toLocalDateTime
 
 class HabitRepositoryImpl(
     private val database: SharedDatabase,
-    private val widgetSyncService: WidgetDataSyncService
+    private val widgetSyncService: WidgetDataSyncService,
+    private val syncManager: SyncManager
 ) : HabitRepository {
 
     private suspend fun notifyWidgets() {
@@ -35,13 +37,19 @@ class HabitRepositoryImpl(
     }
 
     override fun observeHabitsWithTodayStatus(): Flow<List<Pair<Habit, Boolean>>> {
-        val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date.toString()
         return combine(
             database.observeAllHabits(),
-            database.observeCheckInsByDate(today)
+            database.observeCheckInsByDate(
+                Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date.toString()
+            )
         ) { habitEntities, checkInEntities ->
+            // Recalculate today on each emission so it stays fresh across midnight
+            val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date.toString()
             habitEntities.toDomainHabits().map { habit ->
-                habit to checkInEntities.any { it.habitId == habit.id && it.completed == 1L }
+                val isCheckedIn = checkInEntities.any {
+                    it.habitId == habit.id && it.completed == 1L && it.date == today
+                }
+                habit to isCheckedIn
             }
         }
     }
@@ -64,6 +72,7 @@ class HabitRepositoryImpl(
 
     override suspend fun insertHabit(habit: Habit) {
         database.insertHabit(habit.toEntity())
+        syncManager.requestSync()
     }
 
     override suspend fun updateHabit(habit: Habit) {
@@ -77,14 +86,17 @@ class HabitRepositoryImpl(
             linkedGoalId = habit.linkedGoalId,
             reminderTime = habit.reminderTime
         )
+        syncManager.requestSync()
     }
 
     override suspend fun deleteHabit(id: String) {
         database.deleteHabit(id)
+        syncManager.requestSync()
     }
 
     override suspend fun deactivateHabit(id: String) {
         database.deactivateHabit(id)
+        syncManager.requestSync()
     }
 
     override suspend fun checkIn(habitId: String, date: LocalDate, notes: String): HabitCheckIn {
@@ -98,6 +110,7 @@ class HabitRepositoryImpl(
         database.insertHabitCheckInOrIgnore(checkIn.toEntity())
         updateStreakAfterCheckIn(habitId)
         notifyWidgets()
+        syncManager.requestSync()
         return getCheckInByHabitAndDate(habitId, date) ?: checkIn
     }
 
@@ -125,6 +138,7 @@ class HabitRepositoryImpl(
     override suspend fun deleteCheckIn(id: String) {
         database.deleteCheckIn(id)
         notifyWidgets()
+        syncManager.requestSync()
     }
 
     override suspend fun calculateStreak(habitId: String): Int {
@@ -162,6 +176,7 @@ class HabitRepositoryImpl(
             totalCompletions = totalCompletions.toLong(),
             lastCompletedDate = today.toString()
         )
+        syncManager.requestSync()
     }
 
     override suspend fun getHabitsWithTodayStatus(today: LocalDate): List<Pair<Habit, Boolean>> {

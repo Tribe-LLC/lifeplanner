@@ -19,3 +19,8 @@ captures
 *.jks
 lifeplanner.jks
 .fleet/
+firebase-debug.log
+*.log
+.mcp.json
+supabase/.temp/
+.env*

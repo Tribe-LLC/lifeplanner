@@ -6,6 +6,7 @@ import app.cash.sqldelight.coroutines.mapToOneOrNull
 import az.tribe.lifeplanner.domain.model.OnboardingData
 import az.tribe.lifeplanner.domain.model.User
 import az.tribe.lifeplanner.domain.repository.UserRepository
+import az.tribe.lifeplanner.data.sync.SyncManager
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -19,7 +20,8 @@ import kotlinx.datetime.Instant
  * Implementation of UserRepository
  */
 class UserRepositoryImpl(
-    private val sharedDatabase: SharedDatabase
+    private val sharedDatabase: SharedDatabase,
+    private val syncManager: SyncManager
 ) : UserRepository {
 
     override fun getCurrentUserFlow(): Flow<User?> {
@@ -59,9 +61,13 @@ class UserRepositoryImpl(
                 mindset = user.mindset,
                 hasCompletedOnboarding = if (user.hasCompletedOnboarding) 1L else 0L,
                 createdAt = user.createdAt.toString(),
-                lastSyncedAt = user.lastSyncedAt?.toString()
+                lastSyncedAt = user.lastSyncedAt?.toString(),
+                sync_updated_at = Clock.System.now().toString(),
+                is_deleted = 0L,
+                sync_version = 0L
             )
         }
+        syncManager.requestSync()
     }
 
     override suspend fun updateUser(user: User) {
@@ -79,9 +85,13 @@ class UserRepositoryImpl(
                 mindset = user.mindset,
                 hasCompletedOnboarding = if (user.hasCompletedOnboarding) 1L else 0L,
                 lastSyncedAt = Clock.System.now().toString(),
+                sync_updated_at = Clock.System.now().toString(),
+                is_deleted = 0L,
+                sync_version = 0L,
                 id = user.id
             )
         }
+        syncManager.requestSync()
     }
 
     override suspend fun saveOnboardingData(userId: String, onboardingData: OnboardingData) {
@@ -96,6 +106,7 @@ class UserRepositoryImpl(
                 id = userId
             )
         }
+        syncManager.requestSync()
     }
 
     override suspend fun hasCompletedOnboarding(): Boolean {
@@ -109,6 +120,26 @@ class UserRepositoryImpl(
     override suspend fun deleteUser(userId: String) {
         sharedDatabase { db ->
             db.lifePlannerDBQueries.deleteUser(userId)
+        }
+        syncManager.requestSync()
+    }
+
+    override suspend fun deleteAllUsers() {
+        sharedDatabase { db ->
+            db.lifePlannerDBQueries.deleteAllUsers()
+        }
+    }
+
+    override suspend fun clearAllLocalData() {
+        sharedDatabase.clearAllLocalData()
+        syncManager.clearSyncTimestamps()
+    }
+
+    override suspend fun getUserByFirebaseUid(uid: String): User? {
+        return sharedDatabase { db ->
+            db.lifePlannerDBQueries.getUserByFirebaseUid(uid)
+                .executeAsOneOrNull()
+                ?.toDomainModel()
         }
     }
 

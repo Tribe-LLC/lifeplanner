@@ -11,24 +11,28 @@ CREATE TABLE GoalEntity (
     notes TEXT NOT NULL DEFAULT '',
     createdAt TEXT NOT NULL DEFAULT '2025-01-01T00:00:00',
     completionRate REAL NOT NULL DEFAULT 0.0,
-    isArchived INTEGER NOT NULL DEFAULT 0
+    isArchived INTEGER NOT NULL DEFAULT 0,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
 );
 
 selectAll:
-SELECT * FROM GoalEntity;
+SELECT * FROM GoalEntity WHERE is_deleted = 0;
 
 -- Updated insert query with conflict resolution
 insertGoal:
-INSERT OR REPLACE INTO GoalEntity(id, category, title, description, status, timeline, dueDate, progress, notes, createdAt, completionRate, isArchived)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO GoalEntity(id, category, title, description, status, timeline, dueDate, progress, notes, createdAt, completionRate, isArchived, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectGoalsByTimeline:
 SELECT * FROM GoalEntity
-WHERE timeline = ? AND isArchived = 0;
+WHERE timeline = ? AND isArchived = 0 AND is_deleted = 0;
 
 selectGoalsByCategory:
 SELECT * FROM GoalEntity
-WHERE category = ? AND isArchived = 0;
+WHERE category = ? AND isArchived = 0 AND is_deleted = 0;
 
 deleteGoalById:
 DELETE FROM GoalEntity
@@ -48,27 +52,28 @@ SET
   notes = ?,
   createdAt = ?,
   completionRate = ?,
-  isArchived = ?
+  isArchived = ?,
+  sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 updateGoalProgress:
 UPDATE GoalEntity
-SET progress = ?, completionRate = ?
+SET progress = ?, completionRate = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 updateGoalNotes:
 UPDATE GoalEntity
-SET notes = ?
+SET notes = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 archiveGoal:
 UPDATE GoalEntity
-SET isArchived = 1
+SET isArchived = 1, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 unarchiveGoal:
 UPDATE GoalEntity
-SET isArchived = 0
+SET isArchived = 0, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 deleteAllGoals:
@@ -76,67 +81,67 @@ DELETE FROM GoalEntity;
 
 searchGoalsByTitle:
 SELECT * FROM GoalEntity
-WHERE title LIKE '%' || ? || '%' AND isArchived = 0;
+WHERE title LIKE '%' || ? || '%' AND isArchived = 0 AND is_deleted = 0;
 
 searchGoalsByDescription:
 SELECT * FROM GoalEntity
-WHERE description LIKE '%' || ? || '%' AND isArchived = 0;
+WHERE description LIKE '%' || ? || '%' AND isArchived = 0 AND is_deleted = 0;
 
 searchGoals:
 SELECT * FROM GoalEntity
-WHERE (title LIKE '%' || ? || '%' OR description LIKE '%' || ? || '%') AND isArchived = 0;
+WHERE (title LIKE '%' || ? || '%' OR description LIKE '%' || ? || '%') AND isArchived = 0 AND is_deleted = 0;
 
 getActiveGoals:
 SELECT * FROM GoalEntity
-WHERE status != 'COMPLETED' AND isArchived = 0;
+WHERE status != 'COMPLETED' AND isArchived = 0 AND is_deleted = 0;
 
 getCompletedGoals:
 SELECT * FROM GoalEntity
-WHERE status = 'COMPLETED' AND isArchived = 0;
+WHERE status = 'COMPLETED' AND isArchived = 0 AND is_deleted = 0;
 
 getUpcomingDeadlines:
 SELECT * FROM GoalEntity
-WHERE dueDate >= ? AND dueDate <= ? AND status != 'COMPLETED' AND isArchived = 0
+WHERE dueDate >= ? AND dueDate <= ? AND status != 'COMPLETED' AND isArchived = 0 AND is_deleted = 0
 ORDER BY dueDate ASC;
 
 getGoalCountByCategory:
 SELECT category, COUNT(*)
 FROM GoalEntity
-WHERE isArchived = 0
+WHERE isArchived = 0 AND is_deleted = 0
 GROUP BY category;
 
 getGoalCountByTimeline:
 SELECT timeline, COUNT(*)
 FROM GoalEntity
-WHERE isArchived = 0
+WHERE isArchived = 0 AND is_deleted = 0
 GROUP BY timeline;
 
 getGoalCountByStatus:
 SELECT status, COUNT(*)
 FROM GoalEntity
-WHERE isArchived = 0
+WHERE isArchived = 0 AND is_deleted = 0
 GROUP BY status;
 
 getAverageProgressByCategory:
 SELECT category, AVG(completionRate)
 FROM GoalEntity
-WHERE isArchived = 0
+WHERE isArchived = 0 AND is_deleted = 0
 GROUP BY category;
 
 getTotalGoalCount:
-SELECT COUNT(*) FROM GoalEntity WHERE isArchived = 0;
+SELECT COUNT(*) FROM GoalEntity WHERE isArchived = 0 AND is_deleted = 0;
 
 getActiveGoalCount:
-SELECT COUNT(*) FROM GoalEntity WHERE status != 'COMPLETED' AND isArchived = 0;
+SELECT COUNT(*) FROM GoalEntity WHERE status != 'COMPLETED' AND isArchived = 0 AND is_deleted = 0;
 
 getCompletedGoalCount:
-SELECT COUNT(*) FROM GoalEntity WHERE status = 'COMPLETED' AND isArchived = 0;
+SELECT COUNT(*) FROM GoalEntity WHERE status = 'COMPLETED' AND isArchived = 0 AND is_deleted = 0;
 
 getOverallCompletionRate:
 SELECT
     CAST(COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) AS REAL) / COUNT(*) * 100
 FROM GoalEntity
-WHERE isArchived = 0;
+WHERE isArchived = 0 AND is_deleted = 0;
 
 -- Milestone table (already exists in your schema)
 CREATE TABLE IF NOT EXISTS MilestoneEntity (
@@ -146,22 +151,26 @@ CREATE TABLE IF NOT EXISTS MilestoneEntity (
     isCompleted INTEGER NOT NULL DEFAULT 0,
     dueDate TEXT,
     createdAt TEXT NOT NULL,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT,
     FOREIGN KEY (goalId) REFERENCES GoalEntity(id) ON DELETE CASCADE
 );
 
 -- Milestone queries
 insertMilestone:
-INSERT OR REPLACE INTO MilestoneEntity(id, goalId, title, isCompleted, dueDate, createdAt)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO MilestoneEntity(id, goalId, title, isCompleted, dueDate, createdAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getMilestonesByGoalId:
 SELECT * FROM MilestoneEntity
-WHERE goalId = ?
+WHERE goalId = ? AND is_deleted = 0
 ORDER BY createdAt ASC;
 
 updateMilestone:
 UPDATE MilestoneEntity
-SET title = ?, isCompleted = ?, dueDate = ?
+SET title = ?, isCompleted = ?, dueDate = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 getGoalIdForMilestone:
@@ -173,7 +182,7 @@ WHERE id = ?;
 
 toggleMilestoneCompletion:
 UPDATE MilestoneEntity
-SET isCompleted = ?
+SET isCompleted = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 -- Existing tables remain the same
@@ -183,15 +192,19 @@ CREATE TABLE GoalHistoryEntity (
     field TEXT NOT NULL,
     oldValue TEXT,
     newValue TEXT,
-    changedAt TEXT NOT NULL
+    changedAt TEXT NOT NULL,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
 );
 
 insertGoalHistory:
-INSERT OR REPLACE INTO GoalHistoryEntity(id, goalId, field, oldValue, newValue, changedAt)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO GoalHistoryEntity(id, goalId, field, oldValue, newValue, changedAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getGoalHistory:
-SELECT * FROM GoalHistoryEntity WHERE goalId = ? ORDER BY changedAt DESC;
+SELECT * FROM GoalHistoryEntity WHERE goalId = ? AND is_deleted = 0 ORDER BY changedAt DESC;
 
 CREATE TABLE UserProgressEntity (
     id INTEGER PRIMARY KEY DEFAULT 1,
@@ -202,55 +215,59 @@ CREATE TABLE UserProgressEntity (
     goalsCompleted INTEGER NOT NULL DEFAULT 0,
     habitsCompleted INTEGER NOT NULL DEFAULT 0,
     journalEntriesCount INTEGER NOT NULL DEFAULT 0,
-    longestStreak INTEGER NOT NULL DEFAULT 0
+    longestStreak INTEGER NOT NULL DEFAULT 0,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
 );
 
 getUserProgress:
 SELECT * FROM UserProgressEntity LIMIT 1;
 
 insertUserProgress:
-INSERT OR REPLACE INTO UserProgressEntity(id, currentStreak, lastCheckInDate, totalXp, currentLevel, goalsCompleted, habitsCompleted, journalEntriesCount, longestStreak)
-VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO UserProgressEntity(id, currentStreak, lastCheckInDate, totalXp, currentLevel, goalsCompleted, habitsCompleted, journalEntriesCount, longestStreak, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 updateUserStreak:
 UPDATE UserProgressEntity
-SET currentStreak = ?, lastCheckInDate = ?, longestStreak = MAX(longestStreak, ?)
+SET currentStreak = ?, lastCheckInDate = ?, longestStreak = MAX(longestStreak, ?), sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = 1;
 
 updateUserXp:
 UPDATE UserProgressEntity
-SET totalXp = ?, currentLevel = ?
+SET totalXp = ?, currentLevel = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = 1;
 
 addXp:
 UPDATE UserProgressEntity
-SET totalXp = totalXp + ?
+SET totalXp = totalXp + ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = 1;
 
 incrementGoalsCompleted:
 UPDATE UserProgressEntity
-SET goalsCompleted = goalsCompleted + 1
+SET goalsCompleted = goalsCompleted + 1, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = 1;
 
 incrementHabitsCompleted:
 UPDATE UserProgressEntity
-SET habitsCompleted = habitsCompleted + 1
+SET habitsCompleted = habitsCompleted + 1, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = 1;
 
 decrementHabitsCompleted:
 UPDATE UserProgressEntity
-SET habitsCompleted = CASE WHEN habitsCompleted > 0 THEN habitsCompleted - 1 ELSE 0 END
+SET habitsCompleted = CASE WHEN habitsCompleted > 0 THEN habitsCompleted - 1 ELSE 0 END, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = 1;
 
 incrementJournalEntries:
 UPDATE UserProgressEntity
-SET journalEntriesCount = journalEntriesCount + 1
+SET journalEntriesCount = journalEntriesCount + 1, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = 1;
 
 countActiveGoalsByCategory:
 SELECT COUNT(*)
 FROM GoalEntity
-WHERE category = ? AND timeline = ? AND status != 'COMPLETED' AND isArchived = 0;
+WHERE category = ? AND timeline = ? AND status != 'COMPLETED' AND isArchived = 0 AND is_deleted = 0;
 
 -- User table for storing user profile and onboarding data
 CREATE TABLE IF NOT EXISTS UserEntity (
@@ -267,25 +284,34 @@ CREATE TABLE IF NOT EXISTS UserEntity (
     mindset TEXT,
     hasCompletedOnboarding INTEGER NOT NULL DEFAULT 0,
     createdAt TEXT NOT NULL,
-    lastSyncedAt TEXT
+    lastSyncedAt TEXT,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0
 );
 
 -- User queries
 insertUser:
-INSERT OR REPLACE INTO UserEntity(id, firebaseUid, email, displayName, isGuest, selectedSymbol, priorities, ageRange, profession, relationshipStatus, mindset, hasCompletedOnboarding, createdAt, lastSyncedAt)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO UserEntity(id, firebaseUid, email, displayName, isGuest, selectedSymbol, priorities, ageRange, profession, relationshipStatus, mindset, hasCompletedOnboarding, createdAt, lastSyncedAt, sync_updated_at, is_deleted, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getCurrentUser:
-SELECT * FROM UserEntity LIMIT 1;
+SELECT * FROM UserEntity WHERE is_deleted = 0 ORDER BY createdAt DESC LIMIT 1;
+
+getUserByFirebaseUid:
+SELECT * FROM UserEntity WHERE firebaseUid = ? AND is_deleted = 0 LIMIT 1;
+
+deleteAllUsers:
+DELETE FROM UserEntity;
 
 updateUser:
 UPDATE UserEntity
-SET firebaseUid = ?, email = ?, displayName = ?, isGuest = ?, selectedSymbol = ?, priorities = ?, ageRange = ?, profession = ?, relationshipStatus = ?, mindset = ?, hasCompletedOnboarding = ?, lastSyncedAt = ?
+SET firebaseUid = ?, email = ?, displayName = ?, isGuest = ?, selectedSymbol = ?, priorities = ?, ageRange = ?, profession = ?, relationshipStatus = ?, mindset = ?, hasCompletedOnboarding = ?, lastSyncedAt = ?, sync_updated_at = ?, is_deleted = ?, sync_version = ?
 WHERE id = ?;
 
 updateOnboardingData:
 UPDATE UserEntity
-SET selectedSymbol = ?, priorities = ?, ageRange = ?, profession = ?, relationshipStatus = ?, mindset = ?, hasCompletedOnboarding = 1
+SET selectedSymbol = ?, priorities = ?, ageRange = ?, profession = ?, relationshipStatus = ?, mindset = ?, hasCompletedOnboarding = 1, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 deleteUser:
@@ -318,6 +344,10 @@ CREATE TABLE IF NOT EXISTS HabitEntity (
     isActive INTEGER NOT NULL DEFAULT 1,
     createdAt TEXT NOT NULL,
     reminderTime TEXT,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT,
     FOREIGN KEY (linkedGoalId) REFERENCES GoalEntity(id) ON DELETE SET NULL
 );
 
@@ -327,64 +357,68 @@ CREATE TABLE IF NOT EXISTS HabitCheckInEntity (
     date TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 1,
     notes TEXT NOT NULL DEFAULT '',
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT,
     FOREIGN KEY (habitId) REFERENCES HabitEntity(id) ON DELETE CASCADE
 );
 
 -- Habit queries
 insertHabit:
-INSERT OR REPLACE INTO HabitEntity(id, title, description, category, frequency, targetCount, currentStreak, longestStreak, totalCompletions, lastCompletedDate, linkedGoalId, correlationScore, isActive, createdAt, reminderTime)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO HabitEntity(id, title, description, category, frequency, targetCount, currentStreak, longestStreak, totalCompletions, lastCompletedDate, linkedGoalId, correlationScore, isActive, createdAt, reminderTime, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getAllHabits:
-SELECT * FROM HabitEntity WHERE isActive = 1 ORDER BY createdAt DESC;
+SELECT * FROM HabitEntity WHERE isActive = 1 AND is_deleted = 0 ORDER BY createdAt DESC;
 
 getHabitById:
-SELECT * FROM HabitEntity WHERE id = ?;
+SELECT * FROM HabitEntity WHERE id = ? AND is_deleted = 0;
 
 getHabitsByCategory:
-SELECT * FROM HabitEntity WHERE category = ? AND isActive = 1;
+SELECT * FROM HabitEntity WHERE category = ? AND isActive = 1 AND is_deleted = 0;
 
 getHabitsByGoalId:
-SELECT * FROM HabitEntity WHERE linkedGoalId = ? AND isActive = 1;
+SELECT * FROM HabitEntity WHERE linkedGoalId = ? AND isActive = 1 AND is_deleted = 0;
 
 updateHabit:
 UPDATE HabitEntity
-SET title = ?, description = ?, category = ?, frequency = ?, targetCount = ?, linkedGoalId = ?, reminderTime = ?
+SET title = ?, description = ?, category = ?, frequency = ?, targetCount = ?, linkedGoalId = ?, reminderTime = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 updateHabitStreak:
 UPDATE HabitEntity
-SET currentStreak = ?, longestStreak = ?, totalCompletions = ?, lastCompletedDate = ?
+SET currentStreak = ?, longestStreak = ?, totalCompletions = ?, lastCompletedDate = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 updateHabitCorrelation:
 UPDATE HabitEntity
-SET correlationScore = ?
+SET correlationScore = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 deactivateHabit:
-UPDATE HabitEntity SET isActive = 0 WHERE id = ?;
+UPDATE HabitEntity SET isActive = 0, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?;
 
 deleteHabit:
 DELETE FROM HabitEntity WHERE id = ?;
 
 -- Habit check-in queries
 insertHabitCheckIn:
-INSERT OR REPLACE INTO HabitCheckInEntity(id, habitId, date, completed, notes)
-VALUES (?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO HabitCheckInEntity(id, habitId, date, completed, notes, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 insertHabitCheckInOrIgnore:
-INSERT OR IGNORE INTO HabitCheckInEntity(id, habitId, date, completed, notes)
-VALUES (?, ?, ?, ?, ?);
+INSERT OR IGNORE INTO HabitCheckInEntity(id, habitId, date, completed, notes, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getCheckInsByHabitId:
-SELECT * FROM HabitCheckInEntity WHERE habitId = ? ORDER BY date DESC;
+SELECT * FROM HabitCheckInEntity WHERE habitId = ? AND is_deleted = 0 ORDER BY date DESC;
 
 getCheckInsByDate:
-SELECT * FROM HabitCheckInEntity WHERE date = ?;
+SELECT * FROM HabitCheckInEntity WHERE date = ? AND is_deleted = 0;
 
 getCheckInByHabitAndDate:
-SELECT * FROM HabitCheckInEntity WHERE habitId = ? AND date = ? LIMIT 1;
+SELECT * FROM HabitCheckInEntity WHERE habitId = ? AND date = ? AND is_deleted = 0 LIMIT 1;
 
 -- Delete duplicate check-ins (keeps the first one)
 deleteDuplicateCheckIns:
@@ -397,7 +431,7 @@ deleteCheckIn:
 DELETE FROM HabitCheckInEntity WHERE id = ?;
 
 getCheckInsInRange:
-SELECT * FROM HabitCheckInEntity WHERE habitId = ? AND date >= ? AND date <= ? ORDER BY date ASC;
+SELECT * FROM HabitCheckInEntity WHERE habitId = ? AND date >= ? AND date <= ? AND is_deleted = 0 ORDER BY date ASC;
 
 getTodayCheckIns:
 SELECT h.id, h.title, h.description, h.category, h.frequency, h.targetCount,
@@ -406,7 +440,7 @@ SELECT h.id, h.title, h.description, h.category, h.frequency, h.targetCount,
        c.completed
 FROM HabitEntity h
 LEFT JOIN HabitCheckInEntity c ON h.id = c.habitId AND c.date = ?
-WHERE h.isActive = 1;
+WHERE h.isActive = 1 AND h.is_deleted = 0;
 
 getHabitCompletionStats:
 SELECT habitId, COUNT(*)
@@ -435,56 +469,60 @@ CREATE TABLE IF NOT EXISTS JournalEntryEntity (
     date TEXT NOT NULL,
     createdAt TEXT NOT NULL,
     updatedAt TEXT,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT,
     FOREIGN KEY (linkedGoalId) REFERENCES GoalEntity(id) ON DELETE SET NULL,
     FOREIGN KEY (linkedHabitId) REFERENCES HabitEntity(id) ON DELETE SET NULL
 );
 
 -- Journal queries
 insertJournalEntry:
-INSERT OR REPLACE INTO JournalEntryEntity(id, title, content, mood, linkedGoalId, linkedHabitId, promptUsed, tags, date, createdAt, updatedAt)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO JournalEntryEntity(id, title, content, mood, linkedGoalId, linkedHabitId, promptUsed, tags, date, createdAt, updatedAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getAllJournalEntries:
-SELECT * FROM JournalEntryEntity ORDER BY date DESC, createdAt DESC;
+SELECT * FROM JournalEntryEntity WHERE is_deleted = 0 ORDER BY date DESC, createdAt DESC;
 
 getJournalEntryById:
-SELECT * FROM JournalEntryEntity WHERE id = ?;
+SELECT * FROM JournalEntryEntity WHERE id = ? AND is_deleted = 0;
 
 getJournalEntriesByDate:
-SELECT * FROM JournalEntryEntity WHERE date = ? ORDER BY createdAt DESC;
+SELECT * FROM JournalEntryEntity WHERE date = ? AND is_deleted = 0 ORDER BY createdAt DESC;
 
 getJournalEntriesByGoalId:
-SELECT * FROM JournalEntryEntity WHERE linkedGoalId = ? ORDER BY date DESC;
+SELECT * FROM JournalEntryEntity WHERE linkedGoalId = ? AND is_deleted = 0 ORDER BY date DESC;
 
 getJournalEntriesByMood:
-SELECT * FROM JournalEntryEntity WHERE mood = ? ORDER BY date DESC;
+SELECT * FROM JournalEntryEntity WHERE mood = ? AND is_deleted = 0 ORDER BY date DESC;
 
 getJournalEntriesInRange:
-SELECT * FROM JournalEntryEntity WHERE date >= ? AND date <= ? ORDER BY date DESC;
+SELECT * FROM JournalEntryEntity WHERE date >= ? AND date <= ? AND is_deleted = 0 ORDER BY date DESC;
 
 updateJournalEntry:
 UPDATE JournalEntryEntity
-SET title = ?, content = ?, mood = ?, linkedGoalId = ?, linkedHabitId = ?, promptUsed = ?, tags = ?, updatedAt = ?
+SET title = ?, content = ?, mood = ?, linkedGoalId = ?, linkedHabitId = ?, promptUsed = ?, tags = ?, updatedAt = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 getJournalEntriesByHabitId:
-SELECT * FROM JournalEntryEntity WHERE linkedHabitId = ? ORDER BY date DESC;
+SELECT * FROM JournalEntryEntity WHERE linkedHabitId = ? AND is_deleted = 0 ORDER BY date DESC;
 
 deleteJournalEntry:
 DELETE FROM JournalEntryEntity WHERE id = ?;
 
 searchJournalEntries:
 SELECT * FROM JournalEntryEntity
-WHERE title LIKE '%' || ? || '%' OR content LIKE '%' || ? || '%'
+WHERE (title LIKE '%' || ? || '%' OR content LIKE '%' || ? || '%') AND is_deleted = 0
 ORDER BY date DESC;
 
 getRecentJournalEntries:
-SELECT * FROM JournalEntryEntity ORDER BY date DESC, createdAt DESC LIMIT ?;
+SELECT * FROM JournalEntryEntity WHERE is_deleted = 0 ORDER BY date DESC, createdAt DESC LIMIT ?;
 
 getMoodCountInRange:
 SELECT mood, COUNT(*)
 FROM JournalEntryEntity
-WHERE date >= ? AND date <= ?
+WHERE date >= ? AND date <= ? AND is_deleted = 0
 GROUP BY mood;
 
 -- Indexes for journal
@@ -498,7 +536,11 @@ CREATE TABLE IF NOT EXISTS BadgeEntity (
     id TEXT PRIMARY KEY NOT NULL,
     badgeType TEXT NOT NULL,
     earnedAt TEXT NOT NULL,
-    isNew INTEGER NOT NULL DEFAULT 1
+    isNew INTEGER NOT NULL DEFAULT 1,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
 );
 
 -- Challenge Table for active/completed challenges
@@ -511,63 +553,67 @@ CREATE TABLE IF NOT EXISTS ChallengeEntity (
     targetProgress INTEGER NOT NULL,
     isCompleted INTEGER NOT NULL DEFAULT 0,
     completedAt TEXT,
-    xpEarned INTEGER NOT NULL DEFAULT 0
+    xpEarned INTEGER NOT NULL DEFAULT 0,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
 );
 
 -- Badge queries
 insertBadge:
-INSERT OR REPLACE INTO BadgeEntity(id, badgeType, earnedAt, isNew)
-VALUES (?, ?, ?, ?);
+INSERT OR REPLACE INTO BadgeEntity(id, badgeType, earnedAt, isNew, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 getAllBadges:
-SELECT * FROM BadgeEntity ORDER BY earnedAt DESC;
+SELECT * FROM BadgeEntity WHERE is_deleted = 0 ORDER BY earnedAt DESC;
 
 getBadgeByType:
-SELECT * FROM BadgeEntity WHERE badgeType = ?;
+SELECT * FROM BadgeEntity WHERE badgeType = ? AND is_deleted = 0;
 
 hasBadge:
-SELECT COUNT(*) FROM BadgeEntity WHERE badgeType = ?;
+SELECT COUNT(*) FROM BadgeEntity WHERE badgeType = ? AND is_deleted = 0;
 
 markBadgeAsSeen:
-UPDATE BadgeEntity SET isNew = 0 WHERE id = ?;
+UPDATE BadgeEntity SET isNew = 0, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?;
 
 markAllBadgesAsSeen:
-UPDATE BadgeEntity SET isNew = 0;
+UPDATE BadgeEntity SET isNew = 0, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now');
 
 getNewBadges:
-SELECT * FROM BadgeEntity WHERE isNew = 1;
+SELECT * FROM BadgeEntity WHERE isNew = 1 AND is_deleted = 0;
 
 getBadgeCount:
-SELECT COUNT(*) FROM BadgeEntity;
+SELECT COUNT(*) FROM BadgeEntity WHERE is_deleted = 0;
 
 -- Challenge queries
 insertChallenge:
-INSERT OR REPLACE INTO ChallengeEntity(id, challengeType, startDate, endDate, currentProgress, targetProgress, isCompleted, completedAt, xpEarned)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO ChallengeEntity(id, challengeType, startDate, endDate, currentProgress, targetProgress, isCompleted, completedAt, xpEarned, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getAllChallenges:
-SELECT * FROM ChallengeEntity ORDER BY startDate DESC;
+SELECT * FROM ChallengeEntity WHERE is_deleted = 0 ORDER BY startDate DESC;
 
 getActiveChallenges:
-SELECT * FROM ChallengeEntity WHERE isCompleted = 0 AND endDate >= ? ORDER BY endDate ASC;
+SELECT * FROM ChallengeEntity WHERE isCompleted = 0 AND endDate >= ? AND is_deleted = 0 ORDER BY endDate ASC;
 
 getCompletedChallenges:
-SELECT * FROM ChallengeEntity WHERE isCompleted = 1 ORDER BY completedAt DESC;
+SELECT * FROM ChallengeEntity WHERE isCompleted = 1 AND is_deleted = 0 ORDER BY completedAt DESC;
 
 getChallengeById:
-SELECT * FROM ChallengeEntity WHERE id = ?;
+SELECT * FROM ChallengeEntity WHERE id = ? AND is_deleted = 0;
 
 getChallengeByType:
-SELECT * FROM ChallengeEntity WHERE challengeType = ? AND isCompleted = 0;
+SELECT * FROM ChallengeEntity WHERE challengeType = ? AND isCompleted = 0 AND is_deleted = 0;
 
 updateChallengeProgress:
 UPDATE ChallengeEntity
-SET currentProgress = ?
+SET currentProgress = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 completeChallenge:
 UPDATE ChallengeEntity
-SET isCompleted = 1, completedAt = ?, xpEarned = ?
+SET isCompleted = 1, completedAt = ?, xpEarned = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 deleteChallenge:
@@ -590,33 +636,37 @@ CREATE TABLE IF NOT EXISTS GoalDependencyEntity (
     targetGoalId TEXT NOT NULL,
     dependencyType TEXT NOT NULL,
     createdAt TEXT NOT NULL,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT,
     FOREIGN KEY (sourceGoalId) REFERENCES GoalEntity(id) ON DELETE CASCADE,
     FOREIGN KEY (targetGoalId) REFERENCES GoalEntity(id) ON DELETE CASCADE
 );
 
 -- Goal Dependency queries
 insertGoalDependency:
-INSERT OR REPLACE INTO GoalDependencyEntity(id, sourceGoalId, targetGoalId, dependencyType, createdAt)
-VALUES (?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO GoalDependencyEntity(id, sourceGoalId, targetGoalId, dependencyType, createdAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getAllDependencies:
-SELECT * FROM GoalDependencyEntity;
+SELECT * FROM GoalDependencyEntity WHERE is_deleted = 0;
 
 getDependenciesBySourceGoal:
-SELECT * FROM GoalDependencyEntity WHERE sourceGoalId = ?;
+SELECT * FROM GoalDependencyEntity WHERE sourceGoalId = ? AND is_deleted = 0;
 
 getDependenciesByTargetGoal:
-SELECT * FROM GoalDependencyEntity WHERE targetGoalId = ?;
+SELECT * FROM GoalDependencyEntity WHERE targetGoalId = ? AND is_deleted = 0;
 
 getDependenciesForGoal:
-SELECT * FROM GoalDependencyEntity WHERE sourceGoalId = ? OR targetGoalId = ?;
+SELECT * FROM GoalDependencyEntity WHERE (sourceGoalId = ? OR targetGoalId = ?) AND is_deleted = 0;
 
 getDependencyById:
-SELECT * FROM GoalDependencyEntity WHERE id = ?;
+SELECT * FROM GoalDependencyEntity WHERE id = ? AND is_deleted = 0;
 
 getDependencyBetweenGoals:
 SELECT * FROM GoalDependencyEntity
-WHERE (sourceGoalId = ? AND targetGoalId = ?) OR (sourceGoalId = ? AND targetGoalId = ?);
+WHERE ((sourceGoalId = ? AND targetGoalId = ?) OR (sourceGoalId = ? AND targetGoalId = ?)) AND is_deleted = 0;
 
 deleteDependency:
 DELETE FROM GoalDependencyEntity WHERE id = ?;
@@ -669,7 +719,11 @@ CREATE TABLE IF NOT EXISTS ChatSessionEntity (
     createdAt TEXT NOT NULL,
     lastMessageAt TEXT NOT NULL,
     summary TEXT,
-    coachId TEXT NOT NULL DEFAULT 'luna_general'
+    coachId TEXT NOT NULL DEFAULT 'luna_general',
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS ChatMessageEntity (
@@ -680,31 +734,35 @@ CREATE TABLE IF NOT EXISTS ChatMessageEntity (
     timestamp TEXT NOT NULL,
     relatedGoalId TEXT,
     metadata TEXT,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT,
     FOREIGN KEY (sessionId) REFERENCES ChatSessionEntity(id) ON DELETE CASCADE
 );
 
 -- Chat Session queries
 insertChatSession:
-INSERT OR REPLACE INTO ChatSessionEntity(id, title, createdAt, lastMessageAt, summary, coachId)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO ChatSessionEntity(id, title, createdAt, lastMessageAt, summary, coachId, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getAllChatSessions:
-SELECT * FROM ChatSessionEntity ORDER BY lastMessageAt DESC;
+SELECT * FROM ChatSessionEntity WHERE is_deleted = 0 ORDER BY lastMessageAt DESC;
 
 getChatSessionById:
-SELECT * FROM ChatSessionEntity WHERE id = ?;
+SELECT * FROM ChatSessionEntity WHERE id = ? AND is_deleted = 0;
 
 getChatSessionByCoachId:
-SELECT * FROM ChatSessionEntity WHERE coachId = ? LIMIT 1;
+SELECT * FROM ChatSessionEntity WHERE coachId = ? AND is_deleted = 0 LIMIT 1;
 
 updateChatSessionLastMessage:
 UPDATE ChatSessionEntity
-SET lastMessageAt = ?, title = ?
+SET lastMessageAt = ?, title = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 updateChatSessionSummary:
 UPDATE ChatSessionEntity
-SET summary = ?
+SET summary = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 deleteChatSession:
@@ -714,24 +772,24 @@ deleteOldChatSessions:
 DELETE FROM ChatSessionEntity WHERE lastMessageAt < ?;
 
 getChatSessionCount:
-SELECT COUNT(*) FROM ChatSessionEntity;
+SELECT COUNT(*) FROM ChatSessionEntity WHERE is_deleted = 0;
 
 -- Chat Message queries
 insertChatMessage:
-INSERT OR REPLACE INTO ChatMessageEntity(id, sessionId, content, role, timestamp, relatedGoalId, metadata)
-VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO ChatMessageEntity(id, sessionId, content, role, timestamp, relatedGoalId, metadata, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 updateChatMessageMetadata:
-UPDATE ChatMessageEntity SET metadata = ? WHERE id = ?;
+UPDATE ChatMessageEntity SET metadata = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?;
 
 getMessagesBySessionId:
-SELECT * FROM ChatMessageEntity WHERE sessionId = ? ORDER BY timestamp ASC;
+SELECT * FROM ChatMessageEntity WHERE sessionId = ? AND is_deleted = 0 ORDER BY timestamp ASC;
 
 getRecentMessages:
-SELECT * FROM ChatMessageEntity WHERE sessionId = ? ORDER BY timestamp DESC LIMIT ?;
+SELECT * FROM ChatMessageEntity WHERE sessionId = ? AND is_deleted = 0 ORDER BY timestamp DESC LIMIT ?;
 
 getMessageById:
-SELECT * FROM ChatMessageEntity WHERE id = ?;
+SELECT * FROM ChatMessageEntity WHERE id = ? AND is_deleted = 0;
 
 deleteMessage:
 DELETE FROM ChatMessageEntity WHERE id = ?;
@@ -740,10 +798,10 @@ deleteMessagesBySession:
 DELETE FROM ChatMessageEntity WHERE sessionId = ?;
 
 getMessageCountBySession:
-SELECT COUNT(*) FROM ChatMessageEntity WHERE sessionId = ?;
+SELECT COUNT(*) FROM ChatMessageEntity WHERE sessionId = ? AND is_deleted = 0;
 
 getLastMessageBySession:
-SELECT * FROM ChatMessageEntity WHERE sessionId = ? ORDER BY timestamp DESC LIMIT 1;
+SELECT * FROM ChatMessageEntity WHERE sessionId = ? AND is_deleted = 0 ORDER BY timestamp DESC LIMIT 1;
 
 -- Indexes for chat
 CREATE INDEX IF NOT EXISTS idx_chat_session_last_message ON ChatSessionEntity(lastMessageAt);
@@ -765,7 +823,11 @@ CREATE TABLE IF NOT EXISTS ReviewReportEntity (
     feedbackRating TEXT,
     feedbackComment TEXT,
     feedbackAt TEXT,
-    isRead INTEGER NOT NULL DEFAULT 0
+    isRead INTEGER NOT NULL DEFAULT 0,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
 );
 
 -- Review queries
@@ -773,30 +835,31 @@ insertReview:
 INSERT OR REPLACE INTO ReviewReportEntity(
     id, type, periodStart, periodEnd, generatedAt, summary,
     highlightsJson, insightsJson, recommendationsJson, statsJson,
-    feedbackRating, feedbackComment, feedbackAt, isRead
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    feedbackRating, feedbackComment, feedbackAt, isRead,
+    sync_updated_at, is_deleted, sync_version, last_synced_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getAllReviews:
-SELECT * FROM ReviewReportEntity ORDER BY generatedAt DESC;
+SELECT * FROM ReviewReportEntity WHERE is_deleted = 0 ORDER BY generatedAt DESC;
 
 getReviewById:
-SELECT * FROM ReviewReportEntity WHERE id = ?;
+SELECT * FROM ReviewReportEntity WHERE id = ? AND is_deleted = 0;
 
 getReviewsByType:
-SELECT * FROM ReviewReportEntity WHERE type = ? ORDER BY generatedAt DESC;
+SELECT * FROM ReviewReportEntity WHERE type = ? AND is_deleted = 0 ORDER BY generatedAt DESC;
 
 getLatestReviewByType:
-SELECT * FROM ReviewReportEntity WHERE type = ? ORDER BY generatedAt DESC LIMIT 1;
+SELECT * FROM ReviewReportEntity WHERE type = ? AND is_deleted = 0 ORDER BY generatedAt DESC LIMIT 1;
 
 getUnreadReviews:
-SELECT * FROM ReviewReportEntity WHERE isRead = 0 ORDER BY generatedAt DESC;
+SELECT * FROM ReviewReportEntity WHERE isRead = 0 AND is_deleted = 0 ORDER BY generatedAt DESC;
 
 markReviewAsRead:
-UPDATE ReviewReportEntity SET isRead = 1 WHERE id = ?;
+UPDATE ReviewReportEntity SET isRead = 1, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?;
 
 updateReviewFeedback:
 UPDATE ReviewReportEntity
-SET feedbackRating = ?, feedbackComment = ?, feedbackAt = ?
+SET feedbackRating = ?, feedbackComment = ?, feedbackAt = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 deleteReview:
@@ -806,10 +869,10 @@ deleteOldReviews:
 DELETE FROM ReviewReportEntity WHERE generatedAt < ?;
 
 getReviewCount:
-SELECT COUNT(*) FROM ReviewReportEntity;
+SELECT COUNT(*) FROM ReviewReportEntity WHERE is_deleted = 0;
 
 getUnreadReviewCount:
-SELECT COUNT(*) FROM ReviewReportEntity WHERE isRead = 0;
+SELECT COUNT(*) FROM ReviewReportEntity WHERE isRead = 0 AND is_deleted = 0;
 
 -- Index for reviews
 CREATE INDEX IF NOT EXISTS idx_review_type ON ReviewReportEntity(type);
@@ -833,6 +896,10 @@ CREATE TABLE IF NOT EXISTS ReminderEntity (
     snoozedUntil TEXT,
     createdAt TEXT NOT NULL,
     updatedAt TEXT,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT,
     FOREIGN KEY (linkedGoalId) REFERENCES GoalEntity(id) ON DELETE SET NULL,
     FOREIGN KEY (linkedHabitId) REFERENCES HabitEntity(id) ON DELETE SET NULL
 );
@@ -877,61 +944,62 @@ insertReminder:
 INSERT OR REPLACE INTO ReminderEntity(
     id, title, message, type, frequency, scheduledTime, scheduledDays,
     linkedGoalId, linkedHabitId, isEnabled, isSmartTiming, lastTriggeredAt,
-    snoozedUntil, createdAt, updatedAt
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    snoozedUntil, createdAt, updatedAt,
+    sync_updated_at, is_deleted, sync_version, last_synced_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getAllReminders:
-SELECT * FROM ReminderEntity ORDER BY createdAt DESC;
+SELECT * FROM ReminderEntity WHERE is_deleted = 0 ORDER BY createdAt DESC;
 
 getEnabledReminders:
-SELECT * FROM ReminderEntity WHERE isEnabled = 1 ORDER BY scheduledTime ASC;
+SELECT * FROM ReminderEntity WHERE isEnabled = 1 AND is_deleted = 0 ORDER BY scheduledTime ASC;
 
 getReminderById:
-SELECT * FROM ReminderEntity WHERE id = ?;
+SELECT * FROM ReminderEntity WHERE id = ? AND is_deleted = 0;
 
 getRemindersByGoalId:
-SELECT * FROM ReminderEntity WHERE linkedGoalId = ? AND isEnabled = 1;
+SELECT * FROM ReminderEntity WHERE linkedGoalId = ? AND isEnabled = 1 AND is_deleted = 0;
 
 getRemindersByHabitId:
-SELECT * FROM ReminderEntity WHERE linkedHabitId = ? AND isEnabled = 1;
+SELECT * FROM ReminderEntity WHERE linkedHabitId = ? AND isEnabled = 1 AND is_deleted = 0;
 
 getRemindersByType:
-SELECT * FROM ReminderEntity WHERE type = ? AND isEnabled = 1;
+SELECT * FROM ReminderEntity WHERE type = ? AND isEnabled = 1 AND is_deleted = 0;
 
 updateReminder:
 UPDATE ReminderEntity
 SET title = ?, message = ?, type = ?, frequency = ?, scheduledTime = ?,
     scheduledDays = ?, linkedGoalId = ?, linkedHabitId = ?, isEnabled = ?,
-    isSmartTiming = ?, updatedAt = ?
+    isSmartTiming = ?, updatedAt = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 updateReminderLastTriggered:
 UPDATE ReminderEntity
-SET lastTriggeredAt = ?
+SET lastTriggeredAt = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 snoozeReminder:
 UPDATE ReminderEntity
-SET snoozedUntil = ?
+SET snoozedUntil = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 enableReminder:
-UPDATE ReminderEntity SET isEnabled = 1 WHERE id = ?;
+UPDATE ReminderEntity SET isEnabled = 1, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?;
 
 disableReminder:
-UPDATE ReminderEntity SET isEnabled = 0 WHERE id = ?;
+UPDATE ReminderEntity SET isEnabled = 0, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?;
 
 enableAllReminders:
-UPDATE ReminderEntity SET isEnabled = 1;
+UPDATE ReminderEntity SET isEnabled = 1, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now');
 
 disableAllReminders:
-UPDATE ReminderEntity SET isEnabled = 0;
+UPDATE ReminderEntity SET isEnabled = 0, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now');
 
 deleteReminder:
 DELETE FROM ReminderEntity WHERE id = ?;
 
 getReminderCount:
-SELECT COUNT(*) FROM ReminderEntity WHERE isEnabled = 1;
+SELECT COUNT(*) FROM ReminderEntity WHERE isEnabled = 1 AND is_deleted = 0;
 
 -- Reminder Settings queries
 getReminderSettings:
@@ -1029,7 +1097,11 @@ CREATE TABLE IF NOT EXISTS CustomCoachEntity (
     isFromTemplate INTEGER NOT NULL DEFAULT 0,
     templateId TEXT,
     createdAt TEXT NOT NULL,
-    updatedAt TEXT
+    updatedAt TEXT,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS CoachGroupEntity (
@@ -1038,7 +1110,11 @@ CREATE TABLE IF NOT EXISTS CoachGroupEntity (
     icon TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     createdAt TEXT NOT NULL,
-    updatedAt TEXT
+    updatedAt TEXT,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS CoachGroupMemberEntity (
@@ -1047,60 +1123,64 @@ CREATE TABLE IF NOT EXISTS CoachGroupMemberEntity (
     coachType TEXT NOT NULL,
     coachId TEXT NOT NULL,
     displayOrder INTEGER NOT NULL DEFAULT 0,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT,
     FOREIGN KEY (groupId) REFERENCES CoachGroupEntity(id) ON DELETE CASCADE
 );
 
 -- Custom Coach queries
 insertCustomCoach:
-INSERT OR REPLACE INTO CustomCoachEntity(id, name, icon, iconBackgroundColor, iconAccentColor, systemPrompt, characteristics, isFromTemplate, templateId, createdAt, updatedAt)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO CustomCoachEntity(id, name, icon, iconBackgroundColor, iconAccentColor, systemPrompt, characteristics, isFromTemplate, templateId, createdAt, updatedAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getAllCustomCoaches:
-SELECT * FROM CustomCoachEntity ORDER BY createdAt DESC;
+SELECT * FROM CustomCoachEntity WHERE is_deleted = 0 ORDER BY createdAt DESC;
 
 getCustomCoachById:
-SELECT * FROM CustomCoachEntity WHERE id = ?;
+SELECT * FROM CustomCoachEntity WHERE id = ? AND is_deleted = 0;
 
 updateCustomCoach:
 UPDATE CustomCoachEntity
-SET name = ?, icon = ?, iconBackgroundColor = ?, iconAccentColor = ?, systemPrompt = ?, characteristics = ?, updatedAt = ?
+SET name = ?, icon = ?, iconBackgroundColor = ?, iconAccentColor = ?, systemPrompt = ?, characteristics = ?, updatedAt = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 deleteCustomCoach:
 DELETE FROM CustomCoachEntity WHERE id = ?;
 
 getCustomCoachCount:
-SELECT COUNT(*) FROM CustomCoachEntity;
+SELECT COUNT(*) FROM CustomCoachEntity WHERE is_deleted = 0;
 
 -- Coach Group queries
 insertCoachGroup:
-INSERT OR REPLACE INTO CoachGroupEntity(id, name, icon, description, createdAt, updatedAt)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO CoachGroupEntity(id, name, icon, description, createdAt, updatedAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getAllCoachGroups:
-SELECT * FROM CoachGroupEntity ORDER BY createdAt DESC;
+SELECT * FROM CoachGroupEntity WHERE is_deleted = 0 ORDER BY createdAt DESC;
 
 getCoachGroupById:
-SELECT * FROM CoachGroupEntity WHERE id = ?;
+SELECT * FROM CoachGroupEntity WHERE id = ? AND is_deleted = 0;
 
 updateCoachGroup:
 UPDATE CoachGroupEntity
-SET name = ?, icon = ?, description = ?, updatedAt = ?
+SET name = ?, icon = ?, description = ?, updatedAt = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 deleteCoachGroup:
 DELETE FROM CoachGroupEntity WHERE id = ?;
 
 getCoachGroupCount:
-SELECT COUNT(*) FROM CoachGroupEntity;
+SELECT COUNT(*) FROM CoachGroupEntity WHERE is_deleted = 0;
 
 -- Coach Group Member queries
 insertCoachGroupMember:
-INSERT OR REPLACE INTO CoachGroupMemberEntity(id, groupId, coachType, coachId, displayOrder)
-VALUES (?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO CoachGroupMemberEntity(id, groupId, coachType, coachId, displayOrder, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getCoachGroupMembers:
-SELECT * FROM CoachGroupMemberEntity WHERE groupId = ? ORDER BY displayOrder ASC;
+SELECT * FROM CoachGroupMemberEntity WHERE groupId = ? AND is_deleted = 0 ORDER BY displayOrder ASC;
 
 deleteCoachGroupMember:
 DELETE FROM CoachGroupMemberEntity WHERE id = ?;
@@ -1109,9 +1189,557 @@ deleteCoachGroupMembersByGroup:
 DELETE FROM CoachGroupMemberEntity WHERE groupId = ?;
 
 updateCoachGroupMemberOrder:
-UPDATE CoachGroupMemberEntity SET displayOrder = ? WHERE id = ?;
+UPDATE CoachGroupMemberEntity SET displayOrder = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?;
 
 -- Indexes for custom coaches
 CREATE INDEX IF NOT EXISTS idx_custom_coach_template ON CustomCoachEntity(templateId);
 CREATE INDEX IF NOT EXISTS idx_coach_group_member_group ON CoachGroupMemberEntity(groupId);
 CREATE INDEX IF NOT EXISTS idx_coach_group_member_coach ON CoachGroupMemberEntity(coachId);
+
+-- Focus Session Table for pomodoro-style focus timer
+CREATE TABLE IF NOT EXISTS FocusSessionEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    goalId TEXT NOT NULL,
+    milestoneId TEXT NOT NULL,
+    plannedDurationMinutes INTEGER NOT NULL,
+    actualDurationSeconds INTEGER NOT NULL DEFAULT 0,
+    wasCompleted INTEGER NOT NULL DEFAULT 0,
+    xpEarned INTEGER NOT NULL DEFAULT 0,
+    startedAt TEXT NOT NULL,
+    completedAt TEXT,
+    createdAt TEXT NOT NULL,
+    mood TEXT,
+    ambientSound TEXT,
+    focusTheme TEXT,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT,
+    FOREIGN KEY (goalId) REFERENCES GoalEntity(id) ON DELETE CASCADE,
+    FOREIGN KEY (milestoneId) REFERENCES MilestoneEntity(id) ON DELETE CASCADE
+);
+
+-- Focus Session queries
+insertFocusSession:
+INSERT OR REPLACE INTO FocusSessionEntity(id, goalId, milestoneId, plannedDurationMinutes, actualDurationSeconds, wasCompleted, xpEarned, startedAt, completedAt, createdAt, mood, ambientSound, focusTheme, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateFocusSession:
+UPDATE FocusSessionEntity
+SET actualDurationSeconds = ?, wasCompleted = ?, xpEarned = ?, completedAt = ?, mood = ?, ambientSound = ?, focusTheme = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE id = ?;
+
+getFocusSessionById:
+SELECT * FROM FocusSessionEntity WHERE id = ? AND is_deleted = 0;
+
+getFocusSessionsByGoalId:
+SELECT * FROM FocusSessionEntity WHERE goalId = ? AND is_deleted = 0 ORDER BY createdAt DESC;
+
+getFocusSessionsByMilestoneId:
+SELECT * FROM FocusSessionEntity WHERE milestoneId = ? AND is_deleted = 0 ORDER BY createdAt DESC;
+
+getCompletedFocusSessions:
+SELECT * FROM FocusSessionEntity WHERE wasCompleted = 1 AND is_deleted = 0 ORDER BY completedAt DESC;
+
+getTotalFocusSeconds:
+SELECT COALESCE(SUM(actualDurationSeconds), 0) FROM FocusSessionEntity WHERE wasCompleted = 1 AND is_deleted = 0;
+
+getTotalFocusSessionCount:
+SELECT COUNT(*) FROM FocusSessionEntity WHERE wasCompleted = 1 AND is_deleted = 0;
+
+getTodayFocusSessions:
+SELECT * FROM FocusSessionEntity WHERE startedAt LIKE ? || '%' AND is_deleted = 0 ORDER BY startedAt DESC;
+
+selectAllFocusSessions:
+SELECT * FROM FocusSessionEntity WHERE is_deleted = 0 ORDER BY createdAt DESC;
+
+-- Indexes for focus sessions
+CREATE INDEX IF NOT EXISTS idx_focus_goal ON FocusSessionEntity(goalId);
+CREATE INDEX IF NOT EXISTS idx_focus_milestone ON FocusSessionEntity(milestoneId);
+CREATE INDEX IF NOT EXISTS idx_focus_completed ON FocusSessionEntity(wasCompleted);
+CREATE INDEX IF NOT EXISTS idx_focus_started ON FocusSessionEntity(startedAt);
+
+-- ============== Retrospective Queries ==============
+
+-- Get all habits with their check-in status for a specific date
+getHabitCheckInsWithHabitForDate:
+SELECT h.id, h.title, h.description, h.category, h.frequency, h.targetCount,
+       h.currentStreak, h.longestStreak, h.totalCompletions, h.lastCompletedDate,
+       h.linkedGoalId, h.correlationScore, h.isActive, h.createdAt, h.reminderTime,
+       c.completed, c.notes AS checkInNotes
+FROM HabitEntity h
+LEFT JOIN HabitCheckInEntity c ON h.id = c.habitId AND c.date = ?
+WHERE h.isActive = 1;
+
+-- Get focus sessions for a specific date (using date prefix match on startedAt)
+getFocusSessionsByDate:
+SELECT * FROM FocusSessionEntity WHERE startedAt LIKE ? || '%' AND is_deleted = 0 ORDER BY startedAt ASC;
+
+-- Get goal changes on a specific date with goal title
+getGoalChangesOnDate:
+SELECT gh.id, gh.goalId, gh.field AS fieldName, gh.oldValue, gh.newValue, gh.changedAt, g.title AS goalTitle
+FROM GoalHistoryEntity gh
+LEFT JOIN GoalEntity g ON gh.goalId = g.id
+WHERE gh.changedAt LIKE ? || '%'
+ORDER BY gh.changedAt DESC;
+
+-- Get badges earned on a specific date
+getBadgesEarnedOnDate:
+SELECT * FROM BadgeEntity WHERE earnedAt LIKE ? || '%' ORDER BY earnedAt DESC;
+
+-- Get goals that existed on a date (created before or on that date, not archived)
+getGoalsExistingOnDate:
+SELECT * FROM GoalEntity WHERE createdAt <= ? AND isArchived = 0 AND is_deleted = 0 ORDER BY createdAt DESC;
+
+-- Get distinct dates with any activity (for calendar dot indicators)
+getDatesWithActivity:
+SELECT DISTINCT date FROM (
+    SELECT date FROM HabitCheckInEntity WHERE date >= ? AND date <= ?
+    UNION
+    SELECT date FROM JournalEntryEntity WHERE date >= ? AND date <= ?
+    UNION
+    SELECT SUBSTR(startedAt, 1, 10) AS date FROM FocusSessionEntity WHERE SUBSTR(startedAt, 1, 10) >= ? AND SUBSTR(startedAt, 1, 10) <= ?
+    UNION
+    SELECT SUBSTR(changedAt, 1, 10) AS date FROM GoalHistoryEntity WHERE SUBSTR(changedAt, 1, 10) >= ? AND SUBSTR(changedAt, 1, 10) <= ?
+    UNION
+    SELECT SUBSTR(earnedAt, 1, 10) AS date FROM BadgeEntity WHERE SUBSTR(earnedAt, 1, 10) >= ? AND SUBSTR(earnedAt, 1, 10) <= ?
+);
+
+-- ============== Sync Queries ==============
+
+-- Goal sync queries
+getUnsyncedGoals:
+SELECT * FROM GoalEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedGoals:
+SELECT * FROM GoalEntity WHERE is_deleted = 1;
+
+markGoalSynced:
+UPDATE GoalEntity SET last_synced_at = ? WHERE id = ?;
+
+softDeleteGoal:
+UPDATE GoalEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedGoals:
+DELETE FROM GoalEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+-- Milestone sync queries
+getUnsyncedMilestones:
+SELECT * FROM MilestoneEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedMilestones:
+SELECT * FROM MilestoneEntity WHERE is_deleted = 1;
+
+markMilestoneSynced:
+UPDATE MilestoneEntity SET last_synced_at = ? WHERE id = ?;
+
+softDeleteMilestone:
+UPDATE MilestoneEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedMilestones:
+DELETE FROM MilestoneEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+-- GoalHistory sync queries
+getUnsyncedGoalHistory:
+SELECT * FROM GoalHistoryEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedGoalHistory:
+SELECT * FROM GoalHistoryEntity WHERE is_deleted = 1;
+
+markGoalHistorySynced:
+UPDATE GoalHistoryEntity SET last_synced_at = ? WHERE id = ?;
+
+softDeleteGoalHistory:
+UPDATE GoalHistoryEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedGoalHistory:
+DELETE FROM GoalHistoryEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+-- UserProgress sync queries
+getUnsyncedUserProgress:
+SELECT * FROM UserProgressEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedUserProgress:
+SELECT * FROM UserProgressEntity WHERE is_deleted = 1;
+
+markUserProgressSynced:
+UPDATE UserProgressEntity SET last_synced_at = ? WHERE id = ?;
+
+softDeleteUserProgress:
+UPDATE UserProgressEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedUserProgress:
+DELETE FROM UserProgressEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+-- User sync queries
+getUnsyncedUsers:
+SELECT * FROM UserEntity WHERE (lastSyncedAt IS NULL OR sync_updated_at > lastSyncedAt) AND is_deleted = 0;
+
+getDeletedUsers:
+SELECT * FROM UserEntity WHERE is_deleted = 1;
+
+markUserSynced:
+UPDATE UserEntity SET lastSyncedAt = ? WHERE id = ?;
+
+softDeleteUser:
+UPDATE UserEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedUsers:
+DELETE FROM UserEntity WHERE is_deleted = 1;
+
+-- Habit sync queries
+getUnsyncedHabits:
+SELECT * FROM HabitEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedHabits:
+SELECT * FROM HabitEntity WHERE is_deleted = 1;
+
+markHabitSynced:
+UPDATE HabitEntity SET last_synced_at = ? WHERE id = ?;
+
+softDeleteHabit:
+UPDATE HabitEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedHabits:
+DELETE FROM HabitEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+-- HabitCheckIn sync queries
+getUnsyncedHabitCheckIns:
+SELECT * FROM HabitCheckInEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedHabitCheckIns:
+SELECT * FROM HabitCheckInEntity WHERE is_deleted = 1;
+
+markHabitCheckInSynced:
+UPDATE HabitCheckInEntity SET last_synced_at = ? WHERE id = ?;
+
+softDeleteHabitCheckIn:
+UPDATE HabitCheckInEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedHabitCheckIns:
+DELETE FROM HabitCheckInEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+-- JournalEntry sync queries
+getUnsyncedJournalEntries:
+SELECT * FROM JournalEntryEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedJournalEntries:
+SELECT * FROM JournalEntryEntity WHERE is_deleted = 1;
+
+markJournalEntrySynced:
+UPDATE JournalEntryEntity SET last_synced_at = ? WHERE id = ?;
+
+softDeleteJournalEntry:
+UPDATE JournalEntryEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedJournalEntries:
+DELETE FROM JournalEntryEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+-- Badge sync queries
+getUnsyncedBadges:
+SELECT * FROM BadgeEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedBadges:
+SELECT * FROM BadgeEntity WHERE is_deleted = 1;
+
+markBadgeSynced:
+UPDATE BadgeEntity SET last_synced_at = ? WHERE id = ?;
+
+softDeleteBadge:
+UPDATE BadgeEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedBadges:
+DELETE FROM BadgeEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+-- Challenge sync queries
+getUnsyncedChallenges:
+SELECT * FROM ChallengeEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedChallenges:
+SELECT * FROM ChallengeEntity WHERE is_deleted = 1;
+
+markChallengeSynced:
+UPDATE ChallengeEntity SET last_synced_at = ? WHERE id = ?;
+
+softDeleteChallenge:
+UPDATE ChallengeEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedChallenges:
+DELETE FROM ChallengeEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+-- GoalDependency sync queries
+getUnsyncedGoalDependencies:
+SELECT * FROM GoalDependencyEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedGoalDependencies:
+SELECT * FROM GoalDependencyEntity WHERE is_deleted = 1;
+
+markGoalDependencySynced:
+UPDATE GoalDependencyEntity SET last_synced_at = ? WHERE id = ?;
+
+softDeleteGoalDependency:
+UPDATE GoalDependencyEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedGoalDependencies:
+DELETE FROM GoalDependencyEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+-- ChatSession sync queries
+getUnsyncedChatSessions:
+SELECT * FROM ChatSessionEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedChatSessions:
+SELECT * FROM ChatSessionEntity WHERE is_deleted = 1;
+
+markChatSessionSynced:
+UPDATE ChatSessionEntity SET last_synced_at = ? WHERE id = ?;
+
+softDeleteChatSession:
+UPDATE ChatSessionEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedChatSessions:
+DELETE FROM ChatSessionEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+-- ChatMessage sync queries
+getUnsyncedChatMessages:
+SELECT * FROM ChatMessageEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedChatMessages:
+SELECT * FROM ChatMessageEntity WHERE is_deleted = 1;
+
+markChatMessageSynced:
+UPDATE ChatMessageEntity SET last_synced_at = ? WHERE id = ?;
+
+softDeleteChatMessage:
+UPDATE ChatMessageEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedChatMessages:
+DELETE FROM ChatMessageEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+-- ReviewReport sync queries
+getUnsyncedReviewReports:
+SELECT * FROM ReviewReportEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedReviewReports:
+SELECT * FROM ReviewReportEntity WHERE is_deleted = 1;
+
+markReviewReportSynced:
+UPDATE ReviewReportEntity SET last_synced_at = ? WHERE id = ?;
+
+softDeleteReviewReport:
+UPDATE ReviewReportEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedReviewReports:
+DELETE FROM ReviewReportEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+-- Reminder sync queries
+getUnsyncedReminders:
+SELECT * FROM ReminderEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedReminders:
+SELECT * FROM ReminderEntity WHERE is_deleted = 1;
+
+markReminderSynced:
+UPDATE ReminderEntity SET last_synced_at = ? WHERE id = ?;
+
+softDeleteReminder:
+UPDATE ReminderEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedReminders:
+DELETE FROM ReminderEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+-- CustomCoach sync queries
+getUnsyncedCustomCoaches:
+SELECT * FROM CustomCoachEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedCustomCoaches:
+SELECT * FROM CustomCoachEntity WHERE is_deleted = 1;
+
+markCustomCoachSynced:
+UPDATE CustomCoachEntity SET last_synced_at = ? WHERE id = ?;
+
+softDeleteCustomCoach:
+UPDATE CustomCoachEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedCustomCoaches:
+DELETE FROM CustomCoachEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+-- CoachGroup sync queries
+getUnsyncedCoachGroups:
+SELECT * FROM CoachGroupEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedCoachGroups:
+SELECT * FROM CoachGroupEntity WHERE is_deleted = 1;
+
+markCoachGroupSynced:
+UPDATE CoachGroupEntity SET last_synced_at = ? WHERE id = ?;
+
+softDeleteCoachGroup:
+UPDATE CoachGroupEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedCoachGroups:
+DELETE FROM CoachGroupEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+-- CoachGroupMember sync queries
+getUnsyncedCoachGroupMembers:
+SELECT * FROM CoachGroupMemberEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedCoachGroupMembers:
+SELECT * FROM CoachGroupMemberEntity WHERE is_deleted = 1;
+
+markCoachGroupMemberSynced:
+UPDATE CoachGroupMemberEntity SET last_synced_at = ? WHERE id = ?;
+
+softDeleteCoachGroupMember:
+UPDATE CoachGroupMemberEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedCoachGroupMembers:
+DELETE FROM CoachGroupMemberEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+-- FocusSession sync queries
+getUnsyncedFocusSessions:
+SELECT * FROM FocusSessionEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedFocusSessions:
+SELECT * FROM FocusSessionEntity WHERE is_deleted = 1;
+
+markFocusSessionSynced:
+UPDATE FocusSessionEntity SET last_synced_at = ? WHERE id = ?;
+
+softDeleteFocusSession:
+UPDATE FocusSessionEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+purgeDeletedFocusSessions:
+DELETE FROM FocusSessionEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+-- ============== Upsert From Sync Queries ==============
+
+upsertGoalFromSync:
+INSERT OR REPLACE INTO GoalEntity(id, category, title, description, status, timeline, dueDate, progress, notes, createdAt, completionRate, isArchived, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertMilestoneFromSync:
+INSERT OR REPLACE INTO MilestoneEntity(id, goalId, title, isCompleted, dueDate, createdAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertGoalHistoryFromSync:
+INSERT OR REPLACE INTO GoalHistoryEntity(id, goalId, field, oldValue, newValue, changedAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertUserProgressFromSync:
+INSERT OR REPLACE INTO UserProgressEntity(id, currentStreak, lastCheckInDate, totalXp, currentLevel, goalsCompleted, habitsCompleted, journalEntriesCount, longestStreak, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertUserFromSync:
+INSERT OR REPLACE INTO UserEntity(id, firebaseUid, email, displayName, isGuest, selectedSymbol, priorities, ageRange, profession, relationshipStatus, mindset, hasCompletedOnboarding, createdAt, lastSyncedAt, sync_updated_at, is_deleted, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertHabitFromSync:
+INSERT OR REPLACE INTO HabitEntity(id, title, description, category, frequency, targetCount, currentStreak, longestStreak, totalCompletions, lastCompletedDate, linkedGoalId, correlationScore, isActive, createdAt, reminderTime, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertHabitCheckInFromSync:
+INSERT OR REPLACE INTO HabitCheckInEntity(id, habitId, date, completed, notes, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertJournalEntryFromSync:
+INSERT OR REPLACE INTO JournalEntryEntity(id, title, content, mood, linkedGoalId, linkedHabitId, promptUsed, tags, date, createdAt, updatedAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertBadgeFromSync:
+INSERT OR REPLACE INTO BadgeEntity(id, badgeType, earnedAt, isNew, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertChallengeFromSync:
+INSERT OR REPLACE INTO ChallengeEntity(id, challengeType, startDate, endDate, currentProgress, targetProgress, isCompleted, completedAt, xpEarned, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertGoalDependencyFromSync:
+INSERT OR REPLACE INTO GoalDependencyEntity(id, sourceGoalId, targetGoalId, dependencyType, createdAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertChatSessionFromSync:
+INSERT OR REPLACE INTO ChatSessionEntity(id, title, createdAt, lastMessageAt, summary, coachId, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertChatMessageFromSync:
+INSERT OR REPLACE INTO ChatMessageEntity(id, sessionId, content, role, timestamp, relatedGoalId, metadata, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertReviewFromSync:
+INSERT OR REPLACE INTO ReviewReportEntity(id, type, periodStart, periodEnd, generatedAt, summary, highlightsJson, insightsJson, recommendationsJson, statsJson, feedbackRating, feedbackComment, feedbackAt, isRead, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertReminderFromSync:
+INSERT OR REPLACE INTO ReminderEntity(id, title, message, type, frequency, scheduledTime, scheduledDays, linkedGoalId, linkedHabitId, isEnabled, isSmartTiming, lastTriggeredAt, snoozedUntil, createdAt, updatedAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertCustomCoachFromSync:
+INSERT OR REPLACE INTO CustomCoachEntity(id, name, icon, iconBackgroundColor, iconAccentColor, systemPrompt, characteristics, isFromTemplate, templateId, createdAt, updatedAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertCoachGroupFromSync:
+INSERT OR REPLACE INTO CoachGroupEntity(id, name, icon, description, createdAt, updatedAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertCoachGroupMemberFromSync:
+INSERT OR REPLACE INTO CoachGroupMemberEntity(id, groupId, coachType, coachId, displayOrder, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertFocusSessionFromSync:
+INSERT OR REPLACE INTO FocusSessionEntity(id, goalId, milestoneId, plannedDurationMinutes, actualDurationSeconds, wasCompleted, xpEarned, startedAt, completedAt, createdAt, mood, ambientSound, focusTheme, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Logout: delete all data from every table
+deleteAllMilestones:
+DELETE FROM MilestoneEntity;
+
+deleteAllGoalHistory:
+DELETE FROM GoalHistoryEntity;
+
+deleteAllUserProgress:
+DELETE FROM UserProgressEntity;
+
+deleteAllHabits:
+DELETE FROM HabitEntity;
+
+deleteAllHabitCheckIns:
+DELETE FROM HabitCheckInEntity;
+
+deleteAllJournalEntries:
+DELETE FROM JournalEntryEntity;
+
+deleteAllBadges:
+DELETE FROM BadgeEntity;
+
+deleteAllChallenges:
+DELETE FROM ChallengeEntity;
+
+deleteAllGoalDependencies:
+DELETE FROM GoalDependencyEntity;
+
+deleteAllChatMessages:
+DELETE FROM ChatMessageEntity;
+
+deleteAllChatSessions:
+DELETE FROM ChatSessionEntity;
+
+deleteAllReviewReports:
+DELETE FROM ReviewReportEntity;
+
+deleteAllReminders:
+DELETE FROM ReminderEntity;
+
+deleteAllScheduledNotifications:
+DELETE FROM ScheduledNotificationEntity;
+
+deleteAllCustomCoaches:
+DELETE FROM CustomCoachEntity;
+
+deleteAllCoachGroups:
+DELETE FROM CoachGroupEntity;
+
+deleteAllCoachGroupMembers:
+DELETE FROM CoachGroupMemberEntity;
+
+deleteAllFocusSessions:
+DELETE FROM FocusSessionEntity;

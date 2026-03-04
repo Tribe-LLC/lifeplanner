@@ -1,5 +1,6 @@
 package az.tribe.lifeplanner.di
 
+import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSString
 import platform.Foundation.NSURL
@@ -42,7 +43,7 @@ class IOSFileSharer : FileSharer {
                 completion = null
             )
         } catch (e: Exception) {
-            println("Error sharing file: ${e.message}")
+            Logger.e("IOSFileSharer", e) { "Error sharing file: ${e.message}" }
         }
     }
 

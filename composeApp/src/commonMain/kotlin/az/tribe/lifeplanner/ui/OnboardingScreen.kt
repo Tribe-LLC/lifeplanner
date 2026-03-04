@@ -44,6 +44,7 @@ import az.tribe.lifeplanner.domain.repository.UserRepository
 import az.tribe.lifeplanner.ui.theme.modernColors
 import az.tribe.lifeplanner.ui.viewmodel.AuthState
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
@@ -75,7 +76,7 @@ fun OnboardingScreen(
                             userRepository.saveOnboardingData(currentUser.id, data)
                         }
                     } catch (e: Exception) {
-                        println("Failed to save onboarding data: ${e.message}")
+                        Logger.e("OnboardingScreen", e) { "Failed to save onboarding data: ${e.message}" }
                     }
                     pendingOnboardingData = null
                 }

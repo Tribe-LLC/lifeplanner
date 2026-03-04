@@ -2,6 +2,7 @@ package az.tribe.lifeplanner.ui.balance
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import co.touchlab.kermit.Logger
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.model.BalanceInsight
 import az.tribe.lifeplanner.domain.model.BalanceRecommendation
@@ -82,7 +83,8 @@ class LifeBalanceViewModel(
                     report = updatedReport,
                     isPreGenerating = false
                 )
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Logger.e("LifeBalanceViewModel") { "preGenerateGoals failed: ${e.message}" }
                 _uiState.value = _uiState.value.copy(isPreGenerating = false)
             }
         }

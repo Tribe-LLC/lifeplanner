@@ -1,6 +1,7 @@
 package az.tribe.lifeplanner.ui
 
 import androidx.compose.animation.animateColorAsState
+import co.touchlab.kermit.Logger
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -71,24 +72,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import az.tribe.lifeplanner.BuildKonfig
-import az.tribe.lifeplanner.di.GEMINI_PRO
+import az.tribe.lifeplanner.data.network.AiProxyService
 import az.tribe.lifeplanner.domain.enum.Mood
 import az.tribe.lifeplanner.domain.model.JournalEntry
 import az.tribe.lifeplanner.ui.journal.JournalViewModel
-import io.ktor.client.HttpClient
-import io.ktor.client.request.parameter
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.client.request.url
-import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
@@ -99,14 +92,13 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
-import org.koin.core.qualifier.named
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JournalEntryDetailScreen(
     entryId: String,
     viewModel: JournalViewModel = koinViewModel(),
-    httpClient: HttpClient = koinInject(qualifier = named("gemini")),
+    aiProxy: AiProxyService = koinInject(),
     onBackClick: () -> Unit,
     onNavigateToGoal: (String) -> Unit = {}
 ) {
@@ -256,7 +248,7 @@ fun JournalEntryDetailScreen(
     if (showEditSheet) {
         EditJournalEntryBottomSheet(
             entry = entry,
-            httpClient = httpClient,
+            aiProxy = aiProxy,
             onDismiss = { showEditSheet = false },
             onSave = { title, content, mood, tags ->
                 viewModel.updateEntry(
@@ -570,7 +562,7 @@ private fun DeleteEntryDialog(
 @Composable
 private fun EditJournalEntryBottomSheet(
     entry: JournalEntry,
-    httpClient: HttpClient,
+    aiProxy: AiProxyService,
     onDismiss: () -> Unit,
     onSave: (String, String, Mood, List<String>) -> Unit
 ) {
@@ -661,7 +653,7 @@ private fun EditJournalEntryBottomSheet(
                                     isGeneratingAi = true
                                     try {
                                         val result = generateAiContentForEdit(
-                                            httpClient = httpClient,
+                                            aiProxy = aiProxy,
                                             mood = selectedMood,
                                             userTitle = title,
                                             prompt = entry.promptUsed ?: ""
@@ -673,7 +665,7 @@ private fun EditJournalEntryBottomSheet(
                                             }
                                         }
                                     } catch (e: Exception) {
-                                        e.printStackTrace()
+                                        Logger.e("JournalEntryDetail") { "AI content regeneration failed: ${e.message}" }
                                     } finally {
                                         isGeneratingAi = false
                                     }
@@ -766,15 +758,12 @@ private fun EditJournalEntryBottomSheet(
  * Generates content and tags for editing an entry using Gemini structured output
  */
 private suspend fun generateAiContentForEdit(
-    httpClient: HttpClient,
+    aiProxy: AiProxyService,
     mood: Mood,
     userTitle: String,
     prompt: String
 ): Pair<String, List<String>>? = withContext(Dispatchers.IO) {
     try {
-        val apiKey = BuildKonfig.GEMINI_API_KEY
-        if (apiKey.isBlank()) return@withContext null
-
         val aiPrompt = """
 You are a personal journaling assistant helping someone write a journal entry.
 
@@ -791,72 +780,32 @@ Generate a personal, first-person journal entry (2-3 paragraphs) that:
 Also suggest 2-4 relevant tags (single words, no hashtags).
 """.trimIndent()
 
-        val requestBody = buildJsonObject {
-            putJsonArray("contents") {
-                addJsonObject {
-                    putJsonArray("parts") {
-                        addJsonObject {
-                            put("text", aiPrompt)
-                        }
-                    }
+        val schema = buildJsonObject {
+            put("type", "object")
+            putJsonObject("properties") {
+                putJsonObject("content") { put("type", "string") }
+                putJsonObject("tags") {
+                    put("type", "array")
+                    putJsonObject("items") { put("type", "string") }
                 }
             }
-            putJsonObject("generationConfig") {
-                put("responseMimeType", "application/json")
-                putJsonObject("responseSchema") {
-                    put("type", "object")
-                    putJsonObject("properties") {
-                        putJsonObject("content") {
-                            put("type", "string")
-                        }
-                        putJsonObject("tags") {
-                            put("type", "array")
-                            putJsonObject("items") {
-                                put("type", "string")
-                            }
-                        }
-                    }
-                    putJsonArray("required") {
-                        add(JsonPrimitive("content"))
-                        add(JsonPrimitive("tags"))
-                    }
-                }
+            putJsonArray("required") {
+                add(JsonPrimitive("content"))
+                add(JsonPrimitive("tags"))
             }
         }
 
-        val response = httpClient.post {
-            url("v1beta/models/$GEMINI_PRO:generateContent")
-            parameter("key", apiKey)
-            setBody(requestBody)
-        }
+        val responseText = aiProxy.generateStructuredJson(aiPrompt, schema)
 
-        val responseText = response.bodyAsText()
         val json = Json { ignoreUnknownKeys = true }
-        val responseJson = json.parseToJsonElement(responseText).jsonObject
-        val candidates = responseJson["candidates"]?.jsonArray
-        val textContent = candidates?.firstOrNull()
-            ?.jsonObject?.get("content")
-            ?.jsonObject?.get("parts")
-            ?.jsonArray?.firstOrNull()
-            ?.jsonObject?.get("text")
-            ?.jsonPrimitive?.contentOrNull
-
-        if (textContent != null) {
-            try {
-                // With structured output, Gemini returns valid JSON directly
-                val entryJson = json.parseToJsonElement(textContent).jsonObject
-                val generatedContent = entryJson["content"]?.jsonPrimitive?.contentOrNull
-                val generatedTags = entryJson["tags"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
-                if (generatedContent != null) {
-                    return@withContext Pair(generatedContent, generatedTags)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-        null
+        val entryJson = json.parseToJsonElement(responseText).jsonObject
+        val generatedContent = entryJson["content"]?.jsonPrimitive?.contentOrNull
+        val generatedTags = entryJson["tags"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
+        if (generatedContent != null) {
+            Pair(generatedContent, generatedTags)
+        } else null
     } catch (e: Exception) {
-        e.printStackTrace()
+        Logger.e("JournalEntryDetail") { "AI journal regeneration failed: ${e.message}" }
         null
     }
 }

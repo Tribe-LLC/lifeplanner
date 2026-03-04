@@ -45,6 +45,10 @@ object BadgeRequirements {
         BadgeType.NIGHT_OWL -> 1
         BadgeType.COMEBACK -> 7
         BadgeType.PERFECTIONIST -> 100
+        BadgeType.FOCUS_FIRST -> 1
+        BadgeType.FOCUS_HOUR -> 1
+        BadgeType.FOCUS_10 -> 10
+        BadgeType.FOCUS_50 -> 50
     }
 
     /**
@@ -68,6 +72,9 @@ object BadgeRequirements {
 
         BadgeType.EARLY_BIRD, BadgeType.NIGHT_OWL,
         BadgeType.COMEBACK, BadgeType.PERFECTIONIST -> BadgeCategory.SPECIAL
+
+        BadgeType.FOCUS_FIRST, BadgeType.FOCUS_HOUR,
+        BadgeType.FOCUS_10, BadgeType.FOCUS_50 -> BadgeCategory.SPECIAL
     }
 }
 

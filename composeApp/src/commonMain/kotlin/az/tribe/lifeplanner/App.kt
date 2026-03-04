@@ -47,9 +47,10 @@ import az.tribe.lifeplanner.ui.LifeBalanceScreen
 import az.tribe.lifeplanner.ui.BackupSettingsScreen
 import az.tribe.lifeplanner.ui.ProfileScreen
 import az.tribe.lifeplanner.ui.ReminderSettingsScreen
-import az.tribe.lifeplanner.ui.ReviewScreen
 import az.tribe.lifeplanner.ui.TemplatePickerScreen
 import az.tribe.lifeplanner.ui.HomeScreen
+import az.tribe.lifeplanner.ui.focus.FocusScreen
+import az.tribe.lifeplanner.ui.retrospective.RetrospectiveScreen
 import az.tribe.lifeplanner.ui.OnboardingScreen
 import az.tribe.lifeplanner.ui.SignInScreen
 import az.tribe.lifeplanner.ui.coach.CoachViewModel
@@ -61,9 +62,11 @@ import az.tribe.lifeplanner.ui.components.CelebrationType
 import az.tribe.lifeplanner.ui.gamification.GamificationEvent
 import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
 import az.tribe.lifeplanner.ui.navigation.Screen
+import co.touchlab.kermit.Logger
 import org.koin.compose.viewmodel.koinViewModel
 import az.tribe.lifeplanner.ui.theme.LifePlannerTheme
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
+import az.tribe.lifeplanner.data.sync.SyncManager
 import az.tribe.lifeplanner.util.NetworkConnectivityObserver
 import az.tribe.lifeplanner.widget.WidgetDataSyncService
 import az.tribe.lifeplanner.widget.WidgetDashboardData
@@ -92,15 +95,15 @@ fun App(
         val hasCompletedOnboarding by authViewModel.hasCompletedOnboarding.collectAsState()
 
         LaunchedEffect(true) {
-            println("LaunchedEffectApp is called")
+            Logger.d("App") { "LaunchedEffectApp is called" }
             NotifierManager.addListener(object : NotifierManager.Listener {
                 override fun onNewToken(token: String) {
                     myPushNotificationToken = token
-                    println("onNewToken: $token")
+                    Logger.d("App") { "onNewToken: $token" }
                 }
             })
             myPushNotificationToken = NotifierManager.getPushNotifier().getToken() ?: ""
-            println("Firebase Token: $myPushNotificationToken")
+            Logger.d("App") { "Firebase Token: $myPushNotificationToken" }
         }
 
         // Start network connectivity observation
@@ -111,6 +114,14 @@ fun App(
 
         // Sync widget data on every app resume (processes pending widget check-ins)
         var resumeCount by remember { mutableIntStateOf(0) }
+
+        // Trigger Supabase sync on app foreground
+        val syncManager: SyncManager = koinInject()
+        LaunchedEffect(resumeCount) {
+            if (resumeCount > 0) {
+                syncManager.performFullSync()
+            }
+        }
         val lifecycleOwner = LocalLifecycleOwner.current
         DisposableEffect(lifecycleOwner) {
             val observer = LifecycleEventObserver { _, event ->
@@ -171,7 +182,7 @@ fun App(
 
                 widgetSync.syncWidgetData(dashboardData, widgetHabits)
             } catch (e: Exception) {
-                println("Widget sync failed: ${e.message}")
+                Logger.e("App", e) { "Widget sync failed: ${e.message}" }
             }
         }
 
@@ -279,6 +290,11 @@ fun App(
                             navController.navigate(Screen.Achievements.route) {
                                 launchSingleTop = true
                             }
+                        },
+                        onNavigateToFocus = {
+                            navController.navigate("focus_setup") {
+                                launchSingleTop = true
+                            }
                         }
                     )
                 }
@@ -379,8 +395,8 @@ fun App(
                             launchSingleTop = true
                         }
                     },
-                    onNavigateToReviews = {
-                        navController.navigate(Screen.Reviews.route) {
+                    onNavigateToReviewChat = {
+                        navController.navigate("ai_chat/luna_general") {
                             launchSingleTop = true
                         }
                     },
@@ -396,6 +412,11 @@ fun App(
                     },
                     onNavigateToBackup = {
                         navController.navigate(Screen.BackupSettings.route) {
+                            launchSingleTop = true
+                        }
+                    },
+                    onNavigateToRetrospective = {
+                        navController.navigate(Screen.Retrospective.route) {
                             launchSingleTop = true
                         }
                     },
@@ -508,6 +529,23 @@ fun App(
             composable(Screen.Achievements.route) {
                 AchievementsScreen(
                     onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            // Focus Timer Screen
+            composable(
+                route = "focus_setup?goalId={goalId}&milestoneId={milestoneId}",
+                arguments = listOf(
+                    navArgument("goalId") { type = NavType.StringType; defaultValue = "" },
+                    navArgument("milestoneId") { type = NavType.StringType; defaultValue = "" }
+                )
+            ) { backStackEntry ->
+                val goalId = backStackEntry.arguments?.getString("goalId")?.takeIf { it.isNotEmpty() }
+                val milestoneId = backStackEntry.arguments?.getString("milestoneId")?.takeIf { it.isNotEmpty() }
+                FocusScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    goalId = goalId,
+                    milestoneId = milestoneId
                 )
             }
 
@@ -646,13 +684,6 @@ fun App(
                 )
             }
 
-            // Reviews Screen
-            composable(Screen.Reviews.route) {
-                ReviewScreen(
-                    onNavigateBack = { navController.popBackStack() }
-                )
-            }
-
             // Templates Screen
             composable(Screen.Templates.route) {
                 TemplatePickerScreen(
@@ -704,6 +735,13 @@ fun App(
                             launchSingleTop = true
                         }
                     }
+                )
+            }
+
+            // Retrospective Screen
+            composable(Screen.Retrospective.route) {
+                RetrospectiveScreen(
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
 

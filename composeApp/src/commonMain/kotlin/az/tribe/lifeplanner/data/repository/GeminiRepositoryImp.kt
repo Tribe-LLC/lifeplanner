@@ -36,4 +36,8 @@ class GeminiRepositoryImp(
             .map { it.toDomain() }
     }
 
+    override suspend fun generateGoalsDirect(prompt: String): Result<List<Goal>, Remote> {
+        return geminiService.generateGoalsDirect(prompt)
+            .map { it.toDomain() }
+    }
 }

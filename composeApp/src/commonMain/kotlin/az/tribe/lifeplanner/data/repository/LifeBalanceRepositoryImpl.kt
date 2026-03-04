@@ -15,15 +15,10 @@ import az.tribe.lifeplanner.domain.model.LifeAreaScore
 import az.tribe.lifeplanner.domain.model.LifeBalanceReport
 import az.tribe.lifeplanner.domain.model.ManualAssessment
 import az.tribe.lifeplanner.domain.model.BalanceRecommendationAction
+import az.tribe.lifeplanner.data.network.AiProxyService
 import az.tribe.lifeplanner.domain.repository.GoalRepository
 import az.tribe.lifeplanner.domain.repository.HabitRepository
 import az.tribe.lifeplanner.domain.repository.LifeBalanceRepository
-import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.http.ContentType
-import io.ktor.http.contentType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.datetime.Clock
@@ -41,7 +36,7 @@ import kotlin.uuid.Uuid
 class LifeBalanceRepositoryImpl(
     private val goalRepository: GoalRepository,
     private val habitRepository: HabitRepository,
-    private val httpClient: HttpClient
+    private val aiProxy: AiProxyService
 ) : LifeBalanceRepository {
 
     private val balanceHistory = MutableStateFlow<List<LifeBalanceReport>>(emptyList())
@@ -304,20 +299,7 @@ class LifeBalanceRepositoryImpl(
         val prompt = buildAIPrompt(areaScores, rating)
 
         try {
-            val response = httpClient.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent") {
-                contentType(ContentType.Application.Json)
-                setBody("""
-                    {
-                        "contents": [{"parts": [{"text": "$prompt"}]}],
-                        "generationConfig": {
-                            "temperature": 0.7,
-                            "maxOutputTokens": 1024
-                        }
-                    }
-                """.trimIndent())
-            }
-
-            val responseText = response.body<String>()
+            val responseText = aiProxy.generateText(prompt)
             return parseAIResponse(responseText, areaScores)
         } catch (e: Exception) {
             return generateRuleBasedInsights(areaScores, rating)
@@ -350,7 +332,7 @@ class LifeBalanceRepositoryImpl(
             Generate 2-3 actionable insights and 3-4 specific recommendations.
             Focus on the weakest areas and how to improve balance.
             Keep descriptions concise (1-2 sentences each).
-        """.trimIndent().replace("\"", "\\\"").replace("\n", "\\n")
+        """.trimIndent()
     }
 
     private fun parseAIResponse(
@@ -557,22 +539,9 @@ class LifeBalanceRepositoryImpl(
             - Generate 3-4 milestones per goal
             - Make goals specific and measurable
             - area must match exactly: ${goalRecs.joinToString(", ") { it.targetArea.name }}
-        """.trimIndent().replace("\"", "\\\"").replace("\n", "\\n")
+        """.trimIndent()
 
-        val response = httpClient.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent") {
-            contentType(ContentType.Application.Json)
-            setBody("""
-                {
-                    "contents": [{"parts": [{"text": "$prompt"}]}],
-                    "generationConfig": {
-                        "temperature": 0.7,
-                        "maxOutputTokens": 1024
-                    }
-                }
-            """.trimIndent())
-        }
-
-        return response.body<String>()
+        return aiProxy.generateText(prompt)
     }
 
     private fun parsePreGeneratedGoals(responseJson: String): Map<String, Goal> {
@@ -580,11 +549,8 @@ class LifeBalanceRepositoryImpl(
         val result = mutableMapOf<String, Goal>()
 
         try {
-            // Extract text content from Gemini response
-            val textContent = extractGeminiText(responseJson)
-
-            // Parse the goals JSON
-            val goalsData = Json { ignoreUnknownKeys = true }.decodeFromString<PreGeneratedGoalsResponse>(textContent)
+            // The AI proxy returns text directly (no Gemini wrapper)
+            val goalsData = Json { ignoreUnknownKeys = true }.decodeFromString<PreGeneratedGoalsResponse>(responseJson)
 
             for (goalData in goalsData.goals) {
                 val area = try { LifeArea.valueOf(goalData.area) } catch (_: Exception) { continue }
@@ -629,20 +595,6 @@ class LifeBalanceRepositoryImpl(
         }
 
         return result
-    }
-
-    private fun extractGeminiText(responseJson: String): String {
-        // Extract the text field from Gemini's response structure
-        val json = Json { ignoreUnknownKeys = true }
-        val geminiResponse = json.decodeFromString<GeminiContentResponse>(responseJson)
-        val rawText = geminiResponse.candidates.firstOrNull()
-            ?.content?.parts?.firstOrNull()?.text ?: ""
-        // Strip markdown code block wrappers if present
-        return rawText
-            .removePrefix("```json")
-            .removePrefix("```")
-            .removeSuffix("```")
-            .trim()
     }
 
     private fun buildFallbackGoal(rec: BalanceRecommendation): Goal {
@@ -698,22 +650,3 @@ private data class PreGeneratedGoalData(
     val milestones: List<String> = emptyList()
 )
 
-@Serializable
-private data class GeminiContentResponse(
-    val candidates: List<GeminiCandidate> = emptyList()
-)
-
-@Serializable
-private data class GeminiCandidate(
-    val content: GeminiContent? = null
-)
-
-@Serializable
-private data class GeminiContent(
-    val parts: List<GeminiPart> = emptyList()
-)
-
-@Serializable
-private data class GeminiPart(
-    val text: String = ""
-)

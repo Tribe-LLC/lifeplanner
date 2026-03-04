@@ -56,9 +56,8 @@ kotlin {
             implementation(libs.accompanist.systemuicontroller)
 
             implementation(libs.firebase.common.ktx)
-            implementation(libs.firebase.auth.ktx)
 
-            // Coroutines for Firebase Tasks
+            // Coroutines for Firebase Tasks (still used by Firebase Crashlytics/Perf)
             implementation(libs.kotlinx.coroutines.play.services)
 
             // WorkManager for background tasks
@@ -107,7 +106,12 @@ kotlin {
             implementation(libs.firebase.crashlytics)
             implementation(libs.firebase.perf)
             implementation(libs.gitlive.firebase.analytics)
-            implementation(libs.gitlive.firebase.auth)
+
+            // Supabase
+            implementation(libs.supabase.postgrest)
+            implementation(libs.supabase.gotrue)
+            implementation(libs.supabase.compose.auth)
+
             api(libs.kmpnotifier) // in iOS export this library
             //Kermit  for logging
             implementation(libs.kermit)
@@ -138,7 +142,7 @@ sqldelight {
         create("LifePlannerDB") {
             packageName.set("az.tribe.lifeplanner.database")
             schemaOutputDirectory = file("src/commonMain/sqldelight/databases")
-            version = 8 // Updated to add custom coaches and coach groups
+            version = 11 // v2.0: Add is_deleted indexes for sync
             generateAsync.set(true)
         }
     }
@@ -149,12 +153,19 @@ android {
 
     signingConfigs {
         val keystoreFile = file("${rootDir}/lifeplanner.jks")
+        val localProps = Properties().apply {
+            val propsFile = rootProject.file("local.properties")
+            if (propsFile.exists()) load(propsFile.inputStream())
+        }
         if (keystoreFile.exists()) {
             create("release") {
                 storeFile = keystoreFile
-                storePassword = project.findProperty("RELEASE_STORE_PASSWORD") as? String
-                keyAlias = project.findProperty("RELEASE_KEY_ALIAS") as? String
-                keyPassword = project.findProperty("RELEASE_KEY_PASSWORD") as? String
+                storePassword = localProps["RELEASE_STORE_PASSWORD"]?.toString()
+                    ?: project.findProperty("RELEASE_STORE_PASSWORD") as? String
+                keyAlias = localProps["RELEASE_KEY_ALIAS"]?.toString()
+                    ?: project.findProperty("RELEASE_KEY_ALIAS") as? String
+                keyPassword = localProps["RELEASE_KEY_PASSWORD"]?.toString()
+                    ?: project.findProperty("RELEASE_KEY_PASSWORD") as? String
             }
         }
     }
@@ -168,8 +179,8 @@ android {
         applicationId = "az.tribe.lifeplanner"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 5
-        versionName = "1.3"
+        versionCode = 6
+        versionName = "2.0"
 
     }
     packaging {
@@ -181,6 +192,10 @@ android {
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             val keystoreFile = file("${rootDir}/lifeplanner.jks")
             if (keystoreFile.exists() && signingConfigs.findByName("release") != null) {
                 signingConfig = signingConfigs.getByName("release")
@@ -216,14 +231,34 @@ buildkonfig {
 
     defaultConfigs {
         buildConfigField(
-            FieldSpec.Type.STRING,
-            "GEMINI_API_KEY",
-            localProperties["GEMINI_API_KEY"]?.toString() ?: "",
-        )
-        buildConfigField(
             FieldSpec.Type.BOOLEAN,
             "isDebug", "true"
         )
+        buildConfigField(
+            FieldSpec.Type.STRING,
+            "SUPABASE_URL",
+            localProperties["SUPABASE_URL"]?.toString() ?: "",
+        )
+        buildConfigField(
+            FieldSpec.Type.STRING,
+            "SUPABASE_ANON_KEY",
+            localProperties["SUPABASE_ANON_KEY"]?.toString() ?: "",
+        )
+    }
+
+    targetConfigs("release") {
+        create("android") {
+            buildConfigField(FieldSpec.Type.BOOLEAN, "isDebug", "false")
+        }
+        create("iosArm64") {
+            buildConfigField(FieldSpec.Type.BOOLEAN, "isDebug", "false")
+        }
+        create("iosX64") {
+            buildConfigField(FieldSpec.Type.BOOLEAN, "isDebug", "false")
+        }
+        create("iosSimulatorArm64") {
+            buildConfigField(FieldSpec.Type.BOOLEAN, "isDebug", "false")
+        }
     }
 }
 

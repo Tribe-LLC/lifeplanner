@@ -1,6 +1,7 @@
 package az.tribe.lifeplanner.data.network
 
 import az.tribe.lifeplanner.data.model.DataError
+import co.touchlab.kermit.Logger
 import az.tribe.lifeplanner.data.model.ErrorDto
 import az.tribe.lifeplanner.data.model.Result
 import io.ktor.client.call.NoTransformationFoundException
@@ -22,7 +23,7 @@ suspend inline fun <reified T> safeCall(
     } catch (e: UnresolvedAddressException) {
         return Result.Error(DataError.Remote.NO_INTERNET)
     } catch (e: Exception) {
-        e.printStackTrace()
+        Logger.e("HttpClientExt") { "Network request failed: ${e.message}" }
         coroutineContext.ensureActive()
         return Result.Error(DataError.Remote.UNKNOWN)
     }
@@ -54,7 +55,6 @@ suspend inline fun <reified T> responseToResult(
         in 500..599 -> Result.Error(DataError.Remote.SERVER)
         else -> {
             val data = Json.decodeFromString<ErrorDto>(response.body())
-            println("${data}")
             Result.Error(DataError.Remote.VALIDATION(data.message))
         }
     }

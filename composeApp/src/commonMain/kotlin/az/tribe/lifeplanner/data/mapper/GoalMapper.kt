@@ -4,6 +4,7 @@ package az.tribe.lifeplanner.data.mapper
 import az.tribe.lifeplanner.data.model.GeminiResponseDto
 import az.tribe.lifeplanner.data.model.GoalGenerationResponse
 import az.tribe.lifeplanner.data.model.QuestionGenerationResponse
+import co.touchlab.kermit.Logger
 import az.tribe.lifeplanner.database.GoalEntity
 import az.tribe.lifeplanner.database.MilestoneEntity
 import az.tribe.lifeplanner.domain.model.Goal
@@ -33,7 +34,7 @@ fun GeminiResponseDto.getQuestionGenerationResponse(): QuestionGenerationRespons
             Json.decodeFromString<QuestionGenerationResponse>(it)
         }
     } catch (e: Exception) {
-        println("Failed to parse question generation response: ${e.message}")
+        Logger.e("GoalMapper", e) { "Failed to parse question generation response: ${e.message}" }
         null
     }
 }
@@ -48,7 +49,7 @@ fun GeminiResponseDto.getGoalGenerationResponse(): GoalGenerationResponse? {
             Json.decodeFromString<GoalGenerationResponse>(it)
         }
     } catch (e: Exception) {
-        println("Failed to parse goal generation response: ${e.message}")
+        Logger.e("GoalMapper", e) { "Failed to parse goal generation response: ${e.message}" }
         null
     }
 }
@@ -102,7 +103,7 @@ fun GeminiResponseDto.toDomain(): List<Goal> {
             emptyList()
         }
     } catch (e: Exception) {
-        println("Error parsing Gemini response to domain: ${e.message}")
+        Logger.e("GoalMapper", e) { "Error parsing Gemini response to domain: ${e.message}" }
         // Return empty list instead of crashing
         emptyList()
     }
@@ -141,7 +142,7 @@ private fun parseDueDate(dateString: String): LocalDate {
                 else -> getDefaultDueDate()
             }
         } catch (e: Exception) {
-            println("Failed to parse date: $dateString, using default")
+            Logger.w("GoalMapper") { "Failed to parse date: $dateString, using default" }
             getDefaultDueDate()
         }
     }
@@ -169,7 +170,7 @@ fun GoalEntity.toDomain(milestones: List<Milestone> = emptyList()): Goal {
         progress = progress,
         milestones = milestones,
         notes = notes ?: "",
-        createdAt = LocalDateTime.parse(createdAt),
+        createdAt = parseLocalDateTime(createdAt),
         completionRate = completionRate.toFloat() ?: 0f,
         isArchived = isArchived == 1L
     )
@@ -188,7 +189,11 @@ fun Goal.toEntity(): GoalEntity {
         notes = notes,
         createdAt = createdAt.toString(),
         completionRate = completionRate.toDouble(),
-        isArchived = if (isArchived) 1L else 0L
+        isArchived = if (isArchived) 1L else 0L,
+        sync_updated_at = Clock.System.now().toString(),
+        is_deleted = 0L,
+        sync_version = 0L,
+        last_synced_at = null
     )
 }
 
@@ -209,7 +214,11 @@ fun Milestone.toEntity(goalId: String): MilestoneEntity {
         title = title,
         isCompleted = if (isCompleted) 1L else 0L,
         dueDate = dueDate?.toString(),
-        createdAt = Clock.System.now().toString()
+        createdAt = Clock.System.now().toString(),
+        sync_updated_at = Clock.System.now().toString(),
+        is_deleted = 0L,
+        sync_version = 0L,
+        last_synced_at = null
     )
 }
 

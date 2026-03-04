@@ -2,10 +2,12 @@ package az.tribe.lifeplanner.data.repository
 
 import az.tribe.lifeplanner.domain.model.GoalChange
 import az.tribe.lifeplanner.domain.repository.GoalHistoryRepository
+import az.tribe.lifeplanner.data.sync.SyncManager
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
 
 class GoalHistoryRepositoryImpl(
-    private val localGoalStore: SharedDatabase
+    private val localGoalStore: SharedDatabase,
+    private val syncManager: SyncManager
 ) : GoalHistoryRepository {
 
     override suspend fun insertChange(
@@ -24,6 +26,7 @@ class GoalHistoryRepositoryImpl(
             newValue = newValue,
             changedAt = changedAt
         )
+        syncManager.requestSync()
     }
     override suspend fun getHistoryForGoal(goalId: String): List<GoalChange> {
         return localGoalStore.getGoalHistory(goalId)

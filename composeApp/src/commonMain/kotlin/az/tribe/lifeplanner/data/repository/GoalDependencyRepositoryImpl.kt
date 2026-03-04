@@ -1,6 +1,7 @@
 package az.tribe.lifeplanner.data.repository
 
 import az.tribe.lifeplanner.data.mapper.createNewDependency
+import az.tribe.lifeplanner.data.mapper.parseLocalDateTime
 import az.tribe.lifeplanner.data.mapper.toDomain
 import az.tribe.lifeplanner.data.mapper.toDomainDependencies
 import az.tribe.lifeplanner.data.mapper.toEntity
@@ -16,7 +17,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
 class GoalDependencyRepositoryImpl(
-    private val database: SharedDatabase
+    private val database: SharedDatabase,
+    private val syncManager: az.tribe.lifeplanner.data.sync.SyncManager
 ) : GoalDependencyRepository {
 
     override fun getAllDependencies(): Flow<List<GoalDependency>> = flow {
@@ -280,7 +282,7 @@ private fun az.tribe.lifeplanner.database.GoalEntity.toDomainGoal(
         progress = progress,
         milestones = milestones,
         notes = notes ?: "",
-        createdAt = kotlinx.datetime.LocalDateTime.parse(createdAt),
+        createdAt = parseLocalDateTime(createdAt),
         completionRate = completionRate?.toFloat() ?: 0f,
         isArchived = isArchived == 1L
     )

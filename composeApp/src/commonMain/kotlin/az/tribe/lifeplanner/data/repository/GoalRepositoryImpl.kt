@@ -9,18 +9,24 @@ import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.domain.model.GoalAnalytics
 import az.tribe.lifeplanner.domain.model.Milestone
 import az.tribe.lifeplanner.domain.repository.GoalRepository
+import az.tribe.lifeplanner.data.sync.SyncManager
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
 import az.tribe.lifeplanner.widget.WidgetDataSyncService
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Clock
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.minus
+import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 
 class GoalRepositoryImpl(
     private val localGoalStore: SharedDatabase,
-    private val widgetSyncService: WidgetDataSyncService
+    private val widgetSyncService: WidgetDataSyncService,
+    private val syncManager: SyncManager
 ) : GoalRepository {
 
     private suspend fun notifyWidgets() {
@@ -57,6 +63,7 @@ class GoalRepositoryImpl(
             localGoalStore.insertMilestone(milestone.toEntity(goal.id))
         }
         notifyWidgets()
+        syncManager.requestSync()
     }
 
     override suspend fun insertGoals(goals: List<Goal>) {
@@ -68,6 +75,7 @@ class GoalRepositoryImpl(
                 localGoalStore.insertMilestone(milestone.toEntity(goal.id))
             }
         }
+        syncManager.requestSync()
     }
 
     override suspend fun updateGoal(goal: Goal) {
@@ -78,6 +86,7 @@ class GoalRepositoryImpl(
             localGoalStore.updateMilestone(milestone.toEntity(goal.id))
         }
         notifyWidgets()
+        syncManager.requestSync()
     }
 
     override suspend fun getGoalsByTimeline(timeline: az.tribe.lifeplanner.domain.enum.GoalTimeline): List<Goal> {
@@ -102,18 +111,22 @@ class GoalRepositoryImpl(
         // completionRate stored as 0-100 scale (same as progress)
         val completionRate = progress.toDouble()
         localGoalStore.updateGoalProgress(id, progress.toLong(), completionRate)
+        syncManager.requestSync()
     }
 
     override suspend fun updateGoalNotes(id: String, notes: String) {
         localGoalStore.updateGoalNotes(id, notes)
+        syncManager.requestSync()
     }
 
     override suspend fun archiveGoal(id: String) {
         localGoalStore.archiveGoal(id)
+        syncManager.requestSync()
     }
 
     override suspend fun unarchiveGoal(id: String) {
         localGoalStore.unarchiveGoal(id)
+        syncManager.requestSync()
     }
 
     override suspend fun searchGoals(query: String): List<Goal> {
@@ -145,8 +158,8 @@ class GoalRepositoryImpl(
 
     override suspend fun getUpcomingDeadlines(days: Int): List<Goal> {
         val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
-        val endDate = today.toString() // You might want to add days to this
         val startDate = today.toString()
+        val endDate = today.plus(DatePeriod(days = days)).toString()
 
         val goalEntities = localGoalStore.getUpcomingDeadlines(startDate, endDate)
         val goalIds = goalEntities.map { it.id }
@@ -177,6 +190,18 @@ class GoalRepositoryImpl(
             .mapKeys { GoalCategory.valueOf(it.key) }
             .mapValues { it.value.toFloat() }
 
+        // Calculate actual this-week and this-month completions from goal history
+        val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+        val weekStart = today.minus(DatePeriod(days = today.dayOfWeek.ordinal))
+        val monthStart = LocalDate(today.year, today.monthNumber, 1)
+        val allGoals = localGoalStore.getAllGoals()
+        val weekCompletedCount = allGoals.count { goal ->
+            goal.status == "COMPLETED" && goal.createdAt >= weekStart.toString()
+        }
+        val monthCompletedCount = allGoals.count { goal ->
+            goal.status == "COMPLETED" && goal.createdAt >= monthStart.toString()
+        }
+
         return GoalAnalytics(
             totalGoals = totalGoals,
             activeGoals = activeGoals,
@@ -186,36 +211,42 @@ class GoalRepositoryImpl(
             goalsByCategory = goalsByCategory,
             goalsByTimeline = goalsByTimeline,
             averageProgressPerCategory = averageProgressPerCategory,
-            goalsCompletedThisWeek = completedGoals, // Placeholder - implement proper date filtering
-            goalsCompletedThisMonth = completedGoals // Placeholder - implement proper date filtering
+            goalsCompletedThisWeek = weekCompletedCount,
+            goalsCompletedThisMonth = monthCompletedCount
         )
     }
 
     override suspend fun addMilestone(goalId: String, milestone: Milestone) {
         localGoalStore.insertMilestone(milestone.toEntity(goalId))
+        syncManager.requestSync()
     }
 
     override suspend fun updateMilestone(milestone: Milestone) {
         val goalId = localGoalStore.getGoalIdForMilestone(milestone.id)
         if (goalId != null) {
             localGoalStore.updateMilestone(milestone.toEntity(goalId))
+            syncManager.requestSync()
         }
     }
 
     override suspend fun deleteMilestone(milestoneId: String) {
         localGoalStore.deleteMilestone(milestoneId)
+        syncManager.requestSync()
     }
 
     override suspend fun toggleMilestoneCompletion(milestoneId: String, isCompleted: Boolean) {
         localGoalStore.toggleMilestoneCompletion(milestoneId, isCompleted)
+        syncManager.requestSync()
     }
 
     override suspend fun deleteGoalById(id: String) {
         localGoalStore.deleteGoalById(id)
         notifyWidgets()
+        syncManager.requestSync()
     }
 
     override suspend fun deleteAllGoals() {
         localGoalStore.deleteAllGoals()
+        syncManager.requestSync()
     }
 }

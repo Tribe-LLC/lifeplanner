@@ -18,7 +18,7 @@ fun GoalDependencyEntity.toDomain(): GoalDependency = GoalDependency(
     sourceGoalId = sourceGoalId,
     targetGoalId = targetGoalId,
     dependencyType = DependencyType.valueOf(dependencyType),
-    createdAt = LocalDateTime.parse(createdAt)
+    createdAt = parseLocalDateTime(createdAt)
 )
 
 /**
@@ -29,7 +29,11 @@ fun GoalDependency.toEntity(): GoalDependencyEntity = GoalDependencyEntity(
     sourceGoalId = sourceGoalId,
     targetGoalId = targetGoalId,
     dependencyType = dependencyType.name,
-    createdAt = createdAt.toString()
+    createdAt = createdAt.toString(),
+    sync_updated_at = Clock.System.now().toString(),
+    is_deleted = 0L,
+    sync_version = 0L,
+    last_synced_at = null
 )
 
 /**
