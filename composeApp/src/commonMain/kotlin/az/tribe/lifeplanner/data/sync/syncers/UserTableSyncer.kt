@@ -9,6 +9,8 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import co.touchlab.kermit.Logger
 import kotlinx.datetime.Clock
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 
 class UserTableSyncer(
     supabase: SupabaseClient,
@@ -50,25 +52,34 @@ class UserTableSyncer(
         return emptyList()
     }
 
-    override suspend fun localToRemote(local: UserEntity, userId: String) = UserSyncDto(
-        id = local.id,
-        userId = userId,
-        firebaseUid = local.firebaseUid,
-        email = local.email,
-        displayName = local.displayName,
-        isGuest = local.isGuest != 0L,
-        selectedSymbol = local.selectedSymbol,
-        priorities = local.priorities,
-        ageRange = local.ageRange,
-        profession = local.profession,
-        relationshipStatus = local.relationshipStatus,
-        mindset = local.mindset,
-        hasCompletedOnboarding = local.hasCompletedOnboarding != 0L,
-        createdAt = local.createdAt,
-        updatedAt = local.sync_updated_at ?: Clock.System.now().toString(),
-        isDeleted = local.is_deleted != 0L,
-        syncVersion = local.sync_version
-    )
+    override suspend fun localToRemote(local: UserEntity, userId: String): UserSyncDto {
+        // Convert local priorities string to JsonElement for JSONB column
+        val prioritiesJson = try {
+            if (local.priorities != null && local.priorities.isNotBlank())
+                Json.parseToJsonElement(local.priorities)
+            else null
+        } catch (_: Exception) { null }
+
+        return UserSyncDto(
+            id = local.id,
+            userId = userId,
+            firebaseUid = local.firebaseUid,
+            email = local.email,
+            displayName = local.displayName,
+            isGuest = local.isGuest != 0L,
+            selectedSymbol = local.selectedSymbol,
+            priorities = prioritiesJson,
+            ageRange = local.ageRange,
+            profession = local.profession,
+            relationshipStatus = local.relationshipStatus,
+            mindset = local.mindset,
+            hasCompletedOnboarding = local.hasCompletedOnboarding != 0L,
+            createdAt = local.createdAt,
+            updatedAt = local.sync_updated_at ?: Clock.System.now().toString(),
+            isDeleted = local.is_deleted != 0L,
+            syncVersion = local.sync_version
+        )
+    }
 
     override suspend fun remoteToLocal(remote: UserSyncDto): UserEntity {
         return UserEntity(
@@ -78,7 +89,7 @@ class UserTableSyncer(
             displayName = remote.displayName,
             isGuest = if (remote.isGuest) 1L else 0L,
             selectedSymbol = remote.selectedSymbol,
-            priorities = remote.priorities,
+            priorities = remote.priorities?.let { if (it is JsonNull) null else it.toString() },
             ageRange = remote.ageRange,
             profession = remote.profession,
             relationshipStatus = remote.relationshipStatus,

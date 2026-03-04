@@ -9,6 +9,9 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import co.touchlab.kermit.Logger
 import kotlinx.datetime.Clock
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
 
 class JournalEntryTableSyncer(
     supabase: SupabaseClient,
@@ -28,22 +31,33 @@ class JournalEntryTableSyncer(
     override suspend fun getDeletedLocal(): List<JournalEntryEntity> =
         db { it.lifePlannerDBQueries.getDeletedJournalEntries().executeAsList() }
 
-    override suspend fun localToRemote(local: JournalEntryEntity, userId: String) = JournalEntrySyncDto(
-        id = local.id,
-        userId = userId,
-        title = local.title,
-        content = local.content,
-        mood = local.mood,
-        linkedGoalId = local.linkedGoalId,
-        linkedHabitId = local.linkedHabitId,
-        promptUsed = local.promptUsed,
-        tags = local.tags,
-        date = local.date,
-        createdAt = local.createdAt,
-        updatedAt = local.sync_updated_at ?: Clock.System.now().toString(),
-        isDeleted = local.is_deleted != 0L,
-        syncVersion = local.sync_version
-    )
+    override suspend fun localToRemote(local: JournalEntryEntity, userId: String): JournalEntrySyncDto {
+        // Convert local tags string to JsonElement for JSONB column
+        val tagsJson = try {
+            if (local.tags.isNotBlank()) Json.parseToJsonElement(local.tags)
+            else JsonArray(emptyList())
+        } catch (_: Exception) {
+            // If tags is a plain comma-separated string, convert to JSON array
+            val tagList = local.tags.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            JsonArray(tagList.map { JsonPrimitive(it) })
+        }
+        return JournalEntrySyncDto(
+            id = local.id,
+            userId = userId,
+            title = local.title,
+            content = local.content,
+            mood = local.mood,
+            linkedGoalId = local.linkedGoalId,
+            linkedHabitId = local.linkedHabitId,
+            promptUsed = local.promptUsed,
+            tags = tagsJson,
+            date = local.date,
+            createdAt = local.createdAt,
+            updatedAt = local.sync_updated_at ?: Clock.System.now().toString(),
+            isDeleted = local.is_deleted != 0L,
+            syncVersion = local.sync_version
+        )
+    }
 
     override suspend fun remoteToLocal(remote: JournalEntrySyncDto) = JournalEntryEntity(
         id = remote.id,
@@ -53,7 +67,7 @@ class JournalEntryTableSyncer(
         linkedGoalId = remote.linkedGoalId,
         linkedHabitId = remote.linkedHabitId,
         promptUsed = remote.promptUsed,
-        tags = remote.tags,
+        tags = remote.tags.toString(), // JsonElement → String for local SQLite storage
         date = remote.date,
         createdAt = remote.createdAt,
         updatedAt = remote.updatedAt,

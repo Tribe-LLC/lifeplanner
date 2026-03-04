@@ -103,7 +103,7 @@ class SyncManager(
                 try {
                     totalPushed += syncer.pushLocalChanges(userId)
                 } catch (e: Exception) {
-                    Logger.e("SyncManager") { "Push failed for ${syncer.tableName}: ${e.message}" }
+                    Logger.e("SyncManager") { "Push failed for ${syncer.tableName}: ${e.message}\n${e.stackTraceToString()}" }
                     failedTables.add(syncer.tableName)
                 }
             }
@@ -113,7 +113,7 @@ class SyncManager(
                 try {
                     totalPulled += syncer.pullRemoteChanges(userId)
                 } catch (e: Exception) {
-                    Logger.e("SyncManager") { "Pull failed for ${syncer.tableName}: ${e.message}" }
+                    Logger.e("SyncManager") { "Pull failed for ${syncer.tableName}: ${e.message}\n${e.stackTraceToString()}" }
                     if (syncer.tableName !in failedTables) failedTables.add(syncer.tableName)
                 }
             }
