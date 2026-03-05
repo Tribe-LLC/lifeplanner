@@ -21,6 +21,8 @@ val supabaseModule = module {
                 alwaysAutoRefresh = true
                 autoLoadFromStorage = true
                 autoSaveToStorage = true
+                scheme = "lifeplanner"
+                host = "auth"
             }
             defaultSerializer = KotlinXSerializer(Json {
                 encodeDefaults = true

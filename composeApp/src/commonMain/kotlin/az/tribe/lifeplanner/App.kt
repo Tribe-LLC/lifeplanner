@@ -295,6 +295,16 @@ fun App(
                             navController.navigate("focus_setup") {
                                 launchSingleTop = true
                             }
+                        },
+                        onNavigateToProfile = {
+                            navController.navigate(Screen.Profile.route) {
+                                launchSingleTop = true
+                            }
+                        },
+                        onStartFocusForMilestone = { goalId, milestoneId ->
+                            navController.navigate("focus_setup?goalId=$goalId&milestoneId=$milestoneId") {
+                                launchSingleTop = true
+                            }
                         }
                     )
                 }

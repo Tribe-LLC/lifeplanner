@@ -25,6 +25,7 @@ import az.tribe.lifeplanner.domain.repository.CoachRepository
 import az.tribe.lifeplanner.domain.repository.GoalRepository
 import az.tribe.lifeplanner.domain.repository.HabitRepository
 import az.tribe.lifeplanner.domain.repository.JournalRepository
+import az.tribe.lifeplanner.domain.repository.StreamingChatEvent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -40,6 +41,8 @@ import kotlinx.datetime.toLocalDateTime
 data class ChatUiState(
     val isLoading: Boolean = false,
     val isSending: Boolean = false,
+    val isStreaming: Boolean = false,
+    val streamingText: String? = null,
     val sessions: List<ChatSession> = emptyList(),
     val sessionsByCoach: Map<String, ChatSession?> = emptyMap(),
     val currentSession: ChatSession? = null,
@@ -111,9 +114,30 @@ class ChatViewModel(
                 val context = chatRepository.getUserContext()
                 _uiState.value = _uiState.value.copy(userContext = context)
             } catch (e: Exception) {
-                // Silently fail - will use default context
+                co.touchlab.kermit.Logger.e("ChatViewModel") {
+                    "Failed to load user context: ${e.message}\n${e.stackTraceToString()}"
+                }
+                // Use default context so chat still works
+                _uiState.value = _uiState.value.copy(userContext = defaultUserContext())
             }
         }
+    }
+
+    private fun defaultUserContext(): az.tribe.lifeplanner.domain.model.UserContext {
+        return az.tribe.lifeplanner.domain.model.UserContext(
+            userName = null,
+            totalGoals = 0,
+            completedGoals = 0,
+            activeGoals = 0,
+            currentStreak = 0,
+            totalXp = 0,
+            level = 1,
+            recentMilestones = emptyList(),
+            upcomingDeadlines = emptyList(),
+            habitCompletionRate = 0f,
+            journalEntryCount = 0,
+            primaryCategories = emptyList()
+        )
     }
 
     private fun loadCustomCoachesAndGroups() {
@@ -382,9 +406,24 @@ class ChatViewModel(
         }
     }
 
+    /**
+     * Returns true if the current chat mode supports streaming.
+     * Council mode, custom groups use structured JSON (non-streaming).
+     */
+    private fun isStreamable(): Boolean {
+        val state = _uiState.value
+        return !state.isCouncilMode && !state.isCustomGroupMode
+    }
+
     fun sendMessage(content: String, relatedGoalId: String? = null) {
-        val session = _uiState.value.currentSession ?: return
-        val userContext = _uiState.value.userContext ?: return
+        val session = _uiState.value.currentSession ?: run {
+            co.touchlab.kermit.Logger.w("ChatViewModel") { "sendMessage: no currentSession, ignoring" }
+            return
+        }
+        val userContext = _uiState.value.userContext ?: run {
+            co.touchlab.kermit.Logger.w("ChatViewModel") { "sendMessage: userContext is null, using default" }
+            defaultUserContext()
+        }
 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSending = true, error = null)
@@ -401,37 +440,128 @@ class ChatViewModel(
                 messages = _uiState.value.messages + tempUserMessage
             )
 
-            try {
-                val response = chatRepository.sendMessage(
-                    sessionId = session.id,
-                    userMessage = content,
-                    userContext = userContext,
-                    relatedGoalId = relatedGoalId
-                )
+            if (isStreamable()) {
+                sendMessageStreaming(session.id, content, userContext, relatedGoalId)
+            } else {
+                sendMessageNonStreaming(session.id, content, userContext, relatedGoalId)
+            }
+        }
+    }
 
-                // Reload all messages to get proper IDs
-                val messages = chatRepository.getMessages(session.id)
+    private suspend fun sendMessageStreaming(
+        sessionId: String,
+        content: String,
+        userContext: UserContext,
+        relatedGoalId: String?
+    ) {
+        _uiState.value = _uiState.value.copy(isStreaming = true, streamingText = "")
+        var receivedCompletion = false
 
-                // Collect executed suggestion IDs from message metadata
-                val executedIds = messages
-                    .mapNotNull { it.metadata?.executedSuggestionIds }
-                    .flatten()
-                    .toSet()
+        try {
+            chatRepository.sendMessageStreaming(
+                sessionId = sessionId,
+                userMessage = content,
+                userContext = userContext,
+                relatedGoalId = relatedGoalId
+            ).collect { event ->
+                when (event) {
+                    is StreamingChatEvent.PartialText -> {
+                        _uiState.value = _uiState.value.copy(
+                            isSending = false,
+                            streamingText = event.accumulatedText
+                        )
+                    }
+                    is StreamingChatEvent.Completed -> {
+                        receivedCompletion = true
+                        val messages = chatRepository.getMessages(sessionId)
+                        val executedIds = messages
+                            .mapNotNull { it.metadata?.executedSuggestionIds }
+                            .flatten()
+                            .toSet()
 
+                        _uiState.value = _uiState.value.copy(
+                            isSending = false,
+                            isStreaming = false,
+                            streamingText = null,
+                            messages = messages,
+                            executedSuggestionIds = executedIds
+                        )
+                        loadSessions()
+                    }
+                    is StreamingChatEvent.Error -> {
+                        receivedCompletion = true
+                        _uiState.value = _uiState.value.copy(
+                            isSending = false,
+                            isStreaming = false,
+                            streamingText = null,
+                            error = event.message
+                        )
+                    }
+                }
+            }
+
+            // Flow completed without Done/Error — reset state and reload messages
+            if (!receivedCompletion) {
+                Logger.w("ChatViewModel") { "Streaming flow completed without terminal event" }
+                val messages = chatRepository.getMessages(sessionId)
                 _uiState.value = _uiState.value.copy(
                     isSending = false,
+                    isStreaming = false,
+                    streamingText = null,
                     messages = messages,
-                    executedSuggestionIds = executedIds
-                )
-
-                // Refresh sessions to update titles
-                loadSessions()
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isSending = false,
-                    error = e.message ?: "Failed to send message"
+                    error = "Response failed. Please try again."
                 )
             }
+        } catch (e: Exception) {
+            Logger.e("ChatViewModel") { "Streaming failed: ${e.message}" }
+            // Reload messages from DB (user message was already saved)
+            val messages = try { chatRepository.getMessages(sessionId) } catch (_: Exception) { null }
+            _uiState.value = _uiState.value.copy(
+                isSending = false,
+                isStreaming = false,
+                streamingText = null,
+                messages = messages ?: _uiState.value.messages,
+                error = e.message ?: "Failed to send message"
+            )
+        }
+    }
+
+    private suspend fun sendMessageNonStreaming(
+        sessionId: String,
+        content: String,
+        userContext: UserContext,
+        relatedGoalId: String?
+    ) {
+        try {
+            chatRepository.sendMessage(
+                sessionId = sessionId,
+                userMessage = content,
+                userContext = userContext,
+                relatedGoalId = relatedGoalId
+            )
+
+            // Reload all messages to get proper IDs
+            val messages = chatRepository.getMessages(sessionId)
+
+            // Collect executed suggestion IDs from message metadata
+            val executedIds = messages
+                .mapNotNull { it.metadata?.executedSuggestionIds }
+                .flatten()
+                .toSet()
+
+            _uiState.value = _uiState.value.copy(
+                isSending = false,
+                messages = messages,
+                executedSuggestionIds = executedIds
+            )
+
+            // Refresh sessions to update titles
+            loadSessions()
+        } catch (e: Exception) {
+            _uiState.value = _uiState.value.copy(
+                isSending = false,
+                error = e.message ?: "Failed to send message"
+            )
         }
     }
 
@@ -441,7 +571,7 @@ class ChatViewModel(
      */
     private fun sendHiddenFollowUp(content: String) {
         val session = _uiState.value.currentSession ?: return
-        val userContext = _uiState.value.userContext ?: return
+        val userContext = _uiState.value.userContext ?: defaultUserContext()
 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSending = true)

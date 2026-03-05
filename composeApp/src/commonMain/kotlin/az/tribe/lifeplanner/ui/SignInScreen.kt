@@ -25,6 +25,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import az.tribe.lifeplanner.ui.theme.modernColors
 import az.tribe.lifeplanner.ui.viewmodel.AuthState
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
@@ -39,6 +40,7 @@ fun SignInScreen(
     val authViewModel: AuthViewModel = koinInject()
     val authState by authViewModel.authState.collectAsState()
     val successMessage by authViewModel.successMessage.collectAsState()
+    val magicLinkSent by authViewModel.magicLinkSent.collectAsState()
 
     val focusManager = LocalFocusManager.current
     // TODO: Remove debug pre-fill before release
@@ -49,6 +51,8 @@ fun SignInScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var showResetPasswordDialog by remember { mutableStateOf(false) }
     var showDataLossWarning by remember { mutableStateOf(false) }
+    var otpCode by remember { mutableStateOf("") }
+    var showOtpInput by remember { mutableStateOf(false) }
 
     // Track if we've already navigated to prevent double navigation
     var hasNavigated by remember { mutableStateOf(false) }
@@ -403,6 +407,112 @@ fun SignInScreen(
                         },
                         style = MaterialTheme.typography.titleMedium
                     )
+                }
+            }
+
+            // Magic link option (sign-in mode only)
+            if (!isSignUp) {
+                Spacer(Modifier.height(12.dp))
+
+                if (!magicLinkSent) {
+                    OutlinedButton(
+                        onClick = {
+                            focusManager.clearFocus()
+                            if (email.isNotBlank()) authViewModel.sendMagicLink(email)
+                        },
+                        enabled = email.isNotBlank() && authState !is AuthState.Loading,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.modernColors.primary
+                        )
+                    ) {
+                        Text("Sign in with Magic Link", style = MaterialTheme.typography.titleMedium)
+                    }
+                } else {
+                    // Magic link sent — show success + OTP entry
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "Magic link sent! Check your email.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    if (!showOtpInput) {
+                        TextButton(
+                            onClick = { showOtpInput = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Enter code manually")
+                        }
+                    } else {
+                        OutlinedTextField(
+                            value = otpCode,
+                            onValueChange = { if (it.length <= 6) otpCode = it },
+                            label = { Text("6-digit code") },
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Done
+                            ),
+                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.modernColors.primary,
+                                focusedLabelColor = MaterialTheme.modernColors.primary,
+                                cursorColor = MaterialTheme.modernColors.primary
+                            )
+                        )
+
+                        Spacer(Modifier.height(8.dp))
+
+                        Button(
+                            onClick = {
+                                focusManager.clearFocus()
+                                if (email.isNotBlank() && otpCode.length == 6) {
+                                    authViewModel.verifyOtp(email, otpCode)
+                                }
+                            },
+                            enabled = otpCode.length == 6 && authState !is AuthState.Loading,
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.modernColors.primary
+                            )
+                        ) {
+                            if (authState is AuthState.Loading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            } else {
+                                Text("Verify Code", style = MaterialTheme.typography.titleMedium)
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+
+                    TextButton(
+                        onClick = {
+                            authViewModel.clearMagicLinkState()
+                            otpCode = ""
+                            showOtpInput = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "Send a new link",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 

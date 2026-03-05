@@ -57,6 +57,9 @@ struct iOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onOpenURL { url in
+                    DeepLinkHandler().handle(url: url)
+                }
         }
     }
 }

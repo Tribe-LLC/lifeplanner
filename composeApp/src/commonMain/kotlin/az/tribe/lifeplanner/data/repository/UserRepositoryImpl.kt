@@ -109,6 +109,13 @@ class UserRepositoryImpl(
         syncManager.requestSync()
     }
 
+    override suspend fun markOnboardingComplete(userId: String) {
+        sharedDatabase { db ->
+            db.lifePlannerDBQueries.markOnboardingComplete(userId)
+        }
+        syncManager.requestSync()
+    }
+
     override suspend fun hasCompletedOnboarding(): Boolean {
         return sharedDatabase { db ->
             db.lifePlannerDBQueries.getCurrentUser()

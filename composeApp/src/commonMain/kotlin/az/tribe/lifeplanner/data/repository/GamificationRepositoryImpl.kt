@@ -1,6 +1,5 @@
 package az.tribe.lifeplanner.data.repository
 
-import az.tribe.lifeplanner.data.mapper.createNewBadge
 import az.tribe.lifeplanner.data.mapper.createNewChallenge
 import az.tribe.lifeplanner.data.mapper.toDomain
 import az.tribe.lifeplanner.data.mapper.toEntity
@@ -14,21 +13,24 @@ import az.tribe.lifeplanner.data.sync.SyncManager
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
 import az.tribe.lifeplanner.widget.WidgetDataSyncService
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
+import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.rpc
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
-import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class GamificationRepositoryImpl(
     private val database: SharedDatabase,
     private val widgetSyncService: WidgetDataSyncService,
-    private val syncManager: SyncManager
+    private val syncManager: SyncManager,
+    private val supabaseClient: SupabaseClient
 ) : GamificationRepository {
 
     private suspend fun notifyWidgets() {
@@ -36,12 +38,6 @@ class GamificationRepositoryImpl(
             widgetSyncService.refreshWidgets()
         } catch (e: Exception) {
             Logger.w("GamificationRepositoryImpl") { "Widget refresh failed: ${e.message}" }
-        }
-    }
-
-    init {
-        CoroutineScope(Dispatchers.IO).launch {
-            initializeProgress()
         }
     }
 
@@ -74,119 +70,18 @@ class GamificationRepositoryImpl(
         }
     }
 
-    override suspend fun updateDailyStreak(): Flow<Int> = flow {
-        val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
-
-        val progress = database.getUserProgressEntity()
-            ?: run {
-                initializeProgress()
-                database.getUserProgressEntity()
-            }
-
-        if (progress == null) {
-            emit(0)
-            return@flow
-        }
-
-        val lastCheckIn = progress.lastCheckInDate?.let { LocalDate.parse(it) }
-
-        val newStreak = when {
-            lastCheckIn == null -> 1
-            isConsecutiveDay(lastCheckIn, today) -> progress.currentStreak.toInt() + 1
-            lastCheckIn == today -> progress.currentStreak.toInt()
-            else -> 1
-        }
-
-        val longestStreak = maxOf(newStreak.toLong(), progress.longestStreak)
-
-        database.updateUserStreakFull(
-            currentStreak = newStreak.toLong(),
-            lastCheckInDate = today.toString(),
-            longestStreak = longestStreak
-        )
-
-        notifyWidgets()
-        syncManager.requestSync()
-        emit(newStreak)
-    }
-
-    override suspend fun addXp(amount: Int): UserProgress {
-        val current = database.getUserProgressEntity()
-            ?: run {
-                initializeProgress()
-                database.getUserProgressEntity()
-            }
-            ?: return UserProgress.default()
-
-        val newTotalXp = current.totalXp + amount
-        val newLevel = UserProgress.calculateLevelFromXp(newTotalXp.toInt())
-
-        database.updateUserXp(newTotalXp, newLevel.toLong())
-
-        notifyWidgets()
-        syncManager.requestSync()
-        return database.getUserProgressEntity()?.toDomain() ?: UserProgress.default()
-    }
-
-    override suspend fun deductXp(amount: Int): UserProgress {
-        val current = database.getUserProgressEntity()
-            ?: run {
-                initializeProgress()
-                database.getUserProgressEntity()
-            }
-            ?: return UserProgress.default()
-
-        val newTotalXp = (current.totalXp - amount).coerceAtLeast(0)
-        val newLevel = UserProgress.calculateLevelFromXp(newTotalXp.toInt())
-
-        database.updateUserXp(newTotalXp, newLevel.toLong())
-
-        notifyWidgets()
-        syncManager.requestSync()
-        return database.getUserProgressEntity()?.toDomain() ?: UserProgress.default()
-    }
-
-    override suspend fun incrementGoalsCompleted() {
-        database.incrementGoalsCompleted()
-        syncManager.requestSync()
-    }
-
-    override suspend fun incrementHabitsCompleted() {
-        database.incrementHabitsCompleted()
-        syncManager.requestSync()
-    }
-
-    override suspend fun decrementHabitsCompleted() {
-        database.decrementHabitsCompleted()
-        syncManager.requestSync()
-    }
-
-    override suspend fun incrementJournalEntries() {
-        database.incrementJournalEntries()
-        syncManager.requestSync()
-    }
-
-    // --- Badge Operations ---
+    // --- Badge Operations (read-only) ---
 
     override suspend fun getAllBadges(): List<Badge> {
-        return database.getAllBadges().map { it.toDomain() }
+        return database.getAllBadges().mapNotNull { it.toDomain() }
     }
 
     override suspend fun getNewBadges(): List<Badge> {
-        return database.getNewBadges().map { it.toDomain() }
+        return database.getNewBadges().mapNotNull { it.toDomain() }
     }
 
     override suspend fun hasBadge(type: BadgeType): Boolean {
         return database.hasBadge(type.name)
-    }
-
-    override suspend fun awardBadge(type: BadgeType): Badge? {
-        if (hasBadge(type)) return null
-
-        val badge = createNewBadge(type)
-        database.insertBadge(badge.toEntity())
-        syncManager.requestSync()
-        return badge
     }
 
     override suspend fun markBadgeAsSeen(badgeId: String) {
@@ -203,81 +98,22 @@ class GamificationRepositoryImpl(
         return database.getBadgeCount().toInt()
     }
 
-    override suspend fun checkAndAwardBadges(): List<Badge> {
-        val awardedBadges = mutableListOf<Badge>()
-        val progress = database.getUserProgressEntity()?.toDomain() ?: return emptyList()
-
-        // Check streak badges
-        val streakBadges = listOf(
-            BadgeType.STREAK_3 to 3,
-            BadgeType.STREAK_7 to 7,
-            BadgeType.STREAK_14 to 14,
-            BadgeType.STREAK_30 to 30,
-            BadgeType.STREAK_100 to 100
-        )
-
-        for ((badgeType, requirement) in streakBadges) {
-            if (progress.currentStreak >= requirement && !hasBadge(badgeType)) {
-                awardBadge(badgeType)?.let { awardedBadges.add(it) }
-            }
-        }
-
-        // Check goal completion badges
-        val goalBadges = listOf(
-            BadgeType.FIRST_STEP to 1,
-            BadgeType.GOAL_1 to 1,
-            BadgeType.GOAL_5 to 5,
-            BadgeType.GOAL_10 to 10,
-            BadgeType.GOAL_25 to 25,
-            BadgeType.GOAL_50 to 50
-        )
-
-        for ((badgeType, requirement) in goalBadges) {
-            if (progress.goalsCompleted >= requirement && !hasBadge(badgeType)) {
-                awardBadge(badgeType)?.let { awardedBadges.add(it) }
-            }
-        }
-
-        // Check habit badges
-        if (progress.habitsCompleted >= 1 && !hasBadge(BadgeType.HABIT_STARTER)) {
-            awardBadge(BadgeType.HABIT_STARTER)?.let { awardedBadges.add(it) }
-        }
-        if (progress.habitsCompleted >= 5 && !hasBadge(BadgeType.HABIT_5)) {
-            awardBadge(BadgeType.HABIT_5)?.let { awardedBadges.add(it) }
-        }
-
-        // Check journal badges
-        val journalBadges = listOf(
-            BadgeType.JOURNAL_FIRST to 1,
-            BadgeType.JOURNAL_10 to 10,
-            BadgeType.JOURNAL_30 to 30
-        )
-
-        for ((badgeType, requirement) in journalBadges) {
-            if (progress.journalEntriesCount >= requirement && !hasBadge(badgeType)) {
-                awardBadge(badgeType)?.let { awardedBadges.add(it) }
-            }
-        }
-
-        return awardedBadges
-    }
-
     // --- Challenge Operations ---
 
     override suspend fun getActiveChallenges(): List<Challenge> {
         val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date.toString()
-        return database.getActiveChallenges(today).map { it.toDomain() }
+        return database.getActiveChallenges(today).mapNotNull { it.toDomain() }
     }
 
     override suspend fun getCompletedChallenges(): List<Challenge> {
-        return database.getCompletedChallenges().map { it.toDomain() }
+        return database.getCompletedChallenges().mapNotNull { it.toDomain() }
     }
 
     override suspend fun startChallenge(type: ChallengeType): Challenge {
         // Check if an active challenge of this type already exists
         val existingChallenge = database.getChallengeByType(type.name)
         if (existingChallenge != null) {
-            return existingChallenge.toDomain()
+            existingChallenge.toDomain()?.let { return it }
         }
 
         // Create a new challenge only if one doesn't exist
@@ -294,21 +130,17 @@ class GamificationRepositoryImpl(
 
     override suspend fun checkAndCompleteChallenge(challengeId: String): Challenge? {
         val challengeEntity = database.getChallengeById(challengeId) ?: return null
-        val challenge = challengeEntity.toDomain()
+        val challenge = challengeEntity.toDomain() ?: return null
 
         if (challenge.currentProgress >= challenge.targetProgress && !challenge.isCompleted) {
             val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
-            val type = ChallengeType.valueOf(challengeEntity.challengeType)
 
             database.completeChallenge(
                 id = challengeId,
                 completedAt = now.toString(),
-                xpEarned = type.xpReward.toLong()
+                xpEarned = challenge.type.xpReward.toLong()
             )
             syncManager.requestSync()
-
-            // Award XP for completing the challenge
-            addXp(type.xpReward)
 
             return database.getChallengeById(challengeId)?.toDomain()
         }
@@ -327,76 +159,28 @@ class GamificationRepositoryImpl(
         return ChallengeType.entries.filter { it !in activeChallenges }
     }
 
-    private fun isConsecutiveDay(previous: LocalDate, current: LocalDate): Boolean {
-        return (current.toEpochDays() - previous.toEpochDays()).toLong() == 1L
-    }
+    // --- Daily Streak via Server RPC ---
 
-    // --- Activity-based Challenge Updates ---
+    @Serializable
+    private data class StreakResult(val new_streak: Int, val xp_awarded: Int)
 
-    override suspend fun onHabitCheckedIn() {
-        // Update habit-related challenges
-        val activeChallenges = getActiveChallenges()
+    override suspend fun updateDailyStreakRemote(): Pair<Int, Int> {
+        return try {
+            val userId = supabaseClient.auth.currentUserOrNull()?.id
+                ?: throw IllegalStateException("Not authenticated")
+            val params = buildJsonObject { put("p_user_id", userId) }
+            val results = supabaseClient.postgrest.rpc("update_daily_streak", params)
+                .decodeList<StreakResult>()
+            val result = results.firstOrNull() ?: StreakResult(0, 0)
 
-        for (challenge in activeChallenges) {
-            when (challenge.type) {
-                ChallengeType.DAILY_HABIT,
-                ChallengeType.WEEKLY_HABITS -> {
-                    val newProgress = challenge.currentProgress + 1
-                    updateChallengeProgress(challenge.id, newProgress)
-                    checkAndCompleteChallenge(challenge.id)
-                }
-                else -> { /* Not a habit challenge */ }
-            }
-        }
-    }
+            // Trigger sync to pull updated user_progress from server
+            syncManager.requestSync()
+            notifyWidgets()
 
-    override suspend fun onJournalEntryCreated() {
-        // Update journal-related challenges
-        val activeChallenges = getActiveChallenges()
-
-        for (challenge in activeChallenges) {
-            when (challenge.type) {
-                ChallengeType.DAILY_JOURNAL,
-                ChallengeType.WEEKLY_JOURNAL -> {
-                    val newProgress = challenge.currentProgress + 1
-                    updateChallengeProgress(challenge.id, newProgress)
-                    checkAndCompleteChallenge(challenge.id)
-                }
-                else -> { /* Not a journal challenge */ }
-            }
-        }
-    }
-
-    override suspend fun onGoalCompleted() {
-        // Update goal-related challenges
-        val activeChallenges = getActiveChallenges()
-
-        for (challenge in activeChallenges) {
-            when (challenge.type) {
-                ChallengeType.WEEKLY_GOALS,
-                ChallengeType.MONTHLY_COMPLETION -> {
-                    val newProgress = challenge.currentProgress + 1
-                    updateChallengeProgress(challenge.id, newProgress)
-                    checkAndCompleteChallenge(challenge.id)
-                }
-                else -> { /* Not a goal challenge */ }
-            }
-        }
-    }
-
-    override suspend fun onMilestoneCompleted() {
-        // Update milestone-related challenges
-        val activeChallenges = getActiveChallenges()
-
-        for (challenge in activeChallenges) {
-            when (challenge.type) {
-                ChallengeType.WEEKLY_MILESTONE -> {
-                    val newProgress = challenge.currentProgress + 1
-                    updateChallengeProgress(challenge.id, newProgress)
-                    checkAndCompleteChallenge(challenge.id)
-                }
-                else -> { /* Not a milestone challenge */ }
-            }
+            Pair(result.new_streak, result.xp_awarded)
+        } catch (e: Exception) {
+            Logger.w("GamificationRepositoryImpl") { "updateDailyStreakRemote failed: ${e.message}" }
+            Pair(0, 0)
         }
     }
 }

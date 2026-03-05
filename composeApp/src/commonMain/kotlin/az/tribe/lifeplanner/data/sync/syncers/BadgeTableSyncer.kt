@@ -18,6 +18,9 @@ class BadgeTableSyncer(
     override val tableName = "badges"
     private val settings = Settings()
 
+    // Pull-only: server awards badges via triggers
+    override suspend fun pushLocalChanges(userId: String): Int = 0
+
     override suspend fun upsertRemote(dtos: List<BadgeSyncDto>) {
         supabase.postgrest[tableName].upsert(dtos)
     }

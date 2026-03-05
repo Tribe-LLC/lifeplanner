@@ -4,22 +4,25 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import az.tribe.lifeplanner.domain.enum.BadgeType
 import az.tribe.lifeplanner.domain.enum.ChallengeType
-import az.tribe.lifeplanner.domain.enum.GoalTimeline
 import az.tribe.lifeplanner.domain.model.Badge
 import az.tribe.lifeplanner.domain.model.Challenge
 import az.tribe.lifeplanner.domain.model.UserProgress
-import az.tribe.lifeplanner.domain.model.XpRewards
 import az.tribe.lifeplanner.domain.repository.GamificationRepository
+import az.tribe.lifeplanner.data.sync.SyncManager
+import az.tribe.lifeplanner.data.sync.SyncState
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 class GamificationViewModel(
-    private val gamificationRepository: GamificationRepository
+    private val gamificationRepository: GamificationRepository,
+    private val syncManager: SyncManager
 ) : ViewModel() {
 
     private val _userProgress = MutableStateFlow<UserProgress?>(null)
@@ -50,16 +53,47 @@ class GamificationViewModel(
         viewModelScope.launch {
             loadAll()
         }
+        viewModelScope.launch {
+            syncManager.syncStatus
+                .map { it.state }
+                .distinctUntilChanged()
+                .filter { it == SyncState.SYNCED }
+                .collect { loadAll() }
+        }
     }
 
     private suspend fun loadAll() {
         _isLoading.value = true
         try {
+            val previousProgress = _userProgress.value
+            val previousBadges = _badges.value
+
             loadUserProgress()
             loadBadges()
             loadChallenges()
             checkDailyStreak()
-            checkAndAwardBadges()
+
+            // Detect level-up from server-side changes
+            val newProgress = _userProgress.value
+            if (previousProgress != null && newProgress != null &&
+                newProgress.currentLevel > previousProgress.currentLevel) {
+                _gamificationEvents.emit(
+                    GamificationEvent.LevelUp(
+                        newLevel = newProgress.currentLevel,
+                        title = newProgress.title
+                    )
+                )
+            }
+
+            // Detect newly earned badges from server-side changes
+            val newBadgeTypes = _badges.value.map { it.type }.toSet()
+            val previousBadgeTypes = previousBadges.map { it.type }.toSet()
+            val earnedTypes = newBadgeTypes - previousBadgeTypes
+            if (earnedTypes.isNotEmpty()) {
+                _badges.value.filter { it.type in earnedTypes }.forEach { badge ->
+                    _gamificationEvents.emit(GamificationEvent.BadgeEarned(badge))
+                }
+            }
         } catch (e: Exception) {
             co.touchlab.kermit.Logger.w("GamificationVM") { "loadAll failed: ${e.message}" }
         } finally {
@@ -93,27 +127,12 @@ class GamificationViewModel(
 
     fun checkDailyStreak() {
         viewModelScope.launch {
-            val previousStreak = _userProgress.value?.currentStreak ?: 0
-            val newStreak = gamificationRepository.updateDailyStreak().first()
-
-            if (newStreak > previousStreak) {
-                // Award XP for daily check-in
-                gamificationRepository.addXp(XpRewards.DAILY_CHECK_IN)
+            val (newStreak, xpAwarded) = gamificationRepository.updateDailyStreakRemote()
+            if (xpAwarded > 0) {
                 _gamificationEvents.emit(GamificationEvent.StreakUpdated(newStreak))
             }
-
+            // Reload progress after RPC updates server state
             loadUserProgress()
-            checkAndAwardBadges()
-        }
-    }
-
-    private suspend fun checkAndAwardBadges() {
-        val awardedBadges = gamificationRepository.checkAndAwardBadges()
-        if (awardedBadges.isNotEmpty()) {
-            loadBadges()
-            awardedBadges.forEach { badge ->
-                _gamificationEvents.emit(GamificationEvent.BadgeEarned(badge))
-            }
         }
     }
 
@@ -151,76 +170,6 @@ class GamificationViewModel(
             }
 
             loadChallenges()
-        }
-    }
-
-    /**
-     * Add XP and check for level-up. Emits LevelUp event if the level increased.
-     */
-    private suspend fun addXpAndCheckLevelUp(xpAmount: Int) {
-        val previousLevel = _userProgress.value?.currentLevel ?: 1
-        gamificationRepository.addXp(xpAmount)
-        loadUserProgress()
-        val newLevel = _userProgress.value?.currentLevel ?: 1
-        if (newLevel > previousLevel) {
-            _gamificationEvents.emit(
-                GamificationEvent.LevelUp(
-                    newLevel = newLevel,
-                    title = _userProgress.value?.title ?: "Adventurer"
-                )
-            )
-        }
-    }
-
-    // Methods to be called from other ViewModels when actions occur
-    fun onGoalCompleted() {
-        viewModelScope.launch {
-            gamificationRepository.incrementGoalsCompleted()
-            addXpAndCheckLevelUp(XpRewards.GOAL_COMPLETED)
-            checkAndAwardBadges()
-        }
-    }
-
-    fun onMilestoneCompleted() {
-        viewModelScope.launch {
-            addXpAndCheckLevelUp(XpRewards.MILESTONE_COMPLETED)
-        }
-    }
-
-    fun onHabitCheckIn(streakDays: Int) {
-        viewModelScope.launch {
-            gamificationRepository.incrementHabitsCompleted()
-            val xp = XpRewards.HABIT_CHECK_IN + (XpRewards.HABIT_STREAK_BONUS * streakDays)
-            addXpAndCheckLevelUp(xp)
-            checkAndAwardBadges()
-        }
-    }
-
-    fun onJournalEntryCreated() {
-        viewModelScope.launch {
-            gamificationRepository.incrementJournalEntries()
-            addXpAndCheckLevelUp(XpRewards.JOURNAL_ENTRY)
-            checkAndAwardBadges()
-        }
-    }
-
-    fun onGoalCreated() {
-        viewModelScope.launch {
-            addXpAndCheckLevelUp(XpRewards.GOAL_CREATED)
-        }
-    }
-
-    fun onFocusSessionCompleted(durationMinutes: Int) {
-        viewModelScope.launch {
-            val xp = when {
-                durationMinutes >= 60 -> XpRewards.FOCUS_SESSION_60
-                durationMinutes >= 45 -> XpRewards.FOCUS_SESSION_45
-                durationMinutes >= 25 -> XpRewards.FOCUS_SESSION_25
-                durationMinutes >= 15 -> XpRewards.FOCUS_SESSION_15
-                else -> (durationMinutes * 0.5f).toInt().coerceAtLeast(1)
-            }
-            addXpAndCheckLevelUp(xp)
-            checkAndAwardBadges()
         }
     }
 

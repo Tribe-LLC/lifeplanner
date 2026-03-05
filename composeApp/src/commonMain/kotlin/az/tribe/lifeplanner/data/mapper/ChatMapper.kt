@@ -22,7 +22,7 @@ private val json = Json { ignoreUnknownKeys = true }
 fun ChatMessageEntity.toDomain(): ChatMessage = ChatMessage(
     id = id,
     content = content,
-    role = MessageRole.valueOf(role),
+    role = try { MessageRole.valueOf(role.uppercase()) } catch (_: Exception) { MessageRole.USER },
     timestamp = parseLocalDateTime(timestamp),
     relatedGoalId = relatedGoalId,
     metadata = metadata?.let {

@@ -11,10 +11,8 @@ import az.tribe.lifeplanner.data.model.onSuccess
 import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.domain.model.GoalAnalytics
 import az.tribe.lifeplanner.domain.model.GoalChange
-import az.tribe.lifeplanner.domain.model.XpRewards
 import az.tribe.lifeplanner.domain.enum.GoalFilter
 import az.tribe.lifeplanner.domain.enum.GoalStatus
-import az.tribe.lifeplanner.domain.repository.GamificationRepository
 import az.tribe.lifeplanner.domain.repository.GeminiRepository
 import az.tribe.lifeplanner.domain.repository.GoalRepository
 import az.tribe.lifeplanner.usecases.*
@@ -65,7 +63,6 @@ class GoalViewModel(
 
     private val generateAiQuestionnaireUseCase: GenerateAiQuestionnaireUseCase,
     private val generateAiGoalsUseCase: GenerateAiGoalsUseCase,
-    private val gamificationRepository: GamificationRepository,
     private val geminiRepository: GeminiRepository
 ) : ViewModel() {
 
@@ -165,9 +162,6 @@ class GoalViewModel(
             try {
                 createGoalUseCase(goal)
                 _error.value = null
-
-                // Award XP for creating a goal
-                gamificationRepository.addXp(XpRewards.GOAL_CREATED)
             } catch (e: Exception) {
                 _error.value = "Failed to create goal: ${e.message}"
             }
@@ -237,14 +231,6 @@ class GoalViewModel(
                         )
                     }
                     _error.value = null
-
-                    // Update gamification if goal is completed
-                    if (newStatus == GoalStatus.COMPLETED && oldGoal?.status != GoalStatus.COMPLETED) {
-                        gamificationRepository.incrementGoalsCompleted()
-                        gamificationRepository.addXp(XpRewards.GOAL_COMPLETED)
-                        gamificationRepository.onGoalCompleted()
-                        gamificationRepository.checkAndAwardBadges()
-                    }
                 } else {
                     _error.value = result.exceptionOrNull()?.message ?: "Failed to update status"
                 }
@@ -316,7 +302,6 @@ class GoalViewModel(
                 val milestone = goal?.milestones?.find { it.id == milestoneId }
 
                 if (milestone != null && goal != null) {
-                    val wasCompleted = milestone.isCompleted
                     val willBeCompleted = !milestone.isCompleted
                     val result = toggleMilestoneCompletionUseCase(milestoneId, willBeCompleted)
 
@@ -355,12 +340,6 @@ class GoalViewModel(
                         }
 
                         _error.value = null
-
-                        // Update gamification if milestone is newly completed
-                        if (!wasCompleted && willBeCompleted) {
-                            gamificationRepository.addXp(XpRewards.MILESTONE_COMPLETED)
-                            gamificationRepository.onMilestoneCompleted()
-                        }
                     } else {
                         _error.value =
                             result.exceptionOrNull()?.message ?: "Failed to toggle milestone"

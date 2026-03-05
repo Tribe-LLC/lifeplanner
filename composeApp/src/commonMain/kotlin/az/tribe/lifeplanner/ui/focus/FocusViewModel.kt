@@ -5,12 +5,19 @@ import androidx.lifecycle.viewModelScope
 import az.tribe.lifeplanner.domain.enum.AmbientSound
 import az.tribe.lifeplanner.domain.enum.FocusTheme
 import az.tribe.lifeplanner.domain.enum.Mood
+import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.model.FocusSession
 import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.domain.model.Milestone
 import az.tribe.lifeplanner.domain.model.XpRewards
 import az.tribe.lifeplanner.domain.repository.FocusRepository
+import az.tribe.lifeplanner.domain.repository.GamificationRepository
 import az.tribe.lifeplanner.domain.repository.GoalRepository
+import az.tribe.lifeplanner.usecases.GetGoalByIdUseCase
+import az.tribe.lifeplanner.usecases.ToggleMilestoneCompletionUseCase
+import az.tribe.lifeplanner.usecases.UpdateGoalProgressUseCase
+import az.tribe.lifeplanner.usecases.UpdateGoalStatusUseCase
+import kotlinx.coroutines.flow.firstOrNull
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -33,7 +40,12 @@ enum class TimerState {
 
 class FocusViewModel(
     private val focusRepository: FocusRepository,
-    private val goalRepository: GoalRepository
+    private val goalRepository: GoalRepository,
+    private val gamificationRepository: GamificationRepository,
+    private val toggleMilestoneCompletionUseCase: ToggleMilestoneCompletionUseCase,
+    private val getGoalByIdUseCase: GetGoalByIdUseCase,
+    private val updateGoalProgressUseCase: UpdateGoalProgressUseCase,
+    private val updateGoalStatusUseCase: UpdateGoalStatusUseCase
 ) : ViewModel() {
 
     // Setup state — milestone-first selection
@@ -52,6 +64,15 @@ class FocusViewModel(
 
     private val _durationMinutes = MutableStateFlow(25)
     val durationMinutes: StateFlow<Int> = _durationMinutes.asStateFlow()
+
+    private val _isFreeFlow = MutableStateFlow(false)
+    val isFreeFlow: StateFlow<Boolean> = _isFreeFlow.asStateFlow()
+
+    private val _isCustomDuration = MutableStateFlow(false)
+    val isCustomDuration: StateFlow<Boolean> = _isCustomDuration.asStateFlow()
+
+    private val _customDurationMinutes = MutableStateFlow(25)
+    val customDurationMinutes: StateFlow<Int> = _customDurationMinutes.asStateFlow()
 
     // Timer state
     private val _timerState = MutableStateFlow(TimerState.IDLE)
@@ -97,6 +118,19 @@ class FocusViewModel(
     // Events
     private val _focusEvents = MutableSharedFlow<FocusEvent>()
     val focusEvents = _focusEvents.asSharedFlow()
+
+    // Milestone completion prompt state
+    private val _showMilestonePrompt = MutableStateFlow(false)
+    val showMilestonePrompt: StateFlow<Boolean> = _showMilestonePrompt.asStateFlow()
+
+    private val _milestoneMarkedComplete = MutableStateFlow(false)
+    val milestoneMarkedComplete: StateFlow<Boolean> = _milestoneMarkedComplete.asStateFlow()
+
+    private val _canCompleteMilestone = MutableStateFlow(true)
+    val canCompleteMilestone: StateFlow<Boolean> = _canCompleteMilestone.asStateFlow()
+
+    private val _milestoneFocusMinutes = MutableStateFlow(0)
+    val milestoneFocusMinutes: StateFlow<Int> = _milestoneFocusMinutes.asStateFlow()
 
     private var timerJob: Job? = null
     private var currentSessionId: String? = null
@@ -176,10 +210,41 @@ class FocusViewModel(
     fun selectMilestoneWithGoal(milestone: Milestone, goal: Goal) {
         _selectedMilestone.value = milestone
         _selectedGoal.value = goal
+        loadMilestoneFocusMinutes(milestone.id)
     }
 
     fun setDuration(minutes: Int) {
         _durationMinutes.value = minutes
+        _isCustomDuration.value = false
+    }
+
+    fun setTimerMode(freeFlow: Boolean) {
+        _isFreeFlow.value = freeFlow
+        if (freeFlow) {
+            _isCustomDuration.value = false
+        }
+    }
+
+    fun toggleCustomDuration() {
+        val newValue = !_isCustomDuration.value
+        _isCustomDuration.value = newValue
+        if (newValue) {
+            _durationMinutes.value = _customDurationMinutes.value
+        }
+    }
+
+    fun setCustomDuration(minutes: Int) {
+        val clamped = minutes.coerceIn(5, 120)
+        _customDurationMinutes.value = clamped
+        _durationMinutes.value = clamped
+    }
+
+    fun incrementCustomDuration() {
+        setCustomDuration(_customDurationMinutes.value + 5)
+    }
+
+    fun decrementCustomDuration() {
+        setCustomDuration(_customDurationMinutes.value - 5)
     }
 
     fun preSelectGoalAndMilestone(goalId: String, milestoneId: String) {
@@ -192,6 +257,7 @@ class FocusViewModel(
                     val milestone = goal.milestones.find { it.id == milestoneId }
                     if (milestone != null) {
                         _selectedMilestone.value = milestone
+                        loadMilestoneFocusMinutes(milestoneId)
                     }
                 }
             } catch (e: Exception) { Logger.e("FocusViewModel") { "selectGoalAndMilestone failed: ${e.message}" } }
@@ -202,10 +268,11 @@ class FocusViewModel(
     fun startTimer() {
         val goal = _selectedGoal.value ?: return
         val milestone = _selectedMilestone.value ?: return
-        val duration = _durationMinutes.value
+        val freeFlow = _isFreeFlow.value
+        val duration = if (freeFlow) 0 else _durationMinutes.value
 
-        val totalSeconds = duration * 60
-        _remainingSeconds.value = totalSeconds
+        val totalSeconds = if (freeFlow) Int.MAX_VALUE / 2 else duration * 60
+        _remainingSeconds.value = if (freeFlow) 0 else totalSeconds
         _elapsedSeconds.value = 0
         _progress.value = 0f
         pausedElapsedSeconds = 0
@@ -247,7 +314,7 @@ class FocusViewModel(
 
     fun resumeTimer() {
         if (_timerState.value != TimerState.PAUSED) return
-        val totalSeconds = _durationMinutes.value * 60
+        val totalSeconds = if (_isFreeFlow.value) Int.MAX_VALUE / 2 else _durationMinutes.value * 60
         timerStartInstant = Clock.System.now()
         _timerState.value = TimerState.RUNNING
         startTickLoop(totalSeconds)
@@ -278,12 +345,53 @@ class FocusViewModel(
             }
         }
         _timerState.value = TimerState.CANCELLED
+
+        // Show milestone prompt if focused >= 5 min
+        if (elapsed >= 300 && _selectedMilestone.value != null) {
+            _showMilestonePrompt.value = true
+            checkCompletionEligibility()
+        }
     }
 
     fun addFiveMinutes() {
+        if (_isFreeFlow.value) return
         _durationMinutes.value += 5
         val totalSeconds = _durationMinutes.value * 60
         _remainingSeconds.value = totalSeconds - _elapsedSeconds.value
+    }
+
+    fun completeFreeFlowSession() {
+        timerJob?.cancel()
+        val elapsed = _elapsedSeconds.value
+        val elapsedMinutes = elapsed / 60
+        val xp = calculateXpForDuration(elapsedMinutes)
+        _lastXpEarned.value = xp
+        _progress.value = 1f
+        _timerState.value = TimerState.COMPLETED
+
+        viewModelScope.launch {
+            currentSessionId?.let { id ->
+                val session = focusRepository.getSessionById(id)
+                if (session != null) {
+                    focusRepository.updateSession(
+                        session.copy(
+                            actualDurationSeconds = elapsed,
+                            wasCompleted = true,
+                            xpEarned = xp,
+                            completedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+                        )
+                    )
+                }
+            }
+            _focusEvents.emit(FocusEvent.SessionCompleted(xp, elapsedMinutes))
+            loadTodayStats()
+            loadAllTimeStats()
+        }
+
+        if (_selectedMilestone.value != null) {
+            _showMilestonePrompt.value = true
+            checkCompletionEligibility()
+        }
     }
 
     fun resetToSetup() {
@@ -292,12 +400,19 @@ class FocusViewModel(
         _selectedGoal.value = null
         _selectedMilestone.value = null
         _durationMinutes.value = 25
+        _isFreeFlow.value = false
+        _isCustomDuration.value = false
+        _customDurationMinutes.value = 25
         _remainingSeconds.value = 0
         _elapsedSeconds.value = 0
         _progress.value = 0f
         _lastXpEarned.value = 0
         _selectedAmbientSound.value = AmbientSound.NONE
         _selectedFocusTheme.value = FocusTheme.DEFAULT
+        _showMilestonePrompt.value = false
+        _milestoneMarkedComplete.value = false
+        _canCompleteMilestone.value = true
+        _milestoneFocusMinutes.value = 0
         currentSessionId = null
         timerStartInstant = null
         pausedElapsedSeconds = 0
@@ -309,6 +424,7 @@ class FocusViewModel(
 
     private fun startTickLoop(totalSeconds: Int) {
         timerJob?.cancel()
+        val freeFlow = _isFreeFlow.value
         timerJob = viewModelScope.launch {
             while (_timerState.value == TimerState.RUNNING) {
                 delay(1000L)
@@ -316,15 +432,22 @@ class FocusViewModel(
                 val now = Clock.System.now()
                 val startInstant = timerStartInstant ?: now
                 val wallElapsed = (now - startInstant).inWholeSeconds.toInt()
-                val elapsed = (pausedElapsedSeconds + wallElapsed).coerceAtMost(totalSeconds)
 
-                _elapsedSeconds.value = elapsed
-                _remainingSeconds.value = (totalSeconds - elapsed).coerceAtLeast(0)
-                _progress.value = (elapsed.toFloat() / totalSeconds).coerceIn(0f, 1f)
+                if (freeFlow) {
+                    val elapsed = pausedElapsedSeconds + wallElapsed
+                    _elapsedSeconds.value = elapsed
+                    _remainingSeconds.value = 0
+                    _progress.value = 0f
+                } else {
+                    val elapsed = (pausedElapsedSeconds + wallElapsed).coerceAtMost(totalSeconds)
+                    _elapsedSeconds.value = elapsed
+                    _remainingSeconds.value = (totalSeconds - elapsed).coerceAtLeast(0)
+                    _progress.value = (elapsed.toFloat() / totalSeconds).coerceIn(0f, 1f)
 
-                if (elapsed >= totalSeconds) {
-                    onTimerComplete()
-                    break
+                    if (elapsed >= totalSeconds) {
+                        onTimerComplete()
+                        break
+                    }
                 }
             }
         }
@@ -357,6 +480,12 @@ class FocusViewModel(
             loadTodayStats()
             loadAllTimeStats()
         }
+
+        // Show milestone completion prompt
+        if (_selectedMilestone.value != null) {
+            _showMilestonePrompt.value = true
+            checkCompletionEligibility()
+        }
     }
 
     private fun calculateXpForDuration(minutes: Int): Int {
@@ -375,6 +504,66 @@ class FocusViewModel(
             (elapsedMinutes * 0.5f).toInt()
         } else {
             0
+        }
+    }
+
+    private fun checkCompletionEligibility() {
+        val milestoneId = _selectedMilestone.value?.id ?: return
+        viewModelScope.launch {
+            try {
+                val sessions = focusRepository.getSessionsByMilestoneId(milestoneId)
+                val completedSessions = sessions.filter { it.wasCompleted }
+                val userProgress = gamificationRepository.getUserProgress().firstOrNull()
+                val level = userProgress?.currentLevel ?: 1
+                // Level 5+ can always complete; below level 5 need at least 1 completed session
+                _canCompleteMilestone.value = level >= 5 || completedSessions.isNotEmpty()
+            } catch (e: Exception) {
+                Logger.e("FocusViewModel") { "checkCompletionEligibility failed: ${e.message}" }
+                _canCompleteMilestone.value = true
+            }
+        }
+    }
+
+    fun markMilestoneComplete() {
+        val goalId = _selectedGoal.value?.id ?: return
+        val milestoneId = _selectedMilestone.value?.id ?: return
+        viewModelScope.launch {
+            try {
+                val result = toggleMilestoneCompletionUseCase(milestoneId, true)
+                if (result.isSuccess) {
+                    _milestoneMarkedComplete.value = true
+                    // Recalculate goal progress
+                    val updatedGoal = getGoalByIdUseCase(goalId)
+                    updatedGoal?.let { g ->
+                        val completed = g.milestones.count { it.isCompleted }
+                        val total = g.milestones.size
+                        if (total > 0) updateGoalProgressUseCase(goalId, ((completed.toFloat() / total) * 100).toInt())
+                    }
+                    // Auto-transition NOT_STARTED → IN_PROGRESS
+                    val goal = getGoalByIdUseCase(goalId)
+                    if (goal?.status == GoalStatus.NOT_STARTED) {
+                        updateGoalStatusUseCase(goalId, GoalStatus.IN_PROGRESS)
+                    }
+                }
+            } catch (e: Exception) {
+                Logger.e("FocusViewModel") { "markMilestoneComplete failed: ${e.message}" }
+            }
+            _showMilestonePrompt.value = false
+        }
+    }
+
+    fun dismissMilestonePrompt() {
+        _showMilestonePrompt.value = false
+    }
+
+    private fun loadMilestoneFocusMinutes(milestoneId: String) {
+        viewModelScope.launch {
+            try {
+                val sessions = focusRepository.getSessionsByMilestoneId(milestoneId)
+                _milestoneFocusMinutes.value = sessions.sumOf { it.actualDurationSeconds } / 60
+            } catch (e: Exception) {
+                Logger.e("FocusViewModel") { "loadMilestoneFocusMinutes failed: ${e.message}" }
+            }
         }
     }
 

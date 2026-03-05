@@ -35,6 +35,8 @@ fun FocusProgressRing(
     progress: Float,
     remainingSeconds: Int,
     isRunning: Boolean,
+    elapsedSeconds: Int = 0,
+    isFreeFlow: Boolean = false,
     gradientColors: List<Color> = listOf(Color(0xFFFF6B35), Color(0xFFFFA726)),
     size: Dp = 240.dp,
     strokeWidth: Dp = 12.dp,
@@ -68,8 +70,9 @@ fun FocusProgressRing(
         label = "scale"
     )
 
-    val minutes = remainingSeconds / 60
-    val seconds = remainingSeconds % 60
+    val displaySeconds = if (isFreeFlow) elapsedSeconds else remainingSeconds
+    val minutes = displaySeconds / 60
+    val seconds = displaySeconds % 60
     val timeText = "${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
 
     Box(
@@ -96,34 +99,51 @@ fun FocusProgressRing(
                 style = Stroke(width = strokePx, cap = StrokeCap.Round)
             )
 
-            // Glow effect when running
-            if (isRunning && animatedProgress > 0f) {
-                drawArc(
-                    brush = Brush.sweepGradient(
-                        colors = gradientColors.map { it.copy(alpha = glowAlpha) }
-                    ),
-                    startAngle = -90f,
-                    sweepAngle = 360f * animatedProgress,
-                    useCenter = false,
-                    topLeft = Offset(topLeft.x - 4.dp.toPx(), topLeft.y - 4.dp.toPx()),
-                    size = Size(arcSize.width + 8.dp.toPx(), arcSize.height + 8.dp.toPx()),
-                    style = Stroke(width = strokePx + 8.dp.toPx(), cap = StrokeCap.Round)
-                )
-            }
+            if (isFreeFlow) {
+                // Full-ring pulsing glow for free flow
+                if (isRunning) {
+                    drawArc(
+                        brush = Brush.sweepGradient(
+                            colors = gradientColors.map { it.copy(alpha = glowAlpha) }
+                        ),
+                        startAngle = -90f,
+                        sweepAngle = 360f,
+                        useCenter = false,
+                        topLeft = Offset(topLeft.x - 4.dp.toPx(), topLeft.y - 4.dp.toPx()),
+                        size = Size(arcSize.width + 8.dp.toPx(), arcSize.height + 8.dp.toPx()),
+                        style = Stroke(width = strokePx + 8.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                }
+            } else {
+                // Glow effect when running (timed mode)
+                if (isRunning && animatedProgress > 0f) {
+                    drawArc(
+                        brush = Brush.sweepGradient(
+                            colors = gradientColors.map { it.copy(alpha = glowAlpha) }
+                        ),
+                        startAngle = -90f,
+                        sweepAngle = 360f * animatedProgress,
+                        useCenter = false,
+                        topLeft = Offset(topLeft.x - 4.dp.toPx(), topLeft.y - 4.dp.toPx()),
+                        size = Size(arcSize.width + 8.dp.toPx(), arcSize.height + 8.dp.toPx()),
+                        style = Stroke(width = strokePx + 8.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                }
 
-            // Progress arc
-            if (animatedProgress > 0f) {
-                drawArc(
-                    brush = Brush.sweepGradient(
-                        colors = gradientColors + gradientColors.first()
-                    ),
-                    startAngle = -90f,
-                    sweepAngle = 360f * animatedProgress,
-                    useCenter = false,
-                    topLeft = topLeft,
-                    size = arcSize,
-                    style = Stroke(width = strokePx, cap = StrokeCap.Round)
-                )
+                // Progress arc (timed mode only)
+                if (animatedProgress > 0f) {
+                    drawArc(
+                        brush = Brush.sweepGradient(
+                            colors = gradientColors + gradientColors.first()
+                        ),
+                        startAngle = -90f,
+                        sweepAngle = 360f * animatedProgress,
+                        useCenter = false,
+                        topLeft = topLeft,
+                        size = arcSize,
+                        style = Stroke(width = strokePx, cap = StrokeCap.Round)
+                    )
+                }
             }
         }
 
@@ -138,7 +158,7 @@ fun FocusProgressRing(
             )
             if (isRunning) {
                 Text(
-                    text = "remaining",
+                    text = if (isFreeFlow) "elapsed" else "remaining",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

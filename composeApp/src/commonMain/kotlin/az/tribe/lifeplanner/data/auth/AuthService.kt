@@ -4,6 +4,7 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.OtpType
 import io.github.jan.supabase.auth.providers.builtin.Email
+import io.github.jan.supabase.auth.providers.builtin.OTP
 import co.touchlab.kermit.Logger
 
 /**
@@ -23,6 +24,10 @@ interface AuthService {
     suspend fun linkEmailToAnonymousAccount(email: String, password: String, displayName: String? = null): AuthResult
     /** Resend the signup confirmation email. */
     suspend fun resendVerificationEmail(email: String)
+    /** Send a magic link (passwordless OTP) to the given email. */
+    suspend fun signInWithMagicLink(email: String)
+    /** Verify a 6-digit OTP code sent via magic link. */
+    suspend fun verifyOtp(email: String, token: String): AuthResult
 }
 
 /**
@@ -250,6 +255,48 @@ class SupabaseAuthService(
         } catch (e: Exception) {
             Logger.e("SupabaseAuth") { "Resend verification email failed: ${e.message}" }
             throw e
+        }
+    }
+
+    override suspend fun signInWithMagicLink(email: String) {
+        try {
+            supabase.auth.signInWith(OTP) {
+                this.email = email
+                this.createUser = true
+            }
+        } catch (e: Exception) {
+            Logger.e("SupabaseAuth") { "Magic link send failed: ${e.message}" }
+            throw e
+        }
+    }
+
+    override suspend fun verifyOtp(email: String, token: String): AuthResult {
+        return try {
+            supabase.auth.verifyEmailOtp(OtpType.Email.MAGIC_LINK, email, token)
+            val user = supabase.auth.currentUserOrNull()
+            if (user != null) {
+                AuthResult.Success(
+                    FirebaseUser(
+                        uid = user.id,
+                        email = user.email,
+                        displayName = user.userMetadata?.get("display_name")?.toString()?.removeSurrounding("\""),
+                        photoUrl = null,
+                        isAnonymous = false
+                    )
+                )
+            } else {
+                AuthResult.Error("Verification failed")
+            }
+        } catch (e: Exception) {
+            Logger.e("SupabaseAuth") { "OTP verification failed: ${e.message}" }
+            val message = when {
+                e.message?.contains("expired", ignoreCase = true) == true ->
+                    "Code expired. Please request a new magic link."
+                e.message?.contains("invalid", ignoreCase = true) == true ->
+                    "Invalid code. Please check and try again."
+                else -> e.message ?: "OTP verification failed"
+            }
+            AuthResult.Error(message)
         }
     }
 }

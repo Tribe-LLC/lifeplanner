@@ -37,7 +37,7 @@ abstract class TableSyncer<LocalEntity, RemoteDto>(
     /**
      * Push local changes to Supabase. Returns number of items pushed.
      */
-    suspend fun pushLocalChanges(userId: String): Int {
+    open suspend fun pushLocalChanges(userId: String): Int {
         val now = Clock.System.now().toString()
         var pushed = 0
 

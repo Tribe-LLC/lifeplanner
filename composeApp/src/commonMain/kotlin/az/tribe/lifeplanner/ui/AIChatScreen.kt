@@ -305,6 +305,8 @@ fun AIChatScreen(
                 ChatContent(
                     messages = uiState.messages,
                     isSending = uiState.isSending,
+                    isStreaming = uiState.isStreaming,
+                    streamingText = uiState.streamingText,
                     isExecutingAction = uiState.executingAction,
                     onSendMessage = { viewModel.sendMessage(it) },
                     onExecuteSuggestion = { viewModel.executeCoachSuggestion(it) },
@@ -342,6 +344,8 @@ fun AIChatScreen(
 fun ChatContent(
     messages: List<ChatMessage>,
     isSending: Boolean,
+    isStreaming: Boolean = false,
+    streamingText: String? = null,
     isExecutingAction: Boolean,
     onSendMessage: (String) -> Unit,
     onExecuteSuggestion: (CoachSuggestion) -> Unit,
@@ -537,10 +541,29 @@ fun ChatContent(
                     )
                 }
 
-                // Show typing indicator with coach name in council mode
-                if (isSending || typingCoachName != null) {
+                // Show streaming message bubble while streaming
+                if (isStreaming && !streamingText.isNullOrEmpty()) {
+                    item {
+                        StreamingMessageBubble(text = streamingText)
+                    }
+                }
+
+                // Show typing indicator:
+                // - When sending but not yet streaming (brief wait before first chunk)
+                // - In council mode with coach name
+                if ((isSending && !isStreaming) || typingCoachName != null) {
                     item {
                         CoachTypingIndicator(coachName = typingCoachName)
+                    }
+                }
+            }
+
+            // Auto-scroll when streaming text updates
+            LaunchedEffect(streamingText) {
+                if (isStreaming && !streamingText.isNullOrEmpty()) {
+                    val totalItems = listState.layoutInfo.totalItemsCount
+                    if (totalItems > 0) {
+                        listState.animateScrollToItem(totalItems - 1)
                     }
                 }
             }
@@ -825,6 +848,58 @@ fun SuggestionChip(
             color = MaterialTheme.colorScheme.onSecondaryContainer,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
+    }
+}
+
+@Composable
+fun StreamingMessageBubble(text: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .background(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary,
+                            MaterialTheme.colorScheme.tertiary
+                        )
+                    ),
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Rounded.AutoAwesome,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Surface(
+            modifier = Modifier
+                .widthIn(max = 280.dp)
+                .animateContentSize(),
+            shape = RoundedCornerShape(
+                topStart = 4.dp,
+                topEnd = 16.dp,
+                bottomStart = 16.dp,
+                bottomEnd = 16.dp
+            ),
+            color = MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(12.dp)
+            )
+        }
     }
 }
 

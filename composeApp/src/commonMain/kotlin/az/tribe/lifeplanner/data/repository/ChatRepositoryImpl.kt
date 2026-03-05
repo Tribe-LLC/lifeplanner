@@ -22,10 +22,13 @@ import az.tribe.lifeplanner.domain.model.SuggestedMilestone
 import az.tribe.lifeplanner.domain.model.UserContext
 import az.tribe.lifeplanner.domain.repository.ChatRepository
 import az.tribe.lifeplanner.domain.repository.CoachRepository
+import az.tribe.lifeplanner.domain.repository.StreamingChatEvent
 import az.tribe.lifeplanner.data.sync.SyncManager
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -582,6 +585,192 @@ Use this context to personalize your responses and make relevant suggestions.
         return lastMessage ?: addAssistantMessage(sessionId, "I'm here to help!", null)
     }
 
+    override fun sendMessageStreaming(
+        sessionId: String,
+        userMessage: String,
+        userContext: UserContext,
+        relatedGoalId: String?
+    ): Flow<StreamingChatEvent> = flow {
+        // Get session to determine coach
+        val session = getSessionById(sessionId)
+        val coachId = session?.coachId ?: "luna_general"
+        val coach = if (coachId == "luna_general") null else {
+            try { CoachPersona.getById(coachId) } catch (_: Exception) { null }
+        }
+
+        // Get conversation history BEFORE adding current message
+        val recentMessages = getRecentMessages(sessionId, 10)
+
+        // Save user message to DB
+        addUserMessage(sessionId, userMessage, relatedGoalId)
+
+        // Build plain-text system prompt (no JSON schema for streaming)
+        val systemPrompt = buildStreamingSystemPrompt(userContext, coach, recentMessages, coachId)
+
+        // Build messages for the proxy
+        val proxyMessages = listOf(
+            AiProxyService.ChatMessage(role = "user", content = userMessage)
+        )
+
+        val accumulated = StringBuilder()
+
+        try {
+            aiProxy.chatStream(
+                messages = proxyMessages,
+                systemPrompt = systemPrompt
+            ).collect { event ->
+                when (event) {
+                    is AiProxyService.StreamEvent.TextChunk -> {
+                        accumulated.append(event.text)
+                        emit(StreamingChatEvent.PartialText(event.text, accumulated.toString()))
+                    }
+                    is AiProxyService.StreamEvent.Done -> {
+                        val fullText = accumulated.toString().ifEmpty { event.fullText }
+                        val savedMessage = addAssistantMessage(sessionId, fullText, null)
+
+                        // Extract actionable suggestions from the streamed response
+                        try {
+                            val suggestions = extractStreamingSuggestions(userMessage, fullText)
+                            if (suggestions.isNotEmpty()) {
+                                val metadata = ChatMessageMetadata(coachSuggestions = suggestions)
+                                val metadataJson = json.encodeToString(ChatMessageMetadata.serializer(), metadata)
+                                database.updateChatMessageMetadata(savedMessage.id, metadataJson)
+                            }
+                        } catch (e: Exception) {
+                            Logger.w("ChatRepositoryImpl") { "Suggestion extraction failed (non-fatal): ${e.message}" }
+                        }
+
+                        emit(StreamingChatEvent.Completed(savedMessage))
+                    }
+                    is AiProxyService.StreamEvent.Error -> {
+                        // Save partial text if we have any
+                        if (accumulated.isNotEmpty()) {
+                            addAssistantMessage(sessionId, accumulated.toString(), null)
+                        }
+                        emit(StreamingChatEvent.Error(event.message))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Logger.e("ChatRepositoryImpl") { "Streaming failed: ${e.message}" }
+            // Save partial text if we have any
+            if (accumulated.isNotEmpty()) {
+                val saved = addAssistantMessage(sessionId, accumulated.toString(), null)
+                emit(StreamingChatEvent.Completed(saved))
+            } else {
+                emit(StreamingChatEvent.Error(e.message ?: "Streaming failed"))
+            }
+        }
+    }
+
+    /**
+     * After streaming completes, extract actionable suggestions (goals, habits) via a fast follow-up call.
+     * This bridges the gap: streaming gives the nice typing UX, this adds the action buttons.
+     */
+    @OptIn(ExperimentalUuidApi::class)
+    private suspend fun extractStreamingSuggestions(
+        userMessage: String,
+        assistantResponse: String
+    ): List<CoachSuggestion> {
+        try {
+            val prompt = """
+Based on this conversation, generate actionable suggestions ONLY if the user described something concrete they want to achieve.
+
+User: $userMessage
+Coach: $assistantResponse
+
+Reply ONLY with valid JSON, nothing else:
+{"suggestions":[]}
+
+SUGGESTION FORMATS:
+- Goal: {"type":"CREATE_GOAL","label":"Add Goal","data":{"title":"...","description":"...","category":"CAREER","timeline":"MID_TERM","milestones":[{"title":"Step 1","weekOffset":1},{"title":"Step 2","weekOffset":2}]}}
+- Habit: {"type":"CREATE_HABIT","label":"Add Habit","data":{"title":"...","description":"...","category":"HEALTH","frequency":"DAILY"}}
+- Journal: {"type":"CREATE_JOURNAL","label":"Add Entry","data":{"title":"...","content":"...","mood":"HAPPY"}}
+
+Categories: CAREER, FINANCIAL, PHYSICAL, SOCIAL, EMOTIONAL, SPIRITUAL, FAMILY
+Timelines: SHORT_TERM (30d), MID_TERM (90d), LONG_TERM (1yr)
+Frequencies: DAILY, WEEKLY
+
+RULES:
+- Include 3-5 milestones with weekOffset for goals
+- Return empty suggestions if the conversation is just greeting/general chat
+- Max 2 suggestions
+            """.trimIndent()
+
+            val response = aiProxy.generateText(prompt)
+            val trimmed = response.trim()
+
+            if (!trimmed.startsWith("{")) return emptyList()
+
+            val jsonObj = json.parseToJsonElement(trimmed).jsonObject
+            val suggestionsArr = jsonObj["suggestions"]?.jsonArray ?: return emptyList()
+            if (suggestionsArr.isEmpty()) return emptyList()
+
+            return suggestionsArr.mapNotNull { elem ->
+                try {
+                    val suggestionData = json.decodeFromJsonElement<SuggestionData>(elem)
+                    convertToCoachSuggestion(suggestionData)
+                } catch (_: Exception) { null }
+            }
+        } catch (e: Exception) {
+            Logger.w("ChatRepositoryImpl") { "Suggestion extraction failed: ${e.message}" }
+            return emptyList()
+        }
+    }
+
+    private suspend fun buildStreamingSystemPrompt(
+        userContext: UserContext,
+        coach: CoachPersona?,
+        conversationHistory: List<ChatMessage>,
+        coachId: String
+    ): String {
+        val coachName = coach?.name ?: "Luna"
+        val coachPersonality = coach?.personality ?: "warm, encouraging, holistic thinker"
+
+        // Check if it's a custom coach
+        val customCoach = if (isCustomCoachId(coachId) && coachRepository != null) {
+            val customId = extractCustomCoachId(coachId)
+            coachRepository.getCustomCoachById(customId)
+        } else null
+
+        val historyText = if (conversationHistory.isNotEmpty()) {
+            conversationHistory.takeLast(10).joinToString("\n") { msg ->
+                "${if (msg.role == MessageRole.USER) "User" else coachName}: ${msg.content}"
+            }
+        } else ""
+
+        val coachIntro = if (customCoach != null) {
+            """
+You are ${customCoach.name}, a personal coach in the LifePlanner app.
+YOUR PERSONALITY AND INSTRUCTIONS: ${customCoach.systemPrompt}
+""".trimIndent()
+        } else {
+            """
+You are $coachName, a friendly ${coach?.title ?: "Life Coach"} in LifePlanner app.
+${if (coach != null) "YOUR PERSONALITY: $coachPersonality\nYOUR SPECIALTIES: ${coach.specialties.joinToString(", ")}" else ""}
+""".trimIndent()
+        }
+
+        return """
+$coachIntro
+
+User Context:
+- Name: ${userContext.userName ?: "User"}
+- Level: ${userContext.level} (${userContext.totalXp} XP)
+- Goals: ${userContext.activeGoals} active, ${userContext.completedGoals} completed
+- Streak: ${userContext.currentStreak} days
+
+${if (historyText.isNotEmpty()) "CONVERSATION HISTORY:\n$historyText\n" else ""}
+
+INSTRUCTIONS:
+- Respond in plain text (NOT JSON). Just write your message naturally.
+- Keep responses concise and helpful (2-4 sentences).
+- Stay in character as $coachName.
+- Be encouraging and actionable.
+- If the user already provided details in the conversation history, don't re-ask.
+""".trimIndent()
+    }
+
     private suspend fun callGeminiChat(
         userMessage: String,
         conversationHistory: List<ChatMessage>,
@@ -756,14 +945,22 @@ IMPORTANT: If user explained what they want to achieve, CREATE the goal/habit im
         }
 
         return try {
+            val proxyMessages = buildAiProxyMessages(requestBody)
+            val systemPrompt = extractSystemPrompt(requestBody)
+            val responseSchema = extractResponseSchema(requestBody)
+            Logger.d("ChatRepositoryImpl") {
+                "Calling aiProxy.chat: ${proxyMessages.size} messages, " +
+                    "systemPrompt=${systemPrompt != null}, schema=${responseSchema != null}"
+            }
             val rawText = aiProxy.chat(
-                messages = buildAiProxyMessages(requestBody),
-                systemPrompt = extractSystemPrompt(requestBody),
-                responseSchema = extractResponseSchema(requestBody)
+                messages = proxyMessages,
+                systemPrompt = systemPrompt,
+                responseSchema = responseSchema
             )
+            Logger.d("ChatRepositoryImpl") { "AI response received (${rawText.length} chars)" }
             parseCoachResponse(rawText)
         } catch (e: Exception) {
-            Logger.e("ChatRepositoryImpl") { "Coach chat request failed: ${e.message}" }
+            Logger.e("ChatRepositoryImpl") { "Coach chat request failed: ${e.message}\n${e.stackTraceToString()}" }
             CoachResponse(
                 messages = listOf("I'm having trouble connecting right now. Could you try again in a moment?"),
                 suggestions = emptyList()
@@ -897,7 +1094,7 @@ Current User Context:
             )
             parseCoachResponse(rawText)
         } catch (e: Exception) {
-            Logger.e("ChatRepositoryImpl") { "Custom coach chat request failed: ${e.message}" }
+            Logger.e("ChatRepositoryImpl") { "Custom coach chat request failed: ${e.message}\n${e.stackTraceToString()}" }
             CoachResponse(
                 messages = listOf("I'm having trouble connecting right now. Could you try again?"),
                 suggestions = emptyList()
@@ -932,7 +1129,7 @@ Current User Context:
             )
             parseCouncilResponse(rawText, coachNames)
         } catch (e: Exception) {
-            Logger.e("ChatRepositoryImpl") { "Council chat request failed: ${e.message}" }
+            Logger.e("ChatRepositoryImpl") { "Council chat request failed: ${e.message}\n${e.stackTraceToString()}" }
             CoachResponse(
                 messages = listOf("We're having trouble connecting right now. Please try again."),
                 suggestions = emptyList()
@@ -1090,7 +1287,7 @@ If user explained their goal clearly, one coach should propose a goal/habit sugg
             )
             parseCouncilResponse(rawText)
         } catch (e: Exception) {
-            Logger.e("ChatRepositoryImpl") { "Council meeting request failed: ${e.message}" }
+            Logger.e("ChatRepositoryImpl") { "Council meeting request failed: ${e.message}\n${e.stackTraceToString()}" }
             CoachResponse(
                 messages = listOf("Luna: The council is having a moment. Let me help you directly!"),
                 suggestions = emptyList()

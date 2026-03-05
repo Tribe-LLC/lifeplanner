@@ -18,6 +18,9 @@ class UserProgressTableSyncer(
     override val tableName = "user_progress"
     private val settings = Settings()
 
+    // Pull-only: server is authoritative for user_progress (XP, counters, level)
+    override suspend fun pushLocalChanges(userId: String): Int = 0
+
     override suspend fun upsertRemote(dtos: List<UserProgressSyncDto>) {
         supabase.postgrest[tableName].upsert(dtos) {
             onConflict = "user_id"

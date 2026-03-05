@@ -1,5 +1,7 @@
 package az.tribe.lifeplanner.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -20,9 +22,13 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -30,6 +36,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import az.tribe.lifeplanner.ui.components.getIcon
 import az.tribe.lifeplanner.ui.habit.HabitWithStatus
+import az.tribe.lifeplanner.domain.repository.FocusRepository
 import az.tribe.lifeplanner.ui.theme.LifePlannerGradients
 import az.tribe.lifeplanner.ui.theme.backgroundColor
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -46,11 +53,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.model.Goal
+import az.tribe.lifeplanner.domain.model.Milestone
 import az.tribe.lifeplanner.ui.components.CompactGoalTile
 import az.tribe.lifeplanner.ui.components.InlineGreetingRow
 import az.tribe.lifeplanner.ui.components.InlineStatsRow
@@ -58,8 +68,8 @@ import az.tribe.lifeplanner.ui.components.NextAction
 import az.tribe.lifeplanner.ui.components.NextActionCard
 import az.tribe.lifeplanner.ui.components.GlassCard
 import az.tribe.lifeplanner.ui.components.QuickActionsPillRow
-import az.tribe.lifeplanner.ui.components.SyncStatusIndicator
 import az.tribe.lifeplanner.data.sync.SyncManager
+import az.tribe.lifeplanner.data.sync.SyncState
 import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
 import az.tribe.lifeplanner.ui.habit.HabitViewModel
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
@@ -84,8 +94,11 @@ fun HomeScreen(
     onNavigateToGoals: () -> Unit = {},
     onNavigateToAchievements: () -> Unit = {},
     onNavigateToFocus: () -> Unit = {},
+    onNavigateToProfile: () -> Unit = {},
+    onStartFocusForMilestone: (goalId: String, milestoneId: String) -> Unit = { _, _ -> },
 ) {
     val snackBarHostState = remember { SnackbarHostState() }
+    var showAccountSheet by remember { mutableStateOf(false) }
 
     // Inject ViewModels
     val authViewModel: AuthViewModel = koinInject()
@@ -122,6 +135,24 @@ fun HomeScreen(
         goal.status != GoalStatus.COMPLETED && goal.dueDate == today
     }
 
+    // Calculate next milestones (first incomplete per active goal)
+    val nextMilestones = goals
+        .filter { it.status != GoalStatus.COMPLETED && it.milestones.isNotEmpty() }
+        .mapNotNull { goal ->
+            goal.milestones.firstOrNull { !it.isCompleted }?.let { goal to it }
+        }
+        .take(5)
+
+    // Load accumulated focus time per milestone
+    val focusRepository: FocusRepository = koinInject()
+    var milestoneFocusMinutes by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    LaunchedEffect(nextMilestones) {
+        milestoneFocusMinutes = nextMilestones.associate { (_, milestone) ->
+            val sessions = focusRepository.getSessionsByMilestoneId(milestone.id)
+            milestone.id to (sessions.sumOf { it.actualDurationSeconds } / 60)
+        }
+    }
+
     // Calculate habits stats
     val habitsCompleted = habits.count { it.isCompletedToday }
     val totalHabits = habits.size
@@ -150,6 +181,19 @@ fun HomeScreen(
     }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val syncStatus by syncManager.syncStatus.collectAsState()
+
+    val targetTitleColor = when (syncStatus.state) {
+        SyncState.SYNCED -> Color(0xFF4CAF50)
+        SyncState.SYNCING -> MaterialTheme.colorScheme.tertiary
+        SyncState.ERROR -> MaterialTheme.colorScheme.error
+        SyncState.OFFLINE -> MaterialTheme.colorScheme.outline
+        SyncState.IDLE -> MaterialTheme.colorScheme.primary
+    }
+    val titleColor by animateColorAsState(
+        targetValue = targetTitleColor,
+        animationSpec = tween(durationMillis = 600)
+    )
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -161,15 +205,21 @@ fun HomeScreen(
                         "Life Planner",
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        color = titleColor
                     )
                 },
                 actions = {
-                    SyncStatusIndicator(
-                        syncStatus = syncManager.syncStatus,
-                        onRetryClick = { syncManager.requestSync() },
-                        compact = true
-                    )
+                    IconButton(onClick = onNavigateToProfile) {
+                        Icon(
+                            Icons.Rounded.AccountCircle,
+                            contentDescription = "Profile",
+                            tint = if (authState is AuthState.Authenticated)
+                                Color(0xFF4CAF50)
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -232,6 +282,13 @@ fun HomeScreen(
                     goalsDueToday = goalsDueToday.size,
                     totalProgress = totalProgress
                 )
+            }
+
+            // Secure Account CTA for guests
+            if (currentUser?.isGuest != false) {
+                item {
+                    SecureAccountCTABanner(onClick = { showAccountSheet = true })
+                }
             }
 
             // 4. Priority Goals — horizontal LazyRow
@@ -319,7 +376,46 @@ fun HomeScreen(
                 }
             }
 
-            // 5. Today's Habits
+            // 5. Next Steps (first incomplete milestone per active goal)
+            if (nextMilestones.isNotEmpty()) {
+                item(key = "milestones_header") {
+                    Text(
+                        "Next Steps (${nextMilestones.size})",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                item(key = "milestones_list") {
+                    GlassCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        cornerRadius = 16.dp
+                    ) {
+                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                            nextMilestones.forEachIndexed { index, (goal, milestone) ->
+                                CompactHomeMilestoneRow(
+                                    goal = goal,
+                                    milestone = milestone,
+                                    focusMinutes = milestoneFocusMinutes[milestone.id] ?: 0,
+                                    onRowClick = { onGoalClick(goal) },
+                                    onStartFocus = { onStartFocusForMilestone(goal.id, milestone.id) }
+                                )
+                                if (index < nextMilestones.size - 1) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp)
+                                            .height(1.dp)
+                                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 6. Today's Habits
             if (habits.isNotEmpty()) {
                 val pendingHabits = habits.filter { !it.isCompletedToday }
                 val allDone = pendingHabits.isEmpty()
@@ -396,7 +492,7 @@ fun HomeScreen(
                 }
             }
 
-            // 6. Next Action Card (moved to bottom as shortcut)
+            // 7. Next Action Card (moved to bottom as shortcut)
             item {
                 NextActionCard(
                     nextAction = nextAction,
@@ -407,6 +503,17 @@ fun HomeScreen(
                 )
             }
         }
+    }
+
+    if (showAccountSheet) {
+        AccountCreationBottomSheet(
+            authViewModel = authViewModel,
+            onDismiss = { showAccountSheet = false },
+            onNavigateToSignIn = {
+                showAccountSheet = false
+                onNavigateToProfile()
+            }
+        )
     }
 }
 
@@ -473,6 +580,79 @@ private fun CompactHomeHabitRow(
                 Icons.Rounded.Check,
                 contentDescription = "Complete",
                 tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompactHomeMilestoneRow(
+    goal: Goal,
+    milestone: Milestone,
+    focusMinutes: Int = 0,
+    onRowClick: () -> Unit,
+    onStartFocus: () -> Unit
+) {
+    val categoryColor = goal.category.backgroundColor()
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onRowClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+    ) {
+        // Category-colored dot
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(categoryColor)
+        )
+
+        Spacer(Modifier.width(12.dp))
+
+        // Milestone title + parent goal name + focus time
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = milestone.title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = goal.title,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (focusMinutes > 0) {
+                Text(
+                    text = "${focusMinutes}m focused",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFFFF6B35)
+                )
+            }
+        }
+
+        Spacer(Modifier.width(8.dp))
+
+        // Play icon to launch Focus
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(Color(0xFFFF6B35).copy(alpha = 0.15f))
+                .clickable(onClick = onStartFocus),
+            contentAlignment = androidx.compose.ui.Alignment.Center
+        ) {
+            Icon(
+                Icons.Rounded.PlayArrow,
+                contentDescription = "Start focus",
+                tint = Color(0xFFFF6B35),
                 modifier = Modifier.size(16.dp)
             )
         }

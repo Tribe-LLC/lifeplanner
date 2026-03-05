@@ -4,6 +4,7 @@ import az.tribe.lifeplanner.data.auth.AuthService
 import az.tribe.lifeplanner.data.auth.SupabaseAuthService
 import az.tribe.lifeplanner.data.network.AiProxyService
 import az.tribe.lifeplanner.data.network.AiProxyServiceImpl
+import az.tribe.lifeplanner.data.network.AuthTokenProvider
 import az.tribe.lifeplanner.data.network.GeminiService
 import az.tribe.lifeplanner.data.network.GeminiServiceImpl
 import az.tribe.lifeplanner.data.repository.AiUsageRepositoryImpl
@@ -100,6 +101,7 @@ import az.tribe.lifeplanner.usecases.UpdateGoalStatusUseCase
 import az.tribe.lifeplanner.usecases.UpdateGoalUseCase
 import az.tribe.lifeplanner.usecases.UpdateMilestoneUseCase
 import com.russhwolf.settings.Settings
+import io.github.jan.supabase.auth.auth
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 
@@ -117,6 +119,35 @@ val appModule = module {
     // Auth Service (Supabase — multiplatform, no platform-specific needed)
     single<AuthService> { SupabaseAuthService(get()) }
 
+    // Auth token provider (Supabase session → JWT, with auto-refresh)
+    single<AuthTokenProvider> {
+        val supabase: io.github.jan.supabase.SupabaseClient = get()
+        AuthTokenProvider {
+            // Try current session first
+            val session = supabase.auth.currentSessionOrNull()
+            if (session != null) {
+                // Check if the access token is expired or about to expire (within 30s)
+                val now = kotlinx.datetime.Clock.System.now()
+                val timeUntilExpiry = session.expiresAt - now
+                if (timeUntilExpiry.inWholeSeconds <= 30) {
+                    // Token expired or about to — force refresh
+                    try {
+                        supabase.auth.refreshCurrentSession()
+                        supabase.auth.currentSessionOrNull()?.accessToken
+                            ?: throw IllegalStateException("No session after refresh")
+                    } catch (e: Exception) {
+                        co.touchlab.kermit.Logger.e("AuthTokenProvider") { "Token refresh failed: ${e.message}" }
+                        throw IllegalStateException("Authentication expired. Please sign in again.")
+                    }
+                } else {
+                    session.accessToken
+                }
+            } else {
+                throw IllegalStateException("Not authenticated. Please sign in.")
+            }
+        }
+    }
+
     // AI Proxy Service
     single<AiProxyService> { AiProxyServiceImpl(get(), get(), get()) }
 
@@ -126,7 +157,7 @@ val appModule = module {
 
     single<GoalRepository> { GoalRepositoryImpl(get(), get(), get()) }
     single<GoalHistoryRepository> { GoalHistoryRepositoryImpl(get(), get()) }
-    single<GamificationRepository> { GamificationRepositoryImpl(get(), get(), get()) }
+    single<GamificationRepository> { GamificationRepositoryImpl(get(), get(), get(), get()) }
     single<UserRepository> { UserRepositoryImpl(get(), get()) }
     single<HabitRepository> { HabitRepositoryImpl(get(), get(), get()) }
     single<JournalRepository> { JournalRepositoryImpl(get(), get()) }

@@ -62,7 +62,7 @@ data class UserProgress(
             currentLevel >= 20 -> "Advanced"
             currentLevel >= 15 -> "Proficient"
             currentLevel >= 10 -> "Intermediate"
-            currentLevel >= 5 -> "Beginner"
+            currentLevel >= 5 -> "but Beginner"
             else -> "Novice"
         }
 

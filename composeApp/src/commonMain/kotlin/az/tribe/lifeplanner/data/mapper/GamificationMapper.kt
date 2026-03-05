@@ -18,14 +18,18 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 /**
- * Badge Entity to Domain mapper
+ * Badge Entity to Domain mapper — returns null for unknown badge types
  */
-fun BadgeEntity.toDomain(): Badge = Badge(
-    id = id,
-    type = BadgeType.valueOf(badgeType),
-    earnedAt = parseLocalDateTime(earnedAt),
-    isNew = isNew == 1L
-)
+fun BadgeEntity.toDomain(): Badge? = try {
+    Badge(
+        id = id,
+        type = BadgeType.valueOf(badgeType),
+        earnedAt = parseLocalDateTime(earnedAt),
+        isNew = isNew == 1L
+    )
+} catch (_: IllegalArgumentException) {
+    null
+}
 
 /**
  * Badge Domain to Entity mapper
@@ -42,19 +46,23 @@ fun Badge.toEntity(): BadgeEntity = BadgeEntity(
 )
 
 /**
- * Challenge Entity to Domain mapper
+ * Challenge Entity to Domain mapper — returns null for unknown challenge types
  */
-fun ChallengeEntity.toDomain(): Challenge = Challenge(
-    id = id,
-    type = ChallengeType.valueOf(challengeType),
-    startDate = LocalDate.parse(startDate),
-    endDate = LocalDate.parse(endDate),
-    currentProgress = currentProgress.toInt(),
-    targetProgress = targetProgress.toInt(),
-    isCompleted = isCompleted == 1L,
-    completedAt = completedAt?.let { parseLocalDateTime(it) },
-    xpEarned = xpEarned.toInt()
-)
+fun ChallengeEntity.toDomain(): Challenge? = try {
+    Challenge(
+        id = id,
+        type = ChallengeType.valueOf(challengeType),
+        startDate = LocalDate.parse(startDate),
+        endDate = LocalDate.parse(endDate),
+        currentProgress = currentProgress.toInt(),
+        targetProgress = targetProgress.toInt(),
+        isCompleted = isCompleted == 1L,
+        completedAt = completedAt?.let { parseLocalDateTime(it) },
+        xpEarned = xpEarned.toInt()
+    )
+} catch (_: IllegalArgumentException) {
+    null
+}
 
 /**
  * Challenge Domain to Entity mapper

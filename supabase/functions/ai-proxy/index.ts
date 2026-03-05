@@ -12,6 +12,7 @@ interface AiRequest {
   responseSchema?: Record<string, unknown>;
   provider: "GEMINI" | "OPENAI" | "GROK";
   enrichContext?: boolean;
+  stream?: boolean;
 }
 
 interface TokenUsage {
@@ -35,6 +36,246 @@ function createUserClient(jwt: string) {
   return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: `Bearer ${jwt}` } },
   });
+}
+
+// ── RAG: Vector Embeddings ──────────────────────────────────────────────────
+
+async function embedText(text: string): Promise<number[]> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${GEMINI_API_KEY}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "models/text-embedding-004",
+      content: { parts: [{ text }] },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Embedding API error ${response.status}: ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data?.embedding?.values ?? [];
+}
+
+interface SourceRow {
+  id: string;
+  content: string;
+}
+
+function buildGoalText(g: Record<string, unknown>): string {
+  const due = g.due_date ? `, Due: ${g.due_date}` : "";
+  return `Goal: ${g.title} [${g.category}] - Status: ${g.status}, Progress: ${g.progress}%${due}`;
+}
+
+function buildHabitText(h: Record<string, unknown>): string {
+  return `Habit: ${h.title} [${h.category}] - ${h.frequency}, Streak: ${h.current_streak} days`;
+}
+
+function buildJournalText(j: Record<string, unknown>): string {
+  return `Journal (${j.date}): ${j.title} - Mood: ${j.mood}`;
+}
+
+function buildMilestoneText(m: Record<string, unknown>): string {
+  const status = m.is_completed ? "Completed" : "Pending";
+  return `Milestone for goal: ${m.title} - ${status}`;
+}
+
+async function syncEmbeddings(jwt: string): Promise<void> {
+  if (!jwt || !SUPABASE_URL || !SUPABASE_ANON_KEY || !GEMINI_API_KEY) return;
+
+  try {
+    const supabase = createUserClient(jwt);
+
+    // Fetch current source data
+    const [goalsRes, habitsRes, journalRes, milestonesRes] = await Promise.all([
+      supabase
+        .from("goals")
+        .select("id, title, category, status, progress, due_date")
+        .eq("is_deleted", false)
+        .eq("is_archived", false),
+      supabase
+        .from("habits")
+        .select("id, title, category, frequency, current_streak")
+        .eq("is_active", true)
+        .eq("is_deleted", false),
+      supabase
+        .from("journal_entries")
+        .select("id, title, mood, date")
+        .eq("is_deleted", false),
+      supabase
+        .from("milestones")
+        .select("id, title, is_completed")
+        .eq("is_deleted", false),
+    ]);
+
+    // Build source rows with their text representations
+    const sourceRows: { table: string; id: string; content: string }[] = [];
+
+    for (const g of goalsRes.data ?? []) {
+      sourceRows.push({ table: "goals", id: g.id, content: buildGoalText(g) });
+    }
+    for (const h of habitsRes.data ?? []) {
+      sourceRows.push({ table: "habits", id: h.id, content: buildHabitText(h) });
+    }
+    for (const j of journalRes.data ?? []) {
+      sourceRows.push({ table: "journal_entries", id: j.id, content: buildJournalText(j) });
+    }
+    for (const m of milestonesRes.data ?? []) {
+      sourceRows.push({ table: "milestones", id: m.id, content: buildMilestoneText(m) });
+    }
+
+    // Fetch existing embeddings
+    const { data: existingEmbeddings } = await supabase
+      .from("content_embeddings")
+      .select("id, source_table, source_id, content");
+
+    const existingMap = new Map<string, { id: string; content: string }>();
+    for (const e of existingEmbeddings ?? []) {
+      existingMap.set(`${e.source_table}:${e.source_id}`, { id: e.id, content: e.content });
+    }
+
+    // Find stale/missing embeddings
+    const toUpsert: { table: string; id: string; content: string }[] = [];
+    const validKeys = new Set<string>();
+
+    for (const row of sourceRows) {
+      const key = `${row.table}:${row.id}`;
+      validKeys.add(key);
+      const existing = existingMap.get(key);
+      if (!existing || existing.content !== row.content) {
+        toUpsert.push(row);
+      }
+    }
+
+    // Delete embeddings for removed source rows
+    const toDelete: string[] = [];
+    for (const e of existingEmbeddings ?? []) {
+      const key = `${e.source_table}:${e.source_id}`;
+      if (!validKeys.has(key)) {
+        toDelete.push(e.id);
+      }
+    }
+
+    if (toDelete.length > 0) {
+      await supabase
+        .from("content_embeddings")
+        .delete()
+        .in("id", toDelete);
+    }
+
+    // Rate limit: max 20 new/changed embeddings per sync call
+    const batch = toUpsert.slice(0, 20);
+
+    for (const row of batch) {
+      try {
+        const embedding = await embedText(row.content);
+        if (embedding.length === 0) continue;
+
+        await supabase
+          .from("content_embeddings")
+          .upsert(
+            {
+              user_id: (await supabase.auth.getUser(jwt)).data.user!.id,
+              source_table: row.table,
+              source_id: row.id,
+              content: row.content,
+              embedding: JSON.stringify(embedding),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id,source_table,source_id" }
+          );
+      } catch (err) {
+        console.warn(`Embedding upsert failed for ${row.table}:${row.id}:`, err);
+      }
+    }
+  } catch (err) {
+    console.warn("syncEmbeddings failed (non-fatal):", err);
+  }
+}
+
+async function fetchRelevantContext(
+  jwt: string,
+  query: string
+): Promise<string | null> {
+  if (!jwt || !SUPABASE_URL || !SUPABASE_ANON_KEY || !GEMINI_API_KEY) return null;
+
+  try {
+    const supabase = createUserClient(jwt);
+
+    // Always fetch profile + progress (small, always relevant)
+    const [profileRes, progressRes] = await Promise.all([
+      supabase
+        .from("users")
+        .select("display_name, profession, age_range, mindset")
+        .limit(1)
+        .single(),
+      supabase
+        .from("user_progress")
+        .select("*")
+        .limit(1)
+        .single(),
+    ]);
+
+    // Embed the query and search for relevant content
+    const queryEmbedding = await embedText(query);
+    if (queryEmbedding.length === 0) return null;
+
+    const { data: matches, error: matchError } = await supabase.rpc(
+      "match_user_content",
+      {
+        query_embedding: JSON.stringify(queryEmbedding),
+        match_count: 10,
+        similarity_threshold: 0.3,
+      }
+    );
+
+    if (matchError) {
+      console.warn("match_user_content RPC error:", matchError.message);
+      return null;
+    }
+
+    // Build context string
+    const lines: string[] = ["=== USER DATA ==="];
+
+    // Profile
+    const profile = profileRes.data;
+    if (profile) {
+      const parts = [profile.display_name, profile.profession, profile.age_range].filter(Boolean);
+      if (parts.length > 0) lines.push(`PROFILE: ${parts.join(", ")}`);
+      if (profile.mindset) lines.push(`MINDSET: ${profile.mindset}`);
+    }
+
+    // Progress
+    const progress = progressRes.data;
+    if (progress) {
+      lines.push(
+        `PROGRESS: Level ${progress.current_level ?? 1} (${progress.total_xp ?? 0} XP), ` +
+          `Streak: ${progress.current_streak ?? 0} days (best: ${progress.longest_streak ?? 0}), ` +
+          `Goals completed: ${progress.goals_completed ?? 0}, ` +
+          `Habits done: ${progress.habits_completed ?? 0}, ` +
+          `Journal entries: ${progress.journal_entries_count ?? 0}`
+      );
+    }
+
+    // Relevant items from vector search
+    if (matches && matches.length > 0) {
+      lines.push("");
+      lines.push(`RELEVANT CONTEXT (${matches.length} items, ranked by relevance):`);
+      for (let i = 0; i < matches.length; i++) {
+        const m = matches[i];
+        lines.push(`${i + 1}. [${m.source_table}] ${m.content} (relevance: ${(m.similarity * 100).toFixed(0)}%)`);
+      }
+    }
+
+    lines.push("=== END USER DATA ===");
+    return lines.join("\n");
+  } catch (err) {
+    console.warn("fetchRelevantContext failed:", err);
+    return null;
+  }
 }
 
 function logUsage(jwt: string, result: AiResponse, requestType: string): void {
@@ -257,11 +498,41 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  // Validate apikey header against the known anon key
-  const apikey = req.headers.get("apikey") ?? "";
-  if (!apikey || (SUPABASE_ANON_KEY && apikey !== SUPABASE_ANON_KEY)) {
+  // Validate auth: require a valid Supabase user session
+  const authHeader = req.headers.get("authorization") ?? "";
+  const jwt = authHeader.replace("Bearer ", "");
+
+  if (!jwt) {
+    console.warn("AUTH: No JWT token in request");
     return new Response(
-      JSON.stringify({ error: "Unauthorized: invalid or missing apikey" }),
+      JSON.stringify({ error: "Authentication required" }),
+      { status: 401, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  if (jwt === SUPABASE_ANON_KEY) {
+    console.warn("AUTH: Client sent anon key instead of user JWT — session likely expired");
+    return new Response(
+      JSON.stringify({ error: "Session expired. Please sign in again." }),
+      { status: 401, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // Verify the JWT by calling Supabase auth — rejects expired/invalid tokens
+  try {
+    const supabase = createUserClient(jwt);
+    const { data: { user }, error } = await supabase.auth.getUser(jwt);
+    if (error || !user) {
+      console.warn("AUTH: getUser failed —", error?.message ?? "no user returned");
+      return new Response(
+        JSON.stringify({ error: "Invalid or expired token" }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  } catch (authErr) {
+    console.warn("AUTH: getUser threw —", authErr instanceof Error ? authErr.message : authErr);
+    return new Response(
+      JSON.stringify({ error: "Auth verification failed" }),
       { status: 401, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -279,13 +550,27 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Enrich system prompt with user context if requested
-    const authHeader = req.headers.get("authorization") ?? "";
-    const jwt = authHeader.replace("Bearer ", "");
-
     if (body.enrichContext !== false && body.messages) {
       try {
-        const userContext = await fetchUserContext(jwt);
+        // Sync embeddings first (lazy upsert of stale/missing)
+        await syncEmbeddings(jwt);
+
+        // Get the last user message for semantic search
+        const lastUserMessage = [...body.messages]
+          .reverse()
+          .find((m) => m.role === "user")?.content ?? "";
+
+        // Try RAG retrieval first
+        let userContext: string | null = null;
+        if (lastUserMessage) {
+          userContext = await fetchRelevantContext(jwt, lastUserMessage);
+        }
+
+        // Fallback to full context dump if RAG returns nothing
+        if (!userContext) {
+          userContext = await fetchUserContext(jwt);
+        }
+
         if (userContext) {
           const instruction =
             "\n\nYou have access to the user's real-time data below. Use it to answer questions about their goals, habits, streaks, progress, etc. accurately.\n\n" +
@@ -297,6 +582,12 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ── Streaming path ──────────────────────────────────────────────────
+    if (body.stream === true && body.messages) {
+      return createStreamingResponse(body, provider, jwt);
+    }
+
+    // ── Non-streaming path (unchanged) ──────────────────────────────────
     let result: AiResponse;
 
     switch (provider) {
@@ -481,6 +772,216 @@ function buildOpenAIMessages(
   }
 
   return messages;
+}
+
+// ── Streaming ────────────────────────────────────────────────────────────────
+
+type SendFn = (event: string, data: string) => void;
+
+function getModelForProvider(provider: string): string {
+  switch (provider) {
+    case "OPENAI": return "gpt-4o-mini";
+    case "GROK": return "grok-4-1-fast-non-reasoning";
+    case "GEMINI":
+    default: return "gemini-2.0-flash";
+  }
+}
+
+function createStreamingResponse(
+  body: AiRequest,
+  provider: string,
+  jwt: string
+): Response {
+  const model = getModelForProvider(provider);
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const encoder = new TextEncoder();
+      const send: SendFn = (event: string, data: string) => {
+        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${data}\n\n`));
+      };
+
+      try {
+        let usage: TokenUsage | undefined;
+
+        if (provider === "GEMINI") {
+          usage = await streamGemini(body, model, send);
+        } else {
+          usage = await streamOpenAICompatible(body, provider, model, send);
+        }
+
+        const donePayload = JSON.stringify({
+          provider,
+          model,
+          usage: usage ?? { inputTokens: 0, outputTokens: 0 },
+        });
+        send("done", donePayload);
+
+        // Fire-and-forget usage log
+        logUsage(jwt, { text: "", provider, model, usage }, "chat");
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Stream error";
+        send("error", JSON.stringify({ error: message }));
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "Access-Control-Allow-Origin": "*",
+    },
+  });
+}
+
+async function streamGemini(
+  body: AiRequest,
+  model: string,
+  send: SendFn
+): Promise<TokenUsage | undefined> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
+
+  const contents = buildGeminiContents(body);
+  const requestBody: Record<string, unknown> = { contents };
+
+  if (body.systemPrompt) {
+    requestBody.systemInstruction = {
+      parts: [{ text: body.systemPrompt }],
+    };
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini streaming error ${response.status}: ${errorText}`);
+  }
+
+  let usage: TokenUsage | undefined;
+
+  // Gemini SSE returns lines like: data: {...}
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const jsonStr = line.slice(6).trim();
+      if (!jsonStr) continue;
+
+      try {
+        const chunk = JSON.parse(jsonStr);
+        const text = chunk?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          send("text", text);
+        }
+
+        if (chunk?.usageMetadata) {
+          usage = {
+            inputTokens: chunk.usageMetadata.promptTokenCount ?? 0,
+            outputTokens: chunk.usageMetadata.candidatesTokenCount ?? 0,
+          };
+        }
+      } catch {
+        // skip malformed JSON chunks
+      }
+    }
+  }
+
+  return usage;
+}
+
+async function streamOpenAICompatible(
+  body: AiRequest,
+  provider: string,
+  model: string,
+  send: SendFn
+): Promise<TokenUsage | undefined> {
+  const isGrok = provider === "GROK";
+  const url = isGrok
+    ? "https://api.x.ai/v1/chat/completions"
+    : "https://api.openai.com/v1/chat/completions";
+  const apiKey = isGrok ? GROK_API_KEY : OPENAI_API_KEY;
+
+  const messages = buildOpenAIMessages(body);
+
+  const requestBody: Record<string, unknown> = {
+    model,
+    messages,
+    stream: true,
+    stream_options: { include_usage: true },
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`${provider} streaming error ${response.status}: ${errorText}`);
+  }
+
+  let usage: TokenUsage | undefined;
+
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data: ")) continue;
+      const data = trimmed.slice(6);
+      if (data === "[DONE]") continue;
+
+      try {
+        const chunk = JSON.parse(data);
+        const delta = chunk?.choices?.[0]?.delta?.content;
+        if (delta) {
+          send("text", delta);
+        }
+
+        if (chunk?.usage) {
+          usage = {
+            inputTokens: chunk.usage.prompt_tokens ?? 0,
+            outputTokens: chunk.usage.completion_tokens ?? 0,
+          };
+        }
+      } catch {
+        // skip malformed chunks
+      }
+    }
+  }
+
+  return usage;
 }
 
 // ── Grok (xAI) ──────────────────────────────────────────────────────────────

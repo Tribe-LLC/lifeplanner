@@ -6,8 +6,6 @@ import az.tribe.lifeplanner.data.mapper.createNewHabit
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.HabitFrequency
 import az.tribe.lifeplanner.domain.model.Habit
-import az.tribe.lifeplanner.domain.model.XpRewards
-import az.tribe.lifeplanner.domain.repository.GamificationRepository
 import az.tribe.lifeplanner.domain.repository.HabitRepository
 import az.tribe.lifeplanner.usecases.habit.CheckInHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.CreateHabitUseCase
@@ -46,8 +44,7 @@ class HabitViewModel(
     private val updateHabitUseCase: UpdateHabitUseCase,
     private val deleteHabitUseCase: DeleteHabitUseCase,
     private val checkInHabitUseCase: CheckInHabitUseCase,
-    private val uncheckHabitUseCase: UncheckHabitUseCase,
-    private val gamificationRepository: GamificationRepository
+    private val uncheckHabitUseCase: UncheckHabitUseCase
 ) : ViewModel() {
 
     private val _isLoading = MutableStateFlow(true)
@@ -122,16 +119,8 @@ class HabitViewModel(
                 val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
                 checkInHabitUseCase(habitId, today, notes)
 
-                // Read updated habit directly from repository for accurate streak data
+                // Read updated habit for reflection prompt
                 val updatedHabit = habitRepository.getHabitById(habitId)
-                val streakDays = updatedHabit?.currentStreak ?: 0
-
-                // Update gamification: XP and challenges
-                val xp = XpRewards.HABIT_CHECK_IN + (XpRewards.HABIT_STREAK_BONUS * streakDays)
-                gamificationRepository.incrementHabitsCompleted()
-                gamificationRepository.addXp(xp)
-                gamificationRepository.onHabitCheckedIn()
-                gamificationRepository.checkAndAwardBadges()
 
                 // Emit recent check-in for reflection prompt
                 updatedHabit?.let {
@@ -150,19 +139,8 @@ class HabitViewModel(
     fun uncheckInHabit(habitId: String) {
         viewModelScope.launch {
             try {
-                // Read habit before uncheck to get streak for XP calculation
-                val habit = habitRepository.getHabitById(habitId)
-                val streakDays = habit?.currentStreak ?: 0
-
                 val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
-                val wasUnchecked = uncheckHabitUseCase(habitId, today)
-
-                if (wasUnchecked) {
-                    // Deduct the same XP that was awarded on check-in
-                    val xp = XpRewards.HABIT_CHECK_IN + (XpRewards.HABIT_STREAK_BONUS * streakDays)
-                    gamificationRepository.decrementHabitsCompleted()
-                    gamificationRepository.deductXp(xp)
-                }
+                uncheckHabitUseCase(habitId, today)
             } catch (e: Exception) {
                 _error.value = "Failed to uncheck: ${e.message}"
             }

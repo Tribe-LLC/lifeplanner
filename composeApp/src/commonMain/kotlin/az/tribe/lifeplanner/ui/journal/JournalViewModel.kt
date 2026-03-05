@@ -6,8 +6,6 @@ import az.tribe.lifeplanner.data.mapper.createNewJournalEntry
 import az.tribe.lifeplanner.domain.enum.Mood
 import az.tribe.lifeplanner.domain.model.JournalEntry
 import az.tribe.lifeplanner.domain.model.JournalPrompts
-import az.tribe.lifeplanner.domain.model.XpRewards
-import az.tribe.lifeplanner.domain.repository.GamificationRepository
 import az.tribe.lifeplanner.domain.repository.JournalRepository
 import az.tribe.lifeplanner.usecases.journal.CreateJournalEntryUseCase
 import az.tribe.lifeplanner.usecases.journal.DeleteJournalEntryUseCase
@@ -29,8 +27,7 @@ class JournalViewModel(
     private val journalRepository: JournalRepository,
     private val createEntryUseCase: CreateJournalEntryUseCase,
     private val updateEntryUseCase: UpdateJournalEntryUseCase,
-    private val deleteEntryUseCase: DeleteJournalEntryUseCase,
-    private val gamificationRepository: GamificationRepository
+    private val deleteEntryUseCase: DeleteJournalEntryUseCase
 ) : ViewModel() {
 
     private val _isLoading = MutableStateFlow(true)
@@ -91,12 +88,6 @@ class JournalViewModel(
                 createEntryUseCase(entry)
                 _showNewEntryDialog.value = false
                 refreshPrompt()
-
-                // Update gamification: XP and challenges
-                gamificationRepository.incrementJournalEntries()
-                gamificationRepository.addXp(XpRewards.JOURNAL_ENTRY)
-                gamificationRepository.onJournalEntryCreated()
-                gamificationRepository.checkAndAwardBadges()
             } catch (e: Exception) {
                 _error.value = "Failed to create entry: ${e.message}"
             }

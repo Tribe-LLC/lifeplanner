@@ -5,6 +5,12 @@ import az.tribe.lifeplanner.domain.model.ChatSession
 import az.tribe.lifeplanner.domain.model.UserContext
 import kotlinx.coroutines.flow.Flow
 
+sealed class StreamingChatEvent {
+    data class PartialText(val chunk: String, val accumulatedText: String) : StreamingChatEvent()
+    data class Completed(val message: ChatMessage) : StreamingChatEvent()
+    data class Error(val message: String) : StreamingChatEvent()
+}
+
 /**
  * Repository interface for AI Coach chat functionality
  */
@@ -93,4 +99,14 @@ interface ChatRepository {
      * Mark a suggestion as executed in the message metadata
      */
     suspend fun markSuggestionExecuted(messageId: String, suggestionId: String)
+
+    /**
+     * Send a message with streaming response (plain text, no structured JSON)
+     */
+    fun sendMessageStreaming(
+        sessionId: String,
+        userMessage: String,
+        userContext: UserContext,
+        relatedGoalId: String? = null
+    ): Flow<StreamingChatEvent>
 }

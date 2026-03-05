@@ -1,5 +1,10 @@
 package az.tribe.lifeplanner.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,15 +37,28 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Email
+import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.Devices
+import androidx.compose.material.icons.rounded.MarkEmailRead
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -48,6 +66,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -62,7 +81,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import az.tribe.lifeplanner.domain.model.User
@@ -73,14 +95,16 @@ import az.tribe.lifeplanner.ui.components.GlassCard
 import az.tribe.lifeplanner.ui.components.GradientProgressBar
 import az.tribe.lifeplanner.ui.components.PersonalCoachCard
 import az.tribe.lifeplanner.ui.components.getBadgeIcon
-import az.tribe.lifeplanner.ui.components.SyncStatusIndicator
 import az.tribe.lifeplanner.data.sync.SyncManager
+import az.tribe.lifeplanner.data.sync.SyncState
+import az.tribe.lifeplanner.data.sync.SyncStatus
 import az.tribe.lifeplanner.domain.enum.AiProvider
 import az.tribe.lifeplanner.domain.model.AiUsageStats
 import az.tribe.lifeplanner.domain.repository.AiUsageRepository
 import com.russhwolf.settings.Settings
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
@@ -113,6 +137,7 @@ fun ProfileScreen(
     val userProgress by gamificationViewModel.userProgress.collectAsState()
     val badges by gamificationViewModel.badges.collectAsState()
 
+    var showAccountSheet by remember { mutableStateOf(false) }
     var showAiProviderDialog by remember { mutableStateOf(false) }
     var selectedAiProvider by remember {
         val saved = settings.getStringOrNull("ai_provider")
@@ -146,13 +171,6 @@ fun ProfileScreen(
                         fontWeight = FontWeight.Bold
                     )
                 },
-                actions = {
-                    SyncStatusIndicator(
-                        syncStatus = syncManager.syncStatus,
-                        onRetryClick = { syncManager.requestSync() },
-                        compact = false
-                    )
-                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
@@ -173,9 +191,11 @@ fun ProfileScreen(
         ) {
             // User Profile Header Card
             item {
+                val syncStatus by syncManager.syncStatus.collectAsState()
                 UserProfileHeaderCard(
                     user = currentUser,
                     userProgress = userProgress,
+                    syncStatus = syncStatus,
                     onEditProfile = onNavigateToOnboarding
                 )
             }
@@ -218,6 +238,13 @@ fun ProfileScreen(
                             }
                         }
                     }
+                }
+            }
+
+            // Secure Account CTA — prominent banner for guests
+            if (currentUser?.isGuest != false) {
+                item {
+                    SecureAccountCTABanner(onClick = { showAccountSheet = true })
                 }
             }
 
@@ -323,8 +350,8 @@ fun ProfileScreen(
                 if (currentUser?.isGuest != false) {
                     ProfileMenuItem(
                         icon = Icons.AutoMirrored.Rounded.Login,
-                        title = "Create Account",
-                        subtitle = "Keep your data and sync across devices",
+                        title = "Sign In or Create Account",
+                        subtitle = "Use email & password instead",
                         onClick = onNavigateToSignIn
                     )
                 } else {
@@ -351,6 +378,402 @@ fun ProfileScreen(
             },
             onDismiss = { showAiProviderDialog = false }
         )
+    }
+
+    if (showAccountSheet) {
+        AccountCreationBottomSheet(
+            authViewModel = authViewModel,
+            onDismiss = { showAccountSheet = false },
+            onNavigateToSignIn = {
+                showAccountSheet = false
+                onNavigateToSignIn()
+            }
+        )
+    }
+}
+
+@Composable
+internal fun SecureAccountCTABanner(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(LifePlannerDesign.CornerRadius.large))
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(Color(0xFF6366F1), Color(0xFF8B5CF6), Color(0xFFA855F7))
+                )
+            )
+            .clickable(onClick = onClick)
+            .padding(20.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Icon cluster
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.Shield,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+
+            Spacer(Modifier.width(16.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Secure Your Account",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "One tap sign-in with magic link",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.85f)
+                )
+            }
+
+            // Arrow
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.ChevronRight,
+                    contentDescription = "Get started",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        // Feature pills row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 56.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            CTAFeaturePill(icon = Icons.Rounded.Sync, label = "Auto-sync")
+            CTAFeaturePill(icon = Icons.Rounded.Devices, label = "Multi-device")
+            CTAFeaturePill(icon = Icons.Rounded.Lock, label = "Encrypted")
+        }
+    }
+}
+
+@Composable
+internal fun CTAFeaturePill(icon: ImageVector, label: String) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = Color.White.copy(alpha = 0.15f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.9f),
+                modifier = Modifier.size(14.dp)
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.9f)
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun AccountCreationBottomSheet(
+    authViewModel: AuthViewModel,
+    onDismiss: () -> Unit,
+    onNavigateToSignIn: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val authState by authViewModel.authState.collectAsState()
+    val magicLinkSent by authViewModel.magicLinkSent.collectAsState()
+
+    var email by remember { mutableStateOf("") }
+    var otpCode by remember { mutableStateOf("") }
+    var showOtpInput by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(
+        onDismissRequest = {
+            authViewModel.clearMagicLinkState()
+            onDismiss()
+        },
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Header icon
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(Color(0xFF6366F1), Color(0xFFA855F7))
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    if (magicLinkSent) Icons.Rounded.MarkEmailRead else Icons.Rounded.Email,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            Text(
+                if (magicLinkSent) "Check Your Email" else "Sign in Instantly",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Spacer(Modifier.height(4.dp))
+
+            Text(
+                if (magicLinkSent) "We sent a sign-in link to your email"
+                else "No password needed — we'll send you a magic link",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            Spacer(Modifier.height(24.dp))
+
+            if (!magicLinkSent) {
+                // Email input
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("Email address") },
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Email, contentDescription = null)
+                    },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Email,
+                        imeAction = ImeAction.Done
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF6366F1),
+                        focusedLabelColor = Color(0xFF6366F1),
+                        focusedLeadingIconColor = Color(0xFF6366F1),
+                        cursorColor = Color(0xFF6366F1)
+                    )
+                )
+
+                Spacer(Modifier.height(16.dp))
+
+                // Send Magic Link — gradient-style button
+                Button(
+                    onClick = {
+                        if (email.isNotBlank()) authViewModel.sendMagicLink(email)
+                    },
+                    enabled = email.isNotBlank() && authState !is AuthState.Loading,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF6366F1)
+                    )
+                ) {
+                    if (authState is AuthState.Loading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text(
+                            "Send Magic Link",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            } else {
+                // Magic link sent state
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFF6366F1).copy(alpha = 0.08f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            email,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF6366F1)
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Open the link in the email to sign in automatically, or enter the 6-digit code below.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // OTP input
+                AnimatedVisibility(
+                    visible = true,
+                    enter = fadeIn() + slideInVertically { it / 2 }
+                ) {
+                    Column {
+                        OutlinedTextField(
+                            value = otpCode,
+                            onValueChange = { if (it.length <= 6) otpCode = it },
+                            label = { Text("6-digit code") },
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Done
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF6366F1),
+                                focusedLabelColor = Color(0xFF6366F1),
+                                cursorColor = Color(0xFF6366F1)
+                            )
+                        )
+
+                        Spacer(Modifier.height(12.dp))
+
+                        Button(
+                            onClick = {
+                                if (email.isNotBlank() && otpCode.length == 6) {
+                                    authViewModel.verifyOtp(email, otpCode)
+                                }
+                            },
+                            enabled = otpCode.length == 6 && authState !is AuthState.Loading,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(54.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF6366F1)
+                            )
+                        ) {
+                            if (authState is AuthState.Loading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(22.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Text(
+                                    "Verify & Sign In",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        TextButton(
+                            onClick = {
+                                authViewModel.clearMagicLinkState()
+                                otpCode = ""
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                "Resend magic link",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Divider + password option
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                HorizontalDivider(modifier = Modifier.weight(1f))
+                Text(
+                    "or",
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                HorizontalDivider(modifier = Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(8.dp))
+
+            OutlinedButton(
+                onClick = onNavigateToSignIn,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text(
+                    "Sign in with password",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            // Error message
+            if (authState is AuthState.Error) {
+                Spacer(Modifier.height(12.dp))
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        (authState as AuthState.Error).message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -548,29 +971,65 @@ private fun UsageStatItem(value: String, label: String) {
 }
 
 private fun formatTokenCount(tokens: Long): String = when {
-    tokens >= 1_000_000 -> String.format("%.1fM", tokens / 1_000_000.0)
-    tokens >= 1_000 -> String.format("%.1fK", tokens / 1_000.0)
+    tokens >= 1_000_000 -> {
+        val value = tokens / 1_000_000.0
+        val rounded = (value * 10).toLong() / 10.0
+        "${rounded}M"
+    }
+    tokens >= 1_000 -> {
+        val value = tokens / 1_000.0
+        val rounded = (value * 10).toLong() / 10.0
+        "${rounded}K"
+    }
     else -> "$tokens"
 }
 
 private fun formatCost(cost: Double): String = when {
     cost < 0.005 -> if (cost == 0.0) "$0.00" else "<$0.01"
-    cost < 1.0 -> String.format("$%.2f", cost)
-    else -> String.format("$%.2f", cost)
+    else -> {
+        val cents = (cost * 100).toLong()
+        val dollars = cents / 100
+        val remainder = cents % 100
+        "$${dollars}.${remainder.toString().padStart(2, '0')}"
+    }
 }
 
 @Composable
 private fun UserProfileHeaderCard(
     user: User?,
     userProgress: UserProgress?,
+    syncStatus: SyncStatus,
     onEditProfile: () -> Unit
 ) {
+    // Gradient colors shift based on sync state
+    val gradientStart by animateColorAsState(
+        targetValue = when (syncStatus.state) {
+            SyncState.SYNCED -> Color(0xFF667EEA)   // original soft blue
+            SyncState.SYNCING -> Color(0xFF7B8ED0)  // slightly muted blue
+            SyncState.ERROR -> Color(0xFF8A7BA0)    // purple-gray warm
+            SyncState.OFFLINE -> Color(0xFF7E7E96)  // desaturated blue-gray
+            SyncState.IDLE -> Color(0xFF667EEA)     // original
+        },
+        animationSpec = tween(800)
+    )
+    val gradientEnd by animateColorAsState(
+        targetValue = when (syncStatus.state) {
+            SyncState.SYNCED -> Color(0xFF764BA2)   // original rich purple
+            SyncState.SYNCING -> Color(0xFF8B6DAF)  // slightly muted purple
+            SyncState.ERROR -> Color(0xFF8E6E82)    // dusty rose-purple
+            SyncState.OFFLINE -> Color(0xFF6E6E82)  // desaturated gray-purple
+            SyncState.IDLE -> Color(0xFF764BA2)     // original
+        },
+        animationSpec = tween(800)
+    )
+    val cardGradient = Brush.linearGradient(listOf(gradientStart, gradientEnd))
+
     // Modern gradient hero header
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(LifePlannerDesign.CornerRadius.large))
-            .background(LifePlannerGradients.primary)
+            .background(cardGradient)
             .padding(LifePlannerDesign.Padding.large)
     ) {
         Row(
@@ -649,18 +1108,46 @@ private fun UserProfileHeaderCard(
                         )
                     }
                 }
+
+                // Sync status pill — colors blend gradient tones with gray
+                Spacer(Modifier.height(6.dp))
+                val syncColor by animateColorAsState(
+                    targetValue = when (syncStatus.state) {
+                        SyncState.SYNCED -> Color(0xFF9BB0F0)   // soft blue-white (gradient blue + white)
+                        SyncState.SYNCING -> Color(0xFFB89BDB)  // muted purple (gradient purple + gray)
+                        SyncState.ERROR -> Color(0xFFD4A0B0)    // dusty rose (purple-gray + warm)
+                        SyncState.OFFLINE -> Color(0xFF9A9AAE)  // blue-gray muted
+                        SyncState.IDLE -> Color(0xFFB0B5D0)     // light blue-gray
+                    },
+                    animationSpec = tween(600)
+                )
+                val syncText = when (syncStatus.state) {
+                    SyncState.SYNCED -> formatLastSynced(syncStatus.lastSyncedAt)
+                    SyncState.SYNCING -> "Syncing..."
+                    SyncState.ERROR -> "Sync failed"
+                    SyncState.OFFLINE -> "Offline"
+                    SyncState.IDLE -> if (syncStatus.pendingChanges > 0)
+                        "${syncStatus.pendingChanges} pending" else "Connected"
+                }
+                Text(
+                    syncText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = syncColor
+                )
             }
 
+            // Edit profile button disabled — onboarding no longer collects profile data
             IconButton(
-                onClick = onEditProfile,
+                onClick = { /* no-op: onboarding redesigned */ },
+                enabled = false,
                 modifier = Modifier
                     .clip(CircleShape)
-                    .background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.2f))
+                    .background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.1f))
             ) {
                 Icon(
                     Icons.Rounded.Edit,
                     "Edit Profile",
-                    tint = androidx.compose.ui.graphics.Color.White
+                    tint = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.3f)
                 )
             }
         }
@@ -873,5 +1360,18 @@ private fun ProfileMenuItem(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+private fun formatLastSynced(instant: Instant?): String {
+    if (instant == null) return "Synced"
+    val now = Clock.System.now()
+    val diff = now - instant
+    val seconds = diff.inWholeSeconds
+    return when {
+        seconds < 60 -> "Synced just now"
+        seconds < 3600 -> "Synced ${seconds / 60}m ago"
+        seconds < 86400 -> "Synced ${seconds / 3600}h ago"
+        else -> "Synced ${seconds / 86400}d ago"
     }
 }

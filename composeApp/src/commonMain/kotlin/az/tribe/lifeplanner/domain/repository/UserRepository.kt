@@ -34,6 +34,11 @@ interface UserRepository {
     suspend fun saveOnboardingData(userId: String, onboardingData: OnboardingData)
 
     /**
+     * Mark onboarding as complete (no personalization data)
+     */
+    suspend fun markOnboardingComplete(userId: String)
+
+    /**
      * Check if user has completed onboarding
      */
     suspend fun hasCompletedOnboarding(): Boolean

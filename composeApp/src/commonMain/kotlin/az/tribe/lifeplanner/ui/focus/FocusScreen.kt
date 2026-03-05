@@ -32,6 +32,9 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.AllInclusive
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -73,7 +76,6 @@ import az.tribe.lifeplanner.ui.components.GlassCard
 import az.tribe.lifeplanner.ui.components.rememberAmbientSoundPlayer
 import az.tribe.lifeplanner.ui.components.rememberCelebrationSoundPlayer
 import az.tribe.lifeplanner.ui.components.rememberHapticManager
-import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
 import az.tribe.lifeplanner.ui.theme.gradientColors
 import org.koin.compose.viewmodel.koinViewModel
@@ -84,8 +86,7 @@ fun FocusScreen(
     onNavigateBack: () -> Unit,
     goalId: String? = null,
     milestoneId: String? = null,
-    focusViewModel: FocusViewModel = koinViewModel(),
-    gamificationViewModel: GamificationViewModel = koinViewModel()
+    focusViewModel: FocusViewModel = koinViewModel()
 ) {
     val timerState by focusViewModel.timerState.collectAsState()
     val selectedAmbientSound by focusViewModel.selectedAmbientSound.collectAsState()
@@ -117,22 +118,6 @@ fun FocusScreen(
             TimerState.PAUSED -> ambientSoundPlayer.stop()
             TimerState.COMPLETED, TimerState.CANCELLED -> ambientSoundPlayer.stop()
             TimerState.IDLE -> ambientSoundPlayer.stop()
-        }
-    }
-
-    // Collect focus events for gamification
-    LaunchedEffect(Unit) {
-        focusViewModel.focusEvents.collect { event ->
-            when (event) {
-                is FocusEvent.SessionCompleted -> {
-                    gamificationViewModel.onFocusSessionCompleted(event.durationMinutes)
-                }
-                is FocusEvent.SessionCancelled -> {
-                    if (event.partialXp > 0) {
-                        gamificationViewModel.onFocusSessionCompleted(0)
-                    }
-                }
-            }
         }
     }
 
@@ -240,6 +225,9 @@ private fun FocusSetupContent(
     val selectedMood by focusViewModel.selectedMood.collectAsState()
     val selectedAmbientSound by focusViewModel.selectedAmbientSound.collectAsState()
     val selectedFocusTheme by focusViewModel.selectedFocusTheme.collectAsState()
+    val isFreeFlow by focusViewModel.isFreeFlow.collectAsState()
+    val isCustomDuration by focusViewModel.isCustomDuration.collectAsState()
+    val customDurationMinutes by focusViewModel.customDurationMinutes.collectAsState()
 
     val canStart = selectedMilestone != null
 
@@ -256,6 +244,14 @@ private fun FocusSetupContent(
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // Timer mode toggle — Timed vs Free Flow
+        item {
+            TimerModeToggle(
+                isFreeFlow = isFreeFlow,
+                onModeChange = { focusViewModel.setTimerMode(it) }
+            )
+        }
+
         // Stats card — Today + All-time
         item {
             GlassCard(modifier = Modifier.fillMaxWidth()) {
@@ -415,8 +411,8 @@ private fun FocusSetupContent(
             }
         }
 
-        // Set Duration
-        if (milestoneItems.isNotEmpty()) {
+        // Set Duration (hidden in free flow mode)
+        if (milestoneItems.isNotEmpty() && !isFreeFlow) {
             item {
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -435,14 +431,33 @@ private fun FocusSetupContent(
                     presets.forEach { preset ->
                         DurationChip(
                             minutes = preset,
-                            isSelected = durationMinutes == preset,
+                            isSelected = durationMinutes == preset && !isCustomDuration,
                             onClick = { focusViewModel.setDuration(preset) }
                         )
                     }
+                    // Custom chip
+                    PickerChip(
+                        label = "Custom",
+                        isSelected = isCustomDuration,
+                        onClick = { focusViewModel.toggleCustomDuration() }
+                    )
                 }
             }
 
-            // Start Button
+            // Custom duration stepper
+            if (isCustomDuration) {
+                item {
+                    CustomDurationStepper(
+                        minutes = customDurationMinutes,
+                        onIncrement = { focusViewModel.incrementCustomDuration() },
+                        onDecrement = { focusViewModel.decrementCustomDuration() }
+                    )
+                }
+            }
+        }
+
+        // Start Button
+        if (milestoneItems.isNotEmpty()) {
             item {
                 Spacer(Modifier.height(8.dp))
                 Button(
@@ -456,10 +471,14 @@ private fun FocusSetupContent(
                         containerColor = Color(0xFFFF6B35)
                     )
                 ) {
-                    Icon(Icons.Rounded.Timer, null, modifier = Modifier.size(20.dp))
+                    Icon(
+                        if (isFreeFlow) Icons.Rounded.AllInclusive else Icons.Rounded.Timer,
+                        null,
+                        modifier = Modifier.size(20.dp)
+                    )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        "Start Focus",
+                        if (isFreeFlow) "Start Free Flow" else "Start Focus",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -627,6 +646,108 @@ private fun DurationChip(
     }
 }
 
+@Composable
+private fun TimerModeToggle(
+    isFreeFlow: Boolean,
+    onModeChange: (Boolean) -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            // Timed segment
+            Surface(
+                onClick = { onModeChange(false) },
+                shape = RoundedCornerShape(12.dp),
+                color = if (!isFreeFlow) Color(0xFFFF6B35) else Color.Transparent,
+                contentColor = if (!isFreeFlow) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Rounded.Timer, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "Timed",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            // Free Flow segment
+            Surface(
+                onClick = { onModeChange(true) },
+                shape = RoundedCornerShape(12.dp),
+                color = if (isFreeFlow) Color(0xFFFF6B35) else Color.Transparent,
+                contentColor = if (isFreeFlow) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Rounded.AllInclusive, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "Free Flow",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CustomDurationStepper(
+    minutes: Int,
+    onIncrement: () -> Unit,
+    onDecrement: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        FilledTonalButton(
+            onClick = onDecrement,
+            enabled = minutes > 5,
+            shape = CircleShape,
+            modifier = Modifier.size(44.dp),
+            contentPadding = PaddingValues(0.dp)
+        ) {
+            Icon(Icons.Rounded.Remove, "Decrease", modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(24.dp))
+        Text(
+            "$minutes min",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFFFF6B35)
+        )
+        Spacer(Modifier.width(24.dp))
+        FilledTonalButton(
+            onClick = onIncrement,
+            enabled = minutes < 120,
+            shape = CircleShape,
+            modifier = Modifier.size(44.dp),
+            contentPadding = PaddingValues(0.dp)
+        ) {
+            Icon(Icons.Rounded.Add, "Increase", modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
 // ============================================
 // ACTIVE CONTENT (Timer Running/Paused)
 // ============================================
@@ -641,6 +762,7 @@ private fun FocusActiveContent(
     val selectedGoal by focusViewModel.selectedGoal.collectAsState()
     val selectedMilestone by focusViewModel.selectedMilestone.collectAsState()
     val elapsedSeconds by focusViewModel.elapsedSeconds.collectAsState()
+    val isFreeFlow by focusViewModel.isFreeFlow.collectAsState()
 
     val isRunning = timerState == TimerState.RUNNING
     val gradientColors = selectedGoal?.category?.gradientColors()
@@ -703,6 +825,8 @@ private fun FocusActiveContent(
             progress = progress,
             remainingSeconds = remainingSeconds,
             isRunning = isRunning,
+            elapsedSeconds = elapsedSeconds,
+            isFreeFlow = isFreeFlow,
             gradientColors = gradientColors,
             size = 240.dp
         )
@@ -755,14 +879,28 @@ private fun FocusActiveContent(
                 )
             }
 
-            // +5 min button (small)
-            FilledTonalButton(
-                onClick = { focusViewModel.addFiveMinutes() },
-                shape = CircleShape,
-                modifier = Modifier.size(48.dp),
-                contentPadding = PaddingValues(0.dp)
-            ) {
-                Text("+5", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+            // Third button: Done (free flow) or +5 (timed)
+            if (isFreeFlow) {
+                FilledTonalButton(
+                    onClick = { focusViewModel.completeFreeFlowSession() },
+                    shape = CircleShape,
+                    modifier = Modifier.size(48.dp),
+                    contentPadding = PaddingValues(0.dp),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = Color(0xFF4CAF50)
+                    )
+                ) {
+                    Icon(Icons.Rounded.Check, "Done", tint = Color.White, modifier = Modifier.size(20.dp))
+                }
+            } else {
+                FilledTonalButton(
+                    onClick = { focusViewModel.addFiveMinutes() },
+                    shape = CircleShape,
+                    modifier = Modifier.size(48.dp),
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Text("+5", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
             }
         }
 
@@ -871,6 +1009,83 @@ private fun FocusCompleteContent(
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFFFF6B35)
+                )
+            }
+        }
+
+        // Milestone completion prompt
+        val showMilestonePrompt by focusViewModel.showMilestonePrompt.collectAsState()
+        val milestoneMarkedComplete by focusViewModel.milestoneMarkedComplete.collectAsState()
+        val canCompleteMilestone by focusViewModel.canCompleteMilestone.collectAsState()
+
+        if (showMilestonePrompt && selectedMilestone != null) {
+            Spacer(Modifier.height(24.dp))
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "Did you complete this milestone?",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        selectedMilestone!!.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+
+                    if (!canCompleteMilestone) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Complete at least one focus session first",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { focusViewModel.dismissMilestonePrompt() },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Need more time")
+                        }
+                        Button(
+                            onClick = { focusViewModel.markMilestoneComplete() },
+                            enabled = canCompleteMilestone,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                        ) {
+                            Icon(Icons.Rounded.Check, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Yes, done!")
+                        }
+                    }
+                }
+            }
+        }
+
+        // Confirmation badge
+        if (milestoneMarkedComplete) {
+            Spacer(Modifier.height(12.dp))
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = Color(0xFF4CAF50).copy(alpha = 0.12f)
+            ) {
+                Text(
+                    "Milestone completed!",
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF4CAF50)
                 )
             }
         }

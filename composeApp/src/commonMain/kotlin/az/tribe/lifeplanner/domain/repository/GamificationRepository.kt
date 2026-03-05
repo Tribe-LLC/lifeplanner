@@ -9,27 +9,18 @@ import kotlinx.coroutines.flow.Flow
 
 
 interface GamificationRepository {
-    // User Progress
+    // User Progress (read-only — server handles XP/counters via triggers)
     suspend fun getUserProgress(): Flow<UserProgress>
-    suspend fun updateDailyStreak(): Flow<Int>
-    suspend fun addXp(amount: Int): UserProgress
-    suspend fun deductXp(amount: Int): UserProgress
-    suspend fun incrementGoalsCompleted()
-    suspend fun incrementHabitsCompleted()
-    suspend fun decrementHabitsCompleted()
-    suspend fun incrementJournalEntries()
 
-    // Badges
+    // Badges (read-only — server awards via triggers)
     suspend fun getAllBadges(): List<Badge>
     suspend fun getNewBadges(): List<Badge>
     suspend fun hasBadge(type: BadgeType): Boolean
-    suspend fun awardBadge(type: BadgeType): Badge?
     suspend fun markBadgeAsSeen(badgeId: String)
     suspend fun markAllBadgesAsSeen()
     suspend fun getBadgeCount(): Int
-    suspend fun checkAndAwardBadges(): List<Badge>
 
-    // Challenges
+    // Challenges (bidirectional — client creates, server updates progress/completion)
     suspend fun getActiveChallenges(): List<Challenge>
     suspend fun getCompletedChallenges(): List<Challenge>
     suspend fun startChallenge(type: ChallengeType): Challenge
@@ -38,9 +29,6 @@ interface GamificationRepository {
     suspend fun cleanupExpiredChallenges()
     suspend fun getAvailableChallenges(): List<ChallengeType>
 
-    // Activity-based challenge updates
-    suspend fun onHabitCheckedIn()
-    suspend fun onJournalEntryCreated()
-    suspend fun onGoalCompleted()
-    suspend fun onMilestoneCompleted()
+    // Daily streak — calls server RPC, returns (new_streak, xp_awarded)
+    suspend fun updateDailyStreakRemote(): Pair<Int, Int>
 }

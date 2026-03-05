@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import az.tribe.lifeplanner.data.auth.AuthResult
 import az.tribe.lifeplanner.data.auth.AuthService
+import az.tribe.lifeplanner.data.sync.SyncManager
 import az.tribe.lifeplanner.domain.model.User
 import az.tribe.lifeplanner.domain.repository.UserRepository
 import co.touchlab.kermit.Logger
@@ -31,7 +32,8 @@ sealed class AuthState {
  */
 class AuthViewModel(
     private val authService: AuthService,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val syncManager: SyncManager
 ) : ViewModel() {
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Loading)
@@ -43,6 +45,10 @@ class AuthViewModel(
     /** True when anonymous auth failed and user is in local-only mode (no sync). */
     private val _isLocalOnlyGuest = MutableStateFlow(false)
     val isLocalOnlyGuest: StateFlow<Boolean> = _isLocalOnlyGuest.asStateFlow()
+
+    /** True when a magic link has been sent and user can enter OTP. */
+    private val _magicLinkSent = MutableStateFlow(false)
+    val magicLinkSent: StateFlow<Boolean> = _magicLinkSent.asStateFlow()
 
     /** Transient success message shown briefly after operations like account linking. */
     private val _successMessage = MutableStateFlow<String?>(null)
@@ -150,7 +156,8 @@ class AuthViewModel(
             return updated
         }
 
-        // New user — clear all old data and sync timestamps first
+        // New user — cancel syncs and clear all old data first
+        syncManager.onLogout()
         userRepository.clearAllLocalData()
         val user = User(
             id = uid,
@@ -425,11 +432,61 @@ class AuthViewModel(
     }
 
     /**
+     * Send a magic link (passwordless) to the given email.
+     */
+    fun sendMagicLink(email: String) {
+        viewModelScope.launch {
+            try {
+                _authState.value = AuthState.Loading
+                authService.signInWithMagicLink(email)
+                _magicLinkSent.value = true
+                _authState.value = AuthState.Unauthenticated
+                _successMessage.value = "Magic link sent! Check your email."
+            } catch (e: Exception) {
+                _authState.value = AuthState.Error(e.message ?: "Failed to send magic link")
+            }
+        }
+    }
+
+    /**
+     * Verify a 6-digit OTP code from a magic link email.
+     */
+    fun verifyOtp(email: String, token: String) {
+        viewModelScope.launch {
+            try {
+                _authState.value = AuthState.Loading
+                when (val result = authService.verifyOtp(email, token)) {
+                    is AuthResult.Success -> {
+                        val user = findOrCreateLocalUser(
+                            uid = result.user.uid,
+                            email = result.user.email,
+                            displayName = result.user.displayName ?: "User",
+                            isGuest = false
+                        )
+                        _magicLinkSent.value = false
+                        _isLocalOnlyGuest.value = false
+                        _authState.value = AuthState.Authenticated(user)
+                    }
+                    is AuthResult.Error -> _authState.value = AuthState.Error(result.message)
+                    is AuthResult.EmailVerificationPending -> {}
+                }
+            } catch (e: Exception) {
+                _authState.value = AuthState.Error(e.message ?: "Verification failed")
+            }
+        }
+    }
+
+    fun clearMagicLinkState() {
+        _magicLinkSent.value = false
+    }
+
+    /**
      * Sign out — clears all local user records and Supabase session
      */
     fun signOut() {
         viewModelScope.launch {
             try {
+                syncManager.onLogout()
                 userRepository.clearAllLocalData()
                 authService.signOut()
                 _isLocalOnlyGuest.value = false
@@ -438,6 +495,24 @@ class AuthViewModel(
                 Logger.d("AuthViewModel") { "Sign out successful" }
             } catch (e: Exception) {
                 _authState.value = AuthState.Error(e.message ?: "Failed to sign out")
+            }
+        }
+    }
+
+    /**
+     * Mark onboarding complete for the current user (no personalization data).
+     */
+    fun completeOnboarding() {
+        viewModelScope.launch {
+            try {
+                val user = userRepository.getCurrentUser()
+                if (user != null) {
+                    userRepository.markOnboardingComplete(user.id)
+                    _hasCompletedOnboarding.value = true
+                    Logger.d("AuthViewModel") { "Onboarding marked complete for ${user.id}" }
+                }
+            } catch (e: Exception) {
+                Logger.e("AuthViewModel", e) { "Failed to mark onboarding complete: ${e.message}" }
             }
         }
     }
