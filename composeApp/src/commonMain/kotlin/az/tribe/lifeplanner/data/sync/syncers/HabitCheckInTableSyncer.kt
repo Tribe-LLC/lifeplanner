@@ -72,6 +72,11 @@ class HabitCheckInTableSyncer(
         db { it.lifePlannerDBQueries.markHabitCheckInSynced(now, id) }
     }
 
+    override suspend fun markSyncedBatch(entities: List<HabitCheckInEntity>, now: String) {
+        if (entities.isEmpty()) return
+        db { d -> entities.forEach { d.lifePlannerDBQueries.markHabitCheckInSynced(now, it.id) } }
+    }
+
     override suspend fun purgeDeleted() {
         db { it.lifePlannerDBQueries.purgeDeletedHabitCheckIns() }
     }

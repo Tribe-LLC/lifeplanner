@@ -80,8 +80,11 @@ class CoachRepositoryImpl(
     // ===== Coach Groups =====
 
     override suspend fun getAllCoachGroups(): List<CoachGroup> {
-        return database.getAllCoachGroups().map { entity ->
-            val members = database.getCoachGroupMembers(entity.id).map { it.toDomain() }
+        // Batch: 2 queries instead of 1+N (one for groups, one for ALL members)
+        val groups = database.getAllCoachGroups()
+        val allMembers = database.getAllActiveCoachGroupMembers()
+        return groups.map { entity ->
+            val members = allMembers[entity.id]?.map { it.toDomain() } ?: emptyList()
             entity.toDomain(members)
         }
     }
@@ -181,6 +184,21 @@ class CoachRepositoryImpl(
                 displayOrder = index.toLong()
             )
         }
+    }
+
+    // ===== Persona Overrides =====
+
+    override suspend fun getPersonaOverride(coachId: String): String? {
+        return database.getCoachPersonaOverride(coachId)?.userPersona?.takeIf { it.isNotBlank() }
+    }
+
+    override suspend fun savePersonaOverride(coachId: String, userPersona: String) {
+        val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+        database.upsertCoachPersonaOverride(coachId, userPersona, now.toString())
+    }
+
+    override suspend fun deletePersonaOverride(coachId: String) {
+        database.deleteCoachPersonaOverride(coachId)
     }
 
     // ===== Mappers =====

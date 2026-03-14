@@ -1,3 +1,0 @@
--- we have to sort the data while showing showing the uncompleted first, based on priority date, if it recent it is necessary as well. 
-let the user prioritise and learn it. like when user complete do not let the user uncomplete instead we have a feature on the app undo, swipe left. let the discover this feature instead of doing everything for the user. and current version is not good for user as a modal, becouse user sddenbly swipe down or back we do not have a draft options, we have to make it as well at least let the user edit from druft on unacidentally dismiss
-)

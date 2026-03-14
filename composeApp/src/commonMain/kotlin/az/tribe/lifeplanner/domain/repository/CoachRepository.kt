@@ -24,6 +24,11 @@ interface CoachRepository {
     suspend fun deleteCoachGroup(id: String)
     suspend fun getCoachGroupCount(): Long
 
+    // Persona Overrides (built-in coaches)
+    suspend fun getPersonaOverride(coachId: String): String?
+    suspend fun savePersonaOverride(coachId: String, userPersona: String)
+    suspend fun deletePersonaOverride(coachId: String)
+
     // Group Members
     suspend fun getCoachGroupMembers(groupId: String): List<CoachGroupMember>
     suspend fun addMemberToGroup(groupId: String, member: CoachGroupMember)

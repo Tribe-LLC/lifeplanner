@@ -9,6 +9,7 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import co.touchlab.kermit.Logger
 import kotlinx.datetime.Clock
+import kotlinx.serialization.json.Json
 
 class ReviewTableSyncer(
     supabase: SupabaseClient,
@@ -30,26 +31,29 @@ class ReviewTableSyncer(
         return db { it.lifePlannerDBQueries.getDeletedReviewReports().executeAsList() }
     }
 
-    override suspend fun localToRemote(local: ReviewReportEntity, userId: String) = ReviewReportSyncDto(
-        id = local.id,
-        userId = userId,
-        type = local.type,
-        periodStart = local.periodStart,
-        periodEnd = local.periodEnd,
-        generatedAt = local.generatedAt,
-        summary = local.summary,
-        highlightsJson = local.highlightsJson,
-        insightsJson = local.insightsJson,
-        recommendationsJson = local.recommendationsJson,
-        statsJson = local.statsJson,
-        feedbackRating = local.feedbackRating,
-        feedbackComment = local.feedbackComment,
-        feedbackAt = local.feedbackAt,
-        isRead = local.isRead != 0L,
-        updatedAt = local.sync_updated_at ?: Clock.System.now().toString(),
-        isDeleted = local.is_deleted != 0L,
-        syncVersion = local.sync_version
-    )
+    override suspend fun localToRemote(local: ReviewReportEntity, userId: String): ReviewReportSyncDto {
+        fun parseJson(s: String) = try { Json.parseToJsonElement(s) } catch (_: Exception) { Json.parseToJsonElement("{}") }
+        return ReviewReportSyncDto(
+            id = local.id,
+            userId = userId,
+            type = local.type,
+            periodStart = local.periodStart,
+            periodEnd = local.periodEnd,
+            generatedAt = local.generatedAt,
+            summary = local.summary,
+            highlightsJson = parseJson(local.highlightsJson),
+            insightsJson = parseJson(local.insightsJson),
+            recommendationsJson = parseJson(local.recommendationsJson),
+            statsJson = parseJson(local.statsJson),
+            feedbackRating = local.feedbackRating,
+            feedbackComment = local.feedbackComment,
+            feedbackAt = local.feedbackAt,
+            isRead = local.isRead != 0L,
+            updatedAt = local.sync_updated_at ?: Clock.System.now().toString(),
+            isDeleted = local.is_deleted != 0L,
+            syncVersion = local.sync_version
+        )
+    }
 
     override suspend fun remoteToLocal(remote: ReviewReportSyncDto): ReviewReportEntity {
         return ReviewReportEntity(
@@ -59,10 +63,10 @@ class ReviewTableSyncer(
             periodEnd = remote.periodEnd,
             generatedAt = remote.generatedAt,
             summary = remote.summary,
-            highlightsJson = remote.highlightsJson,
-            insightsJson = remote.insightsJson,
-            recommendationsJson = remote.recommendationsJson,
-            statsJson = remote.statsJson,
+            highlightsJson = remote.highlightsJson.toString(),
+            insightsJson = remote.insightsJson.toString(),
+            recommendationsJson = remote.recommendationsJson.toString(),
+            statsJson = remote.statsJson.toString(),
             feedbackRating = remote.feedbackRating,
             feedbackComment = remote.feedbackComment,
             feedbackAt = remote.feedbackAt,

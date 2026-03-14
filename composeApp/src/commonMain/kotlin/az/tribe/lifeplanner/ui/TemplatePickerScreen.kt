@@ -38,10 +38,11 @@ fun TemplatePickerScreen(
     var selectedCategory by remember { mutableStateOf<GoalCategory?>(null) }
 
     val templates = remember(selectedCategory) {
-        if (selectedCategory == null) {
+        val category = selectedCategory
+        if (category == null) {
             GoalTemplateProvider.getAllTemplates()
         } else {
-            GoalTemplateProvider.getTemplatesByCategory(selectedCategory!!)
+            GoalTemplateProvider.getTemplatesByCategory(category)
         }
     }
 

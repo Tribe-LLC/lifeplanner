@@ -237,6 +237,7 @@ private fun WeekStrip(
                 DayOfWeek.FRIDAY -> "Fri"
                 DayOfWeek.SATURDAY -> "Sat"
                 DayOfWeek.SUNDAY -> "Sun"
+                else -> ""
             }
 
             Column(
@@ -467,6 +468,7 @@ private fun getDaysForMonth(date: LocalDate): List<LocalDate?> {
         DayOfWeek.THURSDAY -> 4
         DayOfWeek.FRIDAY -> 5
         DayOfWeek.SATURDAY -> 6
+        else -> 0
     }
 
     val previousMonth = date.minus(1, DateTimeUnit.MONTH)

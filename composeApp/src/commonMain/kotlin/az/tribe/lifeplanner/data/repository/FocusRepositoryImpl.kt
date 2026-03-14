@@ -75,6 +75,10 @@ class FocusRepositoryImpl(
         return (database.getTotalFocusSeconds() / 60).toInt()
     }
 
+    override suspend fun getTotalFocusSeconds(): Long {
+        return database.getTotalFocusSeconds()
+    }
+
     override suspend fun getTotalSessionCount(): Int {
         return database.getTotalFocusSessionCount().toInt()
     }

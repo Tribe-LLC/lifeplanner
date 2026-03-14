@@ -1,6 +1,17 @@
 {
   "images" : [
     {
+      "filename" : "64 2.png",
+      "idiom" : "universal",
+      "scale" : "1x"
+    },
+    {
+      "appearances" : [
+        {
+          "appearance" : "luminosity",
+          "value" : "light"
+        }
+      ],
       "filename" : "64.png",
       "idiom" : "universal",
       "scale" : "1x"
@@ -9,23 +20,25 @@
       "appearances" : [
         {
           "appearance" : "luminosity",
-          "value" : "light"
+          "value" : "dark"
         }
       ],
+      "filename" : "64 1.png",
       "idiom" : "universal",
       "scale" : "1x"
+    },
+    {
+      "filename" : "128 2.png",
+      "idiom" : "universal",
+      "scale" : "2x"
     },
     {
       "appearances" : [
         {
           "appearance" : "luminosity",
-          "value" : "dark"
+          "value" : "light"
         }
       ],
-      "idiom" : "universal",
-      "scale" : "1x"
-    },
-    {
       "filename" : "128.png",
       "idiom" : "universal",
       "scale" : "2x"
@@ -34,23 +47,25 @@
       "appearances" : [
         {
           "appearance" : "luminosity",
-          "value" : "light"
+          "value" : "dark"
         }
       ],
+      "filename" : "128 1.png",
       "idiom" : "universal",
       "scale" : "2x"
+    },
+    {
+      "filename" : "256 2.png",
+      "idiom" : "universal",
+      "scale" : "3x"
     },
     {
       "appearances" : [
         {
           "appearance" : "luminosity",
-          "value" : "dark"
+          "value" : "light"
         }
       ],
-      "idiom" : "universal",
-      "scale" : "2x"
-    },
-    {
       "filename" : "256.png",
       "idiom" : "universal",
       "scale" : "3x"
@@ -59,19 +74,10 @@
       "appearances" : [
         {
           "appearance" : "luminosity",
-          "value" : "light"
-        }
-      ],
-      "idiom" : "universal",
-      "scale" : "3x"
-    },
-    {
-      "appearances" : [
-        {
-          "appearance" : "luminosity",
           "value" : "dark"
         }
       ],
+      "filename" : "256 1.png",
       "idiom" : "universal",
       "scale" : "3x"
     }

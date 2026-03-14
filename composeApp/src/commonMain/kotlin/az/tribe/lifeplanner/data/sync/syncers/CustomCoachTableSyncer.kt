@@ -9,6 +9,8 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import co.touchlab.kermit.Logger
 import kotlinx.datetime.Clock
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 
 class CustomCoachTableSyncer(
     supabase: SupabaseClient,
@@ -30,22 +32,29 @@ class CustomCoachTableSyncer(
         return db { it.lifePlannerDBQueries.getDeletedCustomCoaches().executeAsList() }
     }
 
-    override suspend fun localToRemote(local: CustomCoachEntity, userId: String) = CustomCoachSyncDto(
-        id = local.id,
-        userId = userId,
-        name = local.name,
-        icon = local.icon,
-        iconBackgroundColor = local.iconBackgroundColor,
-        iconAccentColor = local.iconAccentColor,
-        systemPrompt = local.systemPrompt,
-        characteristics = local.characteristics,
-        isFromTemplate = local.isFromTemplate != 0L,
-        templateId = local.templateId,
-        createdAt = local.createdAt,
-        updatedAt = local.sync_updated_at ?: Clock.System.now().toString(),
-        isDeleted = local.is_deleted != 0L,
-        syncVersion = local.sync_version
-    )
+    override suspend fun localToRemote(local: CustomCoachEntity, userId: String): CustomCoachSyncDto {
+        val characteristicsJson = try {
+            if (local.characteristics.isNotBlank()) Json.parseToJsonElement(local.characteristics)
+            else JsonArray(emptyList())
+        } catch (_: Exception) { JsonArray(emptyList()) }
+
+        return CustomCoachSyncDto(
+            id = local.id,
+            userId = userId,
+            name = local.name,
+            icon = local.icon,
+            iconBackgroundColor = local.iconBackgroundColor,
+            iconAccentColor = local.iconAccentColor,
+            systemPrompt = local.systemPrompt,
+            characteristics = characteristicsJson,
+            isFromTemplate = local.isFromTemplate != 0L,
+            templateId = local.templateId,
+            createdAt = local.createdAt,
+            updatedAt = local.sync_updated_at ?: Clock.System.now().toString(),
+            isDeleted = local.is_deleted != 0L,
+            syncVersion = local.sync_version
+        )
+    }
 
     override suspend fun remoteToLocal(remote: CustomCoachSyncDto): CustomCoachEntity {
         return CustomCoachEntity(
@@ -55,7 +64,7 @@ class CustomCoachTableSyncer(
             iconBackgroundColor = remote.iconBackgroundColor,
             iconAccentColor = remote.iconAccentColor,
             systemPrompt = remote.systemPrompt,
-            characteristics = remote.characteristics,
+            characteristics = remote.characteristics.toString(),
             isFromTemplate = if (remote.isFromTemplate) 1L else 0L,
             templateId = remote.templateId,
             createdAt = remote.createdAt,

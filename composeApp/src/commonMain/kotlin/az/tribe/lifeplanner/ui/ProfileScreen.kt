@@ -1,10 +1,11 @@
 package az.tribe.lifeplanner.ui
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,12 +24,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.material.icons.automirrored.rounded.Logout
-import androidx.compose.material.icons.rounded.Assessment
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.CloudDone
+import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.CloudSync
 import androidx.compose.material.icons.rounded.CloudUpload
-import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.automirrored.rounded.Login
@@ -38,35 +41,25 @@ import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Devices
-import androidx.compose.material.icons.rounded.MarkEmailRead
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -77,14 +70,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import az.tribe.lifeplanner.domain.model.User
@@ -121,14 +112,12 @@ fun ProfileScreen(
     authViewModel: AuthViewModel = koinInject(),
     gamificationViewModel: GamificationViewModel = koinViewModel(),
     onNavigateToAchievements: () -> Unit,
-    onNavigateToReviewChat: () -> Unit,
     onNavigateToLifeBalance: () -> Unit,
     onNavigateToReminders: () -> Unit,
     onNavigateToBackup: () -> Unit,
     onNavigateToRetrospective: () -> Unit = {},
     onNavigateToAICoach: () -> Unit,
-    onNavigateToOnboarding: () -> Unit,
-    onNavigateToSignIn: () -> Unit
+    onNavigateToSignIn: () -> Unit = {}
 ) {
     val syncManager: SyncManager = koinInject()
     val settings: Settings = koinInject()
@@ -139,6 +128,7 @@ fun ProfileScreen(
 
     var showAccountSheet by remember { mutableStateOf(false) }
     var showAiProviderDialog by remember { mutableStateOf(false) }
+    var showSignOutConfirm by remember { mutableStateOf(false) }
     var selectedAiProvider by remember {
         val saved = settings.getStringOrNull("ai_provider")
         mutableStateOf(saved?.let {
@@ -157,26 +147,7 @@ fun ProfileScreen(
         gamificationViewModel.refresh()
     }
 
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-
-    Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            TopAppBar(
-                scrollBehavior = scrollBehavior,
-                title = {
-                    Text(
-                        "Profile",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        }
-    ) { padding ->
+    Scaffold { padding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -184,7 +155,7 @@ fun ProfileScreen(
             contentPadding = PaddingValues(
                 start = LifePlannerDesign.Padding.screenHorizontal,
                 end = LifePlannerDesign.Padding.screenHorizontal,
-                bottom = padding.calculateBottomPadding()+96.dp,
+                bottom = padding.calculateBottomPadding()+112.dp,
                 top = 16.dp
             ),
             verticalArrangement = Arrangement.spacedBy(LifePlannerDesign.Spacing.md)
@@ -192,11 +163,12 @@ fun ProfileScreen(
             // User Profile Header Card
             item {
                 val syncStatus by syncManager.syncStatus.collectAsState()
+                val scope = rememberCoroutineScope()
                 UserProfileHeaderCard(
                     user = currentUser,
                     userProgress = userProgress,
                     syncStatus = syncStatus,
-                    onEditProfile = onNavigateToOnboarding
+                    onRetrySync = { scope.launch { syncManager.performFullSync(resetRetry = true) } }
                 )
             }
 
@@ -241,8 +213,8 @@ fun ProfileScreen(
                 }
             }
 
-            // Secure Account CTA — prominent banner for guests
-            if (currentUser?.isGuest != false) {
+            // Secure Account CTA — show for anyone without a verified email account
+            if (currentUser?.email == null) {
                 item {
                     SecureAccountCTABanner(onClick = { showAccountSheet = true })
                 }
@@ -332,34 +304,18 @@ fun ProfileScreen(
                 )
             }
 
-            item {
-                ProfileMenuItem(
-                    icon = Icons.Rounded.Assessment,
-                    title = "Reviews",
-                    subtitle = "Weekly and monthly AI reviews",
-                    onClick = onNavigateToReviewChat
-                )
-            }
+            // Account Section — only for signed-in users
+            if (authState is AuthState.Authenticated && currentUser?.email != null) {
+                item {
+                    ProfileSectionHeader("Account")
+                }
 
-            // Account Section
-            item {
-                ProfileSectionHeader("Account")
-            }
-
-            item {
-                if (currentUser?.isGuest != false) {
-                    ProfileMenuItem(
-                        icon = Icons.AutoMirrored.Rounded.Login,
-                        title = "Sign In or Create Account",
-                        subtitle = "Use email & password instead",
-                        onClick = onNavigateToSignIn
-                    )
-                } else {
+                item {
                     ProfileMenuItem(
                         icon = Icons.AutoMirrored.Rounded.Logout,
                         title = "Sign Out",
-                        subtitle = currentUser.email ?: "",
-                        onClick = { authViewModel.signOut() }
+                        subtitle = currentUser?.email ?: "",
+                        onClick = { showSignOutConfirm = true }
                     )
                 }
             }
@@ -381,15 +337,67 @@ fun ProfileScreen(
     }
 
     if (showAccountSheet) {
-        AccountCreationBottomSheet(
+        AuthBottomSheet(
+            isSignUp = false,
             authViewModel = authViewModel,
+            authState = authState,
             onDismiss = { showAccountSheet = false },
-            onNavigateToSignIn = {
-                showAccountSheet = false
-                onNavigateToSignIn()
+            onSuccess = { showAccountSheet = false }
+        )
+    }
+
+    if (showSignOutConfirm) {
+        val syncStatus by syncManager.syncStatus.collectAsState()
+        val isSynced = syncStatus.state == SyncState.SYNCED
+        val isOfflineOrError = syncStatus.state == SyncState.OFFLINE || syncStatus.state == SyncState.ERROR
+
+        AlertDialog(
+            onDismissRequest = { showSignOutConfirm = false },
+            title = {
+                Text(
+                    if (isOfflineOrError) "Unsynced Changes" else "Ready to leave?",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                if (isOfflineOrError) {
+                    Column {
+                        Text(
+                            "Some of your recent changes haven't been saved to the cloud yet. Signing out now could result in losing them.",
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "Try connecting to the internet and waiting for sync to finish first.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    Text("Everything is synced. You can sign back in anytime to pick up where you left off.")
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showSignOutConfirm = false
+                        authViewModel.signOut()
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text(if (isOfflineOrError) "Leave Anyway" else "Yes, Sign Out")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSignOutConfirm = false }) {
+                    Text(if (isOfflineOrError) "Wait for Sync" else "Stay")
+                }
             }
         )
     }
+
 }
 
 @Composable
@@ -496,283 +504,6 @@ internal fun CTAFeaturePill(icon: ImageVector, label: String) {
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.White.copy(alpha = 0.9f)
             )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun AccountCreationBottomSheet(
-    authViewModel: AuthViewModel,
-    onDismiss: () -> Unit,
-    onNavigateToSignIn: () -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val authState by authViewModel.authState.collectAsState()
-    val magicLinkSent by authViewModel.magicLinkSent.collectAsState()
-
-    var email by remember { mutableStateOf("") }
-    var otpCode by remember { mutableStateOf("") }
-    var showOtpInput by remember { mutableStateOf(false) }
-
-    ModalBottomSheet(
-        onDismissRequest = {
-            authViewModel.clearMagicLinkState()
-            onDismiss()
-        },
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Header icon
-            Box(
-                modifier = Modifier
-                    .size(64.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(Color(0xFF6366F1), Color(0xFFA855F7))
-                        )
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    if (magicLinkSent) Icons.Rounded.MarkEmailRead else Icons.Rounded.Email,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(32.dp)
-                )
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            Text(
-                if (magicLinkSent) "Check Your Email" else "Sign in Instantly",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Spacer(Modifier.height(4.dp))
-
-            Text(
-                if (magicLinkSent) "We sent a sign-in link to your email"
-                else "No password needed — we'll send you a magic link",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
-
-            Spacer(Modifier.height(24.dp))
-
-            if (!magicLinkSent) {
-                // Email input
-                OutlinedTextField(
-                    value = email,
-                    onValueChange = { email = it },
-                    label = { Text("Email address") },
-                    leadingIcon = {
-                        Icon(Icons.Rounded.Email, contentDescription = null)
-                    },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Email,
-                        imeAction = ImeAction.Done
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF6366F1),
-                        focusedLabelColor = Color(0xFF6366F1),
-                        focusedLeadingIconColor = Color(0xFF6366F1),
-                        cursorColor = Color(0xFF6366F1)
-                    )
-                )
-
-                Spacer(Modifier.height(16.dp))
-
-                // Send Magic Link — gradient-style button
-                Button(
-                    onClick = {
-                        if (email.isNotBlank()) authViewModel.sendMagicLink(email)
-                    },
-                    enabled = email.isNotBlank() && authState !is AuthState.Loading,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF6366F1)
-                    )
-                ) {
-                    if (authState is AuthState.Loading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Text(
-                            "Send Magic Link",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            } else {
-                // Magic link sent state
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFF6366F1).copy(alpha = 0.08f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            email,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF6366F1)
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "Open the link in the email to sign in automatically, or enter the 6-digit code below.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(16.dp))
-
-                // OTP input
-                AnimatedVisibility(
-                    visible = true,
-                    enter = fadeIn() + slideInVertically { it / 2 }
-                ) {
-                    Column {
-                        OutlinedTextField(
-                            value = otpCode,
-                            onValueChange = { if (it.length <= 6) otpCode = it },
-                            label = { Text("6-digit code") },
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Number,
-                                imeAction = ImeAction.Done
-                            ),
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFF6366F1),
-                                focusedLabelColor = Color(0xFF6366F1),
-                                cursorColor = Color(0xFF6366F1)
-                            )
-                        )
-
-                        Spacer(Modifier.height(12.dp))
-
-                        Button(
-                            onClick = {
-                                if (email.isNotBlank() && otpCode.length == 6) {
-                                    authViewModel.verifyOtp(email, otpCode)
-                                }
-                            },
-                            enabled = otpCode.length == 6 && authState !is AuthState.Loading,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(54.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF6366F1)
-                            )
-                        ) {
-                            if (authState is AuthState.Loading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(22.dp),
-                                    color = Color.White,
-                                    strokeWidth = 2.dp
-                                )
-                            } else {
-                                Text(
-                                    "Verify & Sign In",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-
-                        Spacer(Modifier.height(8.dp))
-
-                        TextButton(
-                            onClick = {
-                                authViewModel.clearMagicLinkState()
-                                otpCode = ""
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                "Resend magic link",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Divider + password option
-            Spacer(Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                HorizontalDivider(modifier = Modifier.weight(1f))
-                Text(
-                    "or",
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                HorizontalDivider(modifier = Modifier.weight(1f))
-            }
-            Spacer(Modifier.height(8.dp))
-
-            OutlinedButton(
-                onClick = onNavigateToSignIn,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Text(
-                    "Sign in with password",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            // Error message
-            if (authState is AuthState.Error) {
-                Spacer(Modifier.height(12.dp))
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        (authState as AuthState.Error).message,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(12.dp)
-                    )
-                }
-            }
         }
     }
 }
@@ -999,7 +730,7 @@ private fun UserProfileHeaderCard(
     user: User?,
     userProgress: UserProgress?,
     syncStatus: SyncStatus,
-    onEditProfile: () -> Unit
+    onRetrySync: () -> Unit
 ) {
     // Gradient colors shift based on sync state
     val gradientStart by animateColorAsState(
@@ -1060,7 +791,7 @@ private fun UserProfileHeaderCard(
                 ) {
                     if (!user?.selectedSymbol.isNullOrEmpty()) {
                         Text(
-                            user!!.selectedSymbol!!,
+                            user?.selectedSymbol ?: "",
                             fontSize = 36.sp
                         )
                     } else {
@@ -1109,45 +840,57 @@ private fun UserProfileHeaderCard(
                     }
                 }
 
-                // Sync status pill — colors blend gradient tones with gray
-                Spacer(Modifier.height(6.dp))
-                val syncColor by animateColorAsState(
-                    targetValue = when (syncStatus.state) {
-                        SyncState.SYNCED -> Color(0xFF9BB0F0)   // soft blue-white (gradient blue + white)
-                        SyncState.SYNCING -> Color(0xFFB89BDB)  // muted purple (gradient purple + gray)
-                        SyncState.ERROR -> Color(0xFFD4A0B0)    // dusty rose (purple-gray + warm)
-                        SyncState.OFFLINE -> Color(0xFF9A9AAE)  // blue-gray muted
-                        SyncState.IDLE -> Color(0xFFB0B5D0)     // light blue-gray
-                    },
-                    animationSpec = tween(600)
-                )
-                val syncText = when (syncStatus.state) {
-                    SyncState.SYNCED -> formatLastSynced(syncStatus.lastSyncedAt)
-                    SyncState.SYNCING -> "Syncing..."
-                    SyncState.ERROR -> "Sync failed"
-                    SyncState.OFFLINE -> "Offline"
-                    SyncState.IDLE -> if (syncStatus.pendingChanges > 0)
-                        "${syncStatus.pendingChanges} pending" else "Connected"
-                }
-                Text(
-                    syncText,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = syncColor
-                )
             }
 
-            // Edit profile button disabled — onboarding no longer collects profile data
-            IconButton(
-                onClick = { /* no-op: onboarding redesigned */ },
-                enabled = false,
+            // Sync status cloud icon column
+            val isRetryable = syncStatus.state == SyncState.ERROR || syncStatus.state == SyncState.OFFLINE
+            val syncIcon = when (syncStatus.state) {
+                SyncState.SYNCING -> Icons.Rounded.CloudSync
+                SyncState.SYNCED -> Icons.Rounded.CloudDone
+                SyncState.OFFLINE -> Icons.Rounded.CloudOff
+                SyncState.ERROR -> Icons.Rounded.ErrorOutline
+                SyncState.IDLE -> if (syncStatus.pendingChanges > 0)
+                    Icons.Rounded.CloudUpload else Icons.Rounded.Cloud
+            }
+            val syncDesc = when (syncStatus.state) {
+                SyncState.SYNCING -> "Syncing with cloud"
+                SyncState.SYNCED -> "All data synced"
+                SyncState.OFFLINE -> "No internet connection"
+                SyncState.ERROR -> "Sync failed — tap to retry"
+                SyncState.IDLE -> if (syncStatus.pendingChanges > 0)
+                    "${syncStatus.pendingChanges} changes waiting to sync" else "Connected"
+            }
+            val iconColor = when (syncStatus.state) {
+                SyncState.SYNCING -> Color.White
+                SyncState.SYNCED -> Color(0xFFA8E6CF)
+                SyncState.OFFLINE -> Color(0xFF9A9AAE)
+                SyncState.ERROR -> Color(0xFFFFB4A2)
+                SyncState.IDLE -> if (syncStatus.pendingChanges > 0)
+                    Color(0xFFB89BDB) else Color.White.copy(alpha = 0.4f)
+            }
+            // Pulsing alpha for SYNCING state
+            val pulseTransition = rememberInfiniteTransition()
+            val pulseAlpha by pulseTransition.animateFloat(
+                initialValue = 0.4f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(800),
+                    repeatMode = RepeatMode.Reverse
+                )
+            )
+            val iconAlpha = if (syncStatus.state == SyncState.SYNCING) pulseAlpha else 1f
+
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .clip(CircleShape)
-                    .background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.1f))
+                    .clickable(enabled = isRetryable) { onRetrySync() }
+                    .padding(4.dp)
             ) {
                 Icon(
-                    Icons.Rounded.Edit,
-                    "Edit Profile",
-                    tint = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.3f)
+                    syncIcon,
+                    contentDescription = syncDesc,
+                    modifier = Modifier.size(24.dp).alpha(iconAlpha),
+                    tint = iconColor
                 )
             }
         }
@@ -1177,7 +920,7 @@ private fun ProfileStatsCard(progress: UserProgress) {
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     ModernStatItem(
-                        value = "${progress.totalXp}",
+                        value = formatCompact(progress.totalXp),
                         label = "Total XP",
                         accentColor = MaterialTheme.colorScheme.primary
                     )
@@ -1363,6 +1106,22 @@ private fun ProfileMenuItem(
     }
 }
 
+private fun formatCompact(value: Int): String = when {
+    value >= 1_000_000 -> {
+        val m = value / 1_000_000.0
+        val rounded = (m * 10).toLong() / 10.0
+        if (rounded == rounded.toLong().toDouble()) "${rounded.toLong()}M" else "${rounded}M"
+    }
+    value >= 1_000 -> {
+        val k = value / 1_000.0
+        if (k == k.toLong().toDouble()) "${k.toLong()}k" else {
+            val rounded = (k * 10).toLong() / 10.0
+            "${rounded}k"
+        }
+    }
+    else -> "$value"
+}
+
 private fun formatLastSynced(instant: Instant?): String {
     if (instant == null) return "Synced"
     val now = Clock.System.now()
@@ -1373,5 +1132,21 @@ private fun formatLastSynced(instant: Instant?): String {
         seconds < 3600 -> "Synced ${seconds / 60}m ago"
         seconds < 86400 -> "Synced ${seconds / 3600}h ago"
         else -> "Synced ${seconds / 86400}d ago"
+    }
+}
+
+private fun friendlyErrorMessage(raw: String?): String {
+    if (raw == null) return "Sync failed"
+    val lower = raw.lowercase()
+    return when {
+        "partial sync" in lower -> "Some data didn't sync"
+        "timeout" in lower -> "Server took too long"
+        "unauthorized" in lower || "401" in lower -> "Session expired — sign in again"
+        "forbidden" in lower || "403" in lower -> "Permission denied"
+        "not found" in lower || "404" in lower -> "Server not reachable"
+        "500" in lower || "internal server" in lower -> "Server error"
+        "socket" in lower || "connect" in lower || "network" in lower || "resolve" in lower ->
+            "Connection problem"
+        else -> "Sync failed"
     }
 }

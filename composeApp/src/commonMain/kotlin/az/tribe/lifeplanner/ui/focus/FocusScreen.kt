@@ -53,7 +53,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -96,10 +98,13 @@ fun FocusScreen(
     val hapticManager = rememberHapticManager()
     val ambientSoundPlayer = rememberAmbientSoundPlayer()
 
-    // Pre-select if navigated from GoalDetail
+    // Pre-select if navigated from GoalDetail; default to free flow if no milestone
     LaunchedEffect(goalId, milestoneId) {
         if (goalId != null && milestoneId != null) {
             focusViewModel.preSelectGoalAndMilestone(goalId, milestoneId)
+        } else if (goalId == null && milestoneId == null) {
+            // No specific milestone — default to free flow for quick start
+            focusViewModel.setTimerMode(true)
         }
     }
 
@@ -219,9 +224,9 @@ private fun FocusSetupContent(
     val selectedGoal by focusViewModel.selectedGoal.collectAsState()
     val durationMinutes by focusViewModel.durationMinutes.collectAsState()
     val todaySessionCount by focusViewModel.todaySessionCount.collectAsState()
-    val todayMinutes by focusViewModel.todayMinutes.collectAsState()
+    val todaySeconds by focusViewModel.todaySeconds.collectAsState()
     val allTimeSessionCount by focusViewModel.allTimeSessionCount.collectAsState()
-    val allTimeMinutes by focusViewModel.allTimeMinutes.collectAsState()
+    val allTimeSeconds by focusViewModel.allTimeSeconds.collectAsState()
     val selectedMood by focusViewModel.selectedMood.collectAsState()
     val selectedAmbientSound by focusViewModel.selectedAmbientSound.collectAsState()
     val selectedFocusTheme by focusViewModel.selectedFocusTheme.collectAsState()
@@ -229,12 +234,16 @@ private fun FocusSetupContent(
     val isCustomDuration by focusViewModel.isCustomDuration.collectAsState()
     val customDurationMinutes by focusViewModel.customDurationMinutes.collectAsState()
 
-    val canStart = selectedMilestone != null
+    // Free flow: milestone is optional; timed: milestone is required
+    val canStart = if (isFreeFlow) true else selectedMilestone != null
 
     // Group milestones by goal for display
     val groupedMilestones = remember(milestoneItems) {
         milestoneItems.groupBy { it.goal }
     }
+
+    // Expandable customize section for free flow
+    var showCustomize by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -252,238 +261,459 @@ private fun FocusSetupContent(
             )
         }
 
-        // Stats card — Today + All-time
-        item {
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                    if (todaySessionCount > 0 || todayMinutes > 0) {
-                        Text(
-                            "Today",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            StatItem("$todaySessionCount", "sessions")
-                            StatItem("$todayMinutes", "minutes")
-                        }
-                        Spacer(Modifier.height(12.dp))
-                    }
-                    if (allTimeSessionCount > 0 || allTimeMinutes > 0) {
-                        Text(
-                            "All Time",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            StatItem("$allTimeSessionCount", "sessions")
-                            StatItem("$allTimeMinutes", "minutes")
-                        }
-                    }
-                }
-            }
-        }
+        if (isFreeFlow) {
+            // ── FREE FLOW: Quick-start hero ──
 
-        // Mood picker
-        item {
-            Text(
-                "How are you feeling?",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                Mood.entries.forEach { mood ->
-                    MoodChip(
-                        mood = mood,
-                        isSelected = selectedMood == mood,
-                        onClick = { focusViewModel.setMood(mood) }
-                    )
-                }
-            }
-        }
-
-        // Ambient sound picker
-        item {
-            Text(
-                "Ambient Sound",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        item {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                AmbientSound.entries.forEach { sound ->
-                    PickerChip(
-                        label = "${sound.icon} ${sound.displayName}",
-                        isSelected = selectedAmbientSound == sound,
-                        onClick = { focusViewModel.setAmbientSound(sound) }
-                    )
-                }
-            }
-        }
-
-        // Focus theme picker
-        item {
-            Text(
-                "Visual Theme",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        item {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FocusTheme.entries.forEach { theme ->
-                    PickerChip(
-                        label = "${theme.icon} ${theme.displayName}",
-                        isSelected = selectedFocusTheme == theme,
-                        onClick = { focusViewModel.setFocusTheme(theme) }
-                    )
-                }
-            }
-        }
-
-        // Pick a Milestone header
-        item {
-            Text(
-                "What will you focus on?",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        if (milestoneItems.isEmpty()) {
+            // Big start button right away
             item {
-                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            "No milestones to focus on",
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "Create a goal with milestones to start a focus session",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            }
-        } else {
-            // Milestones grouped by goal
-            groupedMilestones.forEach { (goal, items) ->
-                item(key = "goal_header_${goal.id}") {
-                    GoalSectionHeader(goal = goal)
-                }
-                items(items, key = { it.milestone.id }) { item ->
-                    MilestonePickerItem(
-                        milestoneItem = item,
-                        isSelected = selectedMilestone?.id == item.milestone.id,
-                        onClick = {
-                            focusViewModel.selectMilestoneWithGoal(item.milestone, item.goal)
-                        }
-                    )
-                }
-            }
-        }
-
-        // Set Duration (hidden in free flow mode)
-        if (milestoneItems.isNotEmpty() && !isFreeFlow) {
-            item {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Duration",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            item {
-                val presets = listOf(15, 25, 30, 45, 60)
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    presets.forEach { preset ->
-                        DurationChip(
-                            minutes = preset,
-                            isSelected = durationMinutes == preset && !isCustomDuration,
-                            onClick = { focusViewModel.setDuration(preset) }
-                        )
-                    }
-                    // Custom chip
-                    PickerChip(
-                        label = "Custom",
-                        isSelected = isCustomDuration,
-                        onClick = { focusViewModel.toggleCustomDuration() }
-                    )
-                }
-            }
-
-            // Custom duration stepper
-            if (isCustomDuration) {
-                item {
-                    CustomDurationStepper(
-                        minutes = customDurationMinutes,
-                        onIncrement = { focusViewModel.incrementCustomDuration() },
-                        onDecrement = { focusViewModel.decrementCustomDuration() }
-                    )
-                }
-            }
-        }
-
-        // Start Button
-        if (milestoneItems.isNotEmpty()) {
-            item {
-                Spacer(Modifier.height(8.dp))
                 Button(
                     onClick = onStartFocus,
-                    enabled = canStart,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp),
-                    shape = RoundedCornerShape(16.dp),
+                        .height(64.dp),
+                    shape = RoundedCornerShape(20.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFFFF6B35)
                     )
                 ) {
                     Icon(
-                        if (isFreeFlow) Icons.Rounded.AllInclusive else Icons.Rounded.Timer,
+                        Icons.Rounded.AllInclusive,
                         null,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(24.dp)
                     )
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(10.dp))
                     Text(
-                        if (isFreeFlow) "Start Free Flow" else "Start Focus",
+                        "Start Focusing",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                 }
-                Spacer(Modifier.height(32.dp))
+            }
+
+            // Compact stats inline
+            if (todaySeconds > 0 || allTimeSeconds > 0) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (todaySeconds > 0) {
+                            Text(
+                                "${formatDuration(todaySeconds)} today",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color(0xFFFF6B35),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        if (todaySeconds > 0 && allTimeSeconds > 0) {
+                            Text(
+                                "  •  ",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (allTimeSeconds > 0) {
+                            Text(
+                                "${formatDuration(allTimeSeconds)} all time",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Expandable customize section
+            item {
+                Surface(
+                    onClick = { showCustomize = !showCustomize },
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                selectedMood?.emoji ?: "😊",
+                                fontSize = 18.sp
+                            )
+                            Text(
+                                selectedAmbientSound.icon,
+                                fontSize = 18.sp
+                            )
+                            Text(
+                                selectedFocusTheme.icon,
+                                fontSize = 18.sp
+                            )
+                        }
+                        Text(
+                            if (showCustomize) "Hide options" else "Customize",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+
+            if (showCustomize) {
+                // Mood picker
+                item {
+                    Text(
+                        "How are you feeling?",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        Mood.entries.forEach { mood ->
+                            MoodChip(
+                                mood = mood,
+                                isSelected = selectedMood == mood,
+                                onClick = { focusViewModel.setMood(mood) }
+                            )
+                        }
+                    }
+                }
+
+                // Ambient sound
+                item {
+                    Text(
+                        "Ambient Sound",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                item {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        AmbientSound.entries.forEach { sound ->
+                            PickerChip(
+                                label = "${sound.icon} ${sound.displayName}",
+                                isSelected = selectedAmbientSound == sound,
+                                onClick = { focusViewModel.setAmbientSound(sound) }
+                            )
+                        }
+                    }
+                }
+
+                // Visual theme
+                item {
+                    Text(
+                        "Visual Theme",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                item {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FocusTheme.entries.forEach { theme ->
+                            PickerChip(
+                                label = "${theme.icon} ${theme.displayName}",
+                                isSelected = selectedFocusTheme == theme,
+                                onClick = { focusViewModel.setFocusTheme(theme) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Optional milestone picker
+            if (milestoneItems.isNotEmpty()) {
+                item {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            "Focus on a milestone",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Text(
+                                "optional",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                groupedMilestones.forEach { (goal, items) ->
+                    item(key = "goal_header_${goal.id}") {
+                        GoalSectionHeader(goal = goal)
+                    }
+                    items(items, key = { it.milestone.id }) { item ->
+                        MilestonePickerItem(
+                            milestoneItem = item,
+                            isSelected = selectedMilestone?.id == item.milestone.id,
+                            onClick = {
+                                focusViewModel.selectMilestoneWithGoal(item.milestone, item.goal)
+                            }
+                        )
+                    }
+                }
+
+                item { Spacer(Modifier.height(32.dp)) }
+            }
+        } else {
+            // ── TIMED MODE: Full setup (unchanged) ──
+
+            // Stats card
+            item {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                        if (todaySessionCount > 0 || todaySeconds > 0) {
+                            Text(
+                                "Today",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                StatItem("$todaySessionCount", "sessions")
+                                StatItem(formatDuration(todaySeconds), "focused")
+                            }
+                            Spacer(Modifier.height(12.dp))
+                        }
+                        if (allTimeSessionCount > 0 || allTimeSeconds > 0) {
+                            Text(
+                                "All Time",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                StatItem("$allTimeSessionCount", "sessions")
+                                StatItem(formatDuration(allTimeSeconds), "focused")
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Mood picker
+            item {
+                Text(
+                    "How are you feeling?",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Mood.entries.forEach { mood ->
+                        MoodChip(
+                            mood = mood,
+                            isSelected = selectedMood == mood,
+                            onClick = { focusViewModel.setMood(mood) }
+                        )
+                    }
+                }
+            }
+
+            // Ambient sound picker
+            item {
+                Text(
+                    "Ambient Sound",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            item {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    AmbientSound.entries.forEach { sound ->
+                        PickerChip(
+                            label = "${sound.icon} ${sound.displayName}",
+                            isSelected = selectedAmbientSound == sound,
+                            onClick = { focusViewModel.setAmbientSound(sound) }
+                        )
+                    }
+                }
+            }
+
+            // Focus theme picker
+            item {
+                Text(
+                    "Visual Theme",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            item {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FocusTheme.entries.forEach { theme ->
+                        PickerChip(
+                            label = "${theme.icon} ${theme.displayName}",
+                            isSelected = selectedFocusTheme == theme,
+                            onClick = { focusViewModel.setFocusTheme(theme) }
+                        )
+                    }
+                }
+            }
+
+            // Pick a Milestone header
+            item {
+                Text(
+                    "What will you focus on?",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            if (milestoneItems.isEmpty()) {
+                item {
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                "No milestones to focus on",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Create a goal with milestones to start a focus session",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Milestones grouped by goal
+                groupedMilestones.forEach { (goal, items) ->
+                    item(key = "goal_header_${goal.id}") {
+                        GoalSectionHeader(goal = goal)
+                    }
+                    items(items, key = { it.milestone.id }) { item ->
+                        MilestonePickerItem(
+                            milestoneItem = item,
+                            isSelected = selectedMilestone?.id == item.milestone.id,
+                            onClick = {
+                                focusViewModel.selectMilestoneWithGoal(item.milestone, item.goal)
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Duration (timed only)
+            if (milestoneItems.isNotEmpty()) {
+                item {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Duration",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                item {
+                    val presets = listOf(15, 25, 30, 45, 60)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        presets.forEach { preset ->
+                            DurationChip(
+                                minutes = preset,
+                                isSelected = durationMinutes == preset && !isCustomDuration,
+                                onClick = { focusViewModel.setDuration(preset) }
+                            )
+                        }
+                        PickerChip(
+                            label = "Custom",
+                            isSelected = isCustomDuration,
+                            onClick = { focusViewModel.toggleCustomDuration() }
+                        )
+                    }
+                }
+
+                if (isCustomDuration) {
+                    item {
+                        CustomDurationStepper(
+                            minutes = customDurationMinutes,
+                            onIncrement = { focusViewModel.incrementCustomDuration() },
+                            onDecrement = { focusViewModel.decrementCustomDuration() }
+                        )
+                    }
+                }
+            }
+
+            // Start Button (timed)
+            if (milestoneItems.isNotEmpty()) {
+                item {
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = onStartFocus,
+                        enabled = canStart,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFFF6B35)
+                        )
+                    ) {
+                        Icon(
+                            Icons.Rounded.Timer,
+                            null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Start Focus",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(Modifier.height(32.dp))
+                }
             }
         }
     }
@@ -792,22 +1022,22 @@ private fun FocusActiveContent(
         Spacer(Modifier.height(24.dp))
 
         // Goal + Milestone info (compact)
-        if (selectedGoal != null) {
+        selectedGoal?.let { goal ->
             Text(
-                selectedGoal!!.title,
+                goal.title,
                 style = MaterialTheme.typography.titleSmall,
                 color = Color.White.copy(alpha = 0.8f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
-        if (selectedMilestone != null) {
+        selectedMilestone?.let { milestone ->
             Surface(
                 shape = RoundedCornerShape(50),
                 color = Color.White.copy(alpha = 0.12f)
             ) {
                 Text(
-                    selectedMilestone!!.title,
+                    milestone.title,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
@@ -925,7 +1155,7 @@ private fun FocusCompleteContent(
     val elapsedSeconds by focusViewModel.elapsedSeconds.collectAsState()
     val selectedMood by focusViewModel.selectedMood.collectAsState()
 
-    val elapsedMinutes = elapsedSeconds / 60
+    val elapsedDisplay = formatDuration(elapsedSeconds)
 
     Column(
         modifier = Modifier
@@ -965,9 +1195,9 @@ private fun FocusCompleteContent(
 
         Spacer(Modifier.height(8.dp))
 
-        if (selectedMilestone != null) {
+        selectedMilestone?.let { milestone ->
             Text(
-                selectedMilestone!!.title,
+                milestone.title,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -981,15 +1211,15 @@ private fun FocusCompleteContent(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            if (selectedMood != null) {
+            selectedMood?.let { mood ->
                 Text(
-                    selectedMood!!.emoji,
+                    mood.emoji,
                     fontSize = 20.sp
                 )
                 Spacer(Modifier.width(8.dp))
             }
             Text(
-                "$elapsedMinutes minutes focused",
+                "$elapsedDisplay focused",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1018,7 +1248,7 @@ private fun FocusCompleteContent(
         val milestoneMarkedComplete by focusViewModel.milestoneMarkedComplete.collectAsState()
         val canCompleteMilestone by focusViewModel.canCompleteMilestone.collectAsState()
 
-        if (showMilestonePrompt && selectedMilestone != null) {
+        if (showMilestonePrompt) selectedMilestone?.let { milestone ->
             Spacer(Modifier.height(24.dp))
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(
@@ -1032,7 +1262,7 @@ private fun FocusCompleteContent(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        selectedMilestone!!.title,
+                        milestone.title,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
@@ -1112,4 +1342,10 @@ private fun FocusCompleteContent(
             Text("Done", fontWeight = FontWeight.Bold)
         }
     }
+}
+
+private fun formatDuration(totalSeconds: Int): String {
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return if (minutes > 0) "${minutes}m" else "${seconds}s"
 }

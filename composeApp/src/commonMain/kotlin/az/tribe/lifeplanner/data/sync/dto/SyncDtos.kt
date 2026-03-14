@@ -2,6 +2,7 @@ package az.tribe.lifeplanner.data.sync.dto
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 @Serializable
 data class GoalSyncDto(
@@ -208,7 +209,7 @@ data class ChatMessageSyncDto(
     val role: String,
     val timestamp: String,
     @SerialName("related_goal_id") val relatedGoalId: String? = null,
-    val metadata: String? = null,
+    val metadata: JsonElement? = null,
     @SerialName("updated_at") val updatedAt: String? = null,
     @SerialName("is_deleted") val isDeleted: Boolean = false,
     @SerialName("sync_version") val syncVersion: Long = 0
@@ -223,10 +224,10 @@ data class ReviewReportSyncDto(
     @SerialName("period_end") val periodEnd: String,
     @SerialName("generated_at") val generatedAt: String,
     val summary: String,
-    @SerialName("highlights_json") val highlightsJson: String,
-    @SerialName("insights_json") val insightsJson: String,
-    @SerialName("recommendations_json") val recommendationsJson: String,
-    @SerialName("stats_json") val statsJson: String,
+    @SerialName("highlights_json") val highlightsJson: JsonElement,
+    @SerialName("insights_json") val insightsJson: JsonElement,
+    @SerialName("recommendations_json") val recommendationsJson: JsonElement,
+    @SerialName("stats_json") val statsJson: JsonElement,
     @SerialName("feedback_rating") val feedbackRating: String? = null,
     @SerialName("feedback_comment") val feedbackComment: String? = null,
     @SerialName("feedback_at") val feedbackAt: String? = null,
@@ -267,7 +268,7 @@ data class CustomCoachSyncDto(
     @SerialName("icon_background_color") val iconBackgroundColor: String = "#6366F1",
     @SerialName("icon_accent_color") val iconAccentColor: String = "#818CF8",
     @SerialName("system_prompt") val systemPrompt: String,
-    val characteristics: String = "",
+    val characteristics: JsonElement = kotlinx.serialization.json.JsonArray(emptyList()),
     @SerialName("is_from_template") val isFromTemplate: Boolean = false,
     @SerialName("template_id") val templateId: String? = null,
     @SerialName("created_at") val createdAt: String,
@@ -306,8 +307,8 @@ data class CoachGroupMemberSyncDto(
 data class FocusSessionSyncDto(
     val id: String,
     @SerialName("user_id") val userId: String,
-    @SerialName("goal_id") val goalId: String,
-    @SerialName("milestone_id") val milestoneId: String,
+    @SerialName("goal_id") val goalId: String? = null,
+    @SerialName("milestone_id") val milestoneId: String? = null,
     @SerialName("planned_duration_minutes") val plannedDurationMinutes: Long,
     @SerialName("actual_duration_seconds") val actualDurationSeconds: Long = 0,
     @SerialName("was_completed") val wasCompleted: Boolean = false,
@@ -319,6 +320,16 @@ data class FocusSessionSyncDto(
     @SerialName("ambient_sound") val ambientSound: String? = null,
     @SerialName("focus_theme") val focusTheme: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null,
+    @SerialName("is_deleted") val isDeleted: Boolean = false,
+    @SerialName("sync_version") val syncVersion: Long = 0
+)
+
+@Serializable
+data class CoachPersonaOverrideSyncDto(
+    @SerialName("coach_id") val coachId: String,
+    @SerialName("user_id") val userId: String,
+    @SerialName("user_persona") val userPersona: String = "",
+    @SerialName("updated_at") val updatedAt: String,
     @SerialName("is_deleted") val isDeleted: Boolean = false,
     @SerialName("sync_version") val syncVersion: Long = 0
 )

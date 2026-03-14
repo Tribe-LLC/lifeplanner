@@ -96,6 +96,11 @@ class GoalTableSyncer(
         db { it.lifePlannerDBQueries.markGoalSynced(now, id) }
     }
 
+    override suspend fun markSyncedBatch(entities: List<GoalEntity>, now: String) {
+        if (entities.isEmpty()) return
+        db { d -> entities.forEach { d.lifePlannerDBQueries.markGoalSynced(now, it.id) } }
+    }
+
     override suspend fun purgeDeleted() {
         db { it.lifePlannerDBQueries.purgeDeletedGoals() }
     }

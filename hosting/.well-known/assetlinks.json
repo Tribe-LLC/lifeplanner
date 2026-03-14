@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "az.tribe.lifeplanner",
+      "sha256_cert_fingerprints": [
+        "21:81:E5:14:01:0C:13:55:4B:64:28:E2:7D:D8:D7:8A:7B:1D:97:D6:6F:93:E4:07:20:93:65:2D:F3:16:E0:0E"
+      ]
+    }
+  }
+]

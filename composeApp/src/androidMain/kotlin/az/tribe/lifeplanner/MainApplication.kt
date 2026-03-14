@@ -5,7 +5,13 @@ import android.content.Context
 import az.tribe.lifeplanner.di.initFileSharer
 import az.tribe.lifeplanner.di.initKoin
 import az.tribe.lifeplanner.domain.repository.BackupRepository
+import az.tribe.lifeplanner.domain.repository.ReminderRepository
+import az.tribe.lifeplanner.notification.AndroidNotificationScheduler
 import az.tribe.lifeplanner.worker.BackupScheduler
+import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import dev.gitlive.firebase.Firebase
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -20,6 +26,7 @@ class MainApplication : Application(), KoinComponent {
     }
 
     private val backupRepository: BackupRepository by inject()
+    private val reminderRepository: ReminderRepository by inject()
 
     override fun onCreate() {
         super.onCreate()
@@ -35,6 +42,20 @@ class MainApplication : Application(), KoinComponent {
 
         initKoin {
             androidContext(this@MainApplication)
+        }
+
+        // Initialize notification scheduler with context
+        AndroidNotificationScheduler.init(applicationContext)
+
+        // Reschedule all enabled reminders (recovers from force-close)
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val reminders = reminderRepository.getEnabledReminders()
+                reminders.forEach { AndroidNotificationScheduler.schedule(it) }
+                Logger.i("MainApplication") { "Rescheduled ${reminders.size} reminders on app start" }
+            } catch (e: Exception) {
+                Logger.e("MainApplication") { "Failed to reschedule reminders: ${e.message}" }
+            }
         }
 
         // Initialize BackupScheduler with context

@@ -356,12 +356,14 @@ class SharedDatabase(
         }
     }
 
-    // Helper method to get goals with their milestones
+    // Batch fetch all milestones in ONE query, then group by goalId in memory
     suspend fun getMilestonesForGoals(goalIds: List<String>): Map<String, List<MilestoneEntity>> {
+        if (goalIds.isEmpty()) return emptyMap()
         return this { db ->
-            goalIds.associateWith { goalId ->
-                db.lifePlannerDBQueries.getMilestonesByGoalId(goalId).executeAsList()
-            }
+            val goalIdSet = goalIds.toSet()
+            db.lifePlannerDBQueries.getAllActiveMilestones().executeAsList()
+                .filter { it.goalId in goalIdSet }
+                .groupBy { it.goalId }
         }
     }
 
@@ -554,6 +556,13 @@ class SharedDatabase(
     suspend fun getCheckInByHabitAndDate(habitId: String, date: String): HabitCheckInEntity? {
         return this { db ->
             db.lifePlannerDBQueries.getCheckInByHabitAndDate(habitId, date).executeAsOneOrNull()
+        }
+    }
+
+    // Single query to get all completed check-in dates for streak calculation (eliminates N+1)
+    suspend fun getCompletedCheckInDatesDesc(habitId: String): List<String> {
+        return this { db ->
+            db.lifePlannerDBQueries.getCompletedCheckInDatesDesc(habitId).executeAsList()
         }
     }
 
@@ -1526,6 +1535,14 @@ class SharedDatabase(
         return this { db -> db.lifePlannerDBQueries.getCoachGroupMembers(groupId).executeAsList() }
     }
 
+    // Batch fetch all coach group members in ONE query (eliminates N+1 when loading groups)
+    suspend fun getAllActiveCoachGroupMembers(): Map<String, List<CoachGroupMemberEntity>> {
+        return this { db ->
+            db.lifePlannerDBQueries.getAllActiveCoachGroupMembers().executeAsList()
+                .groupBy { it.groupId }
+        }
+    }
+
     suspend fun deleteCoachGroupMember(id: String) {
         this { db -> db.lifePlannerDBQueries.softDeleteCoachGroupMember(nowTimestamp(), id) }
     }
@@ -1645,6 +1662,20 @@ class SharedDatabase(
 
     suspend fun getGoalsExistingOnDate(dateStr: String): List<GoalEntity> {
         return this { db -> db.lifePlannerDBQueries.getGoalsExistingOnDate(dateStr).executeAsList() }
+    }
+
+    // ===== Coach Persona Override Operations =====
+
+    suspend fun getCoachPersonaOverride(coachId: String): az.tribe.lifeplanner.database.CoachPersonaOverrideEntity? {
+        return this { db -> db.lifePlannerDBQueries.getCoachPersonaOverride(coachId).executeAsOneOrNull() }
+    }
+
+    suspend fun upsertCoachPersonaOverride(coachId: String, userPersona: String, updatedAt: String) {
+        this { db -> db.lifePlannerDBQueries.upsertCoachPersonaOverride(coachId, userPersona, updatedAt, nowTimestamp()) }
+    }
+
+    suspend fun deleteCoachPersonaOverride(coachId: String) {
+        this { db -> db.lifePlannerDBQueries.deleteCoachPersonaOverride(coachId) }
     }
 
     suspend fun getDatesWithActivity(

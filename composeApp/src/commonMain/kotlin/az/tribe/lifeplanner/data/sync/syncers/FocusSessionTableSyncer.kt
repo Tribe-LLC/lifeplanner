@@ -31,8 +31,8 @@ class FocusSessionTableSyncer(
     override suspend fun localToRemote(local: FocusSessionEntity, userId: String) = FocusSessionSyncDto(
         id = local.id,
         userId = userId,
-        goalId = local.goalId,
-        milestoneId = local.milestoneId,
+        goalId = local.goalId.ifEmpty { null },
+        milestoneId = local.milestoneId.ifEmpty { null },
         plannedDurationMinutes = local.plannedDurationMinutes,
         actualDurationSeconds = local.actualDurationSeconds,
         wasCompleted = local.wasCompleted != 0L,
@@ -50,8 +50,8 @@ class FocusSessionTableSyncer(
 
     override suspend fun remoteToLocal(remote: FocusSessionSyncDto) = FocusSessionEntity(
         id = remote.id,
-        goalId = remote.goalId,
-        milestoneId = remote.milestoneId,
+        goalId = remote.goalId ?: "",
+        milestoneId = remote.milestoneId ?: "",
         plannedDurationMinutes = remote.plannedDurationMinutes,
         actualDurationSeconds = remote.actualDurationSeconds,
         wasCompleted = if (remote.wasCompleted) 1L else 0L,

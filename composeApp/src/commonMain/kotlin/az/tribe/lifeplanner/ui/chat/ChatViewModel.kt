@@ -428,18 +428,6 @@ class ChatViewModel(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSending = true, error = null)
 
-            // Optimistically add user message to UI
-            val tempUserMessage = ChatMessage(
-                id = "temp_${Clock.System.now().toEpochMilliseconds()}",
-                content = content,
-                role = az.tribe.lifeplanner.domain.model.MessageRole.USER,
-                timestamp = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()),
-                relatedGoalId = relatedGoalId
-            )
-            _uiState.value = _uiState.value.copy(
-                messages = _uiState.value.messages + tempUserMessage
-            )
-
             if (isStreamable()) {
                 sendMessageStreaming(session.id, content, userContext, relatedGoalId)
             } else {
@@ -454,7 +442,6 @@ class ChatViewModel(
         userContext: UserContext,
         relatedGoalId: String?
     ) {
-        _uiState.value = _uiState.value.copy(isStreaming = true, streamingText = "")
         var receivedCompletion = false
 
         try {
@@ -465,6 +452,14 @@ class ChatViewModel(
                 relatedGoalId = relatedGoalId
             ).collect { event ->
                 when (event) {
+                    is StreamingChatEvent.UserMessageSaved -> {
+                        // User message is now in DB — add it to the UI with its real ID
+                        _uiState.value = _uiState.value.copy(
+                            messages = _uiState.value.messages + event.message,
+                            isStreaming = true,
+                            streamingText = ""
+                        )
+                    }
                     is StreamingChatEvent.PartialText -> {
                         _uiState.value = _uiState.value.copy(
                             isSending = false,
@@ -473,8 +468,9 @@ class ChatViewModel(
                     }
                     is StreamingChatEvent.Completed -> {
                         receivedCompletion = true
-                        val messages = chatRepository.getMessages(sessionId)
-                        val executedIds = messages
+                        // Load final messages from DB — correct IDs and order guaranteed
+                        val dbMessages = chatRepository.getMessages(sessionId)
+                        val executedIds = dbMessages
                             .mapNotNull { it.metadata?.executedSuggestionIds }
                             .flatten()
                             .toSet()
@@ -483,17 +479,20 @@ class ChatViewModel(
                             isSending = false,
                             isStreaming = false,
                             streamingText = null,
-                            messages = messages,
+                            messages = dbMessages,
                             executedSuggestionIds = executedIds
                         )
                         loadSessions()
                     }
                     is StreamingChatEvent.Error -> {
                         receivedCompletion = true
+                        // On error, reload from DB (user msg was already saved)
+                        val dbMessages = try { chatRepository.getMessages(sessionId) } catch (_: Exception) { null }
                         _uiState.value = _uiState.value.copy(
                             isSending = false,
                             isStreaming = false,
                             streamingText = null,
+                            messages = dbMessages ?: _uiState.value.messages,
                             error = event.message
                         )
                     }
@@ -503,24 +502,24 @@ class ChatViewModel(
             // Flow completed without Done/Error — reset state and reload messages
             if (!receivedCompletion) {
                 Logger.w("ChatViewModel") { "Streaming flow completed without terminal event" }
-                val messages = chatRepository.getMessages(sessionId)
+                val dbMessages = chatRepository.getMessages(sessionId)
                 _uiState.value = _uiState.value.copy(
                     isSending = false,
                     isStreaming = false,
                     streamingText = null,
-                    messages = messages,
+                    messages = dbMessages,
                     error = "Response failed. Please try again."
                 )
             }
         } catch (e: Exception) {
             Logger.e("ChatViewModel") { "Streaming failed: ${e.message}" }
-            // Reload messages from DB (user message was already saved)
-            val messages = try { chatRepository.getMessages(sessionId) } catch (_: Exception) { null }
+            // Reload messages from DB (user message may have been saved)
+            val dbMessages = try { chatRepository.getMessages(sessionId) } catch (_: Exception) { null }
             _uiState.value = _uiState.value.copy(
                 isSending = false,
                 isStreaming = false,
                 streamingText = null,
-                messages = messages ?: _uiState.value.messages,
+                messages = dbMessages ?: _uiState.value.messages,
                 error = e.message ?: "Failed to send message"
             )
         }
@@ -540,18 +539,18 @@ class ChatViewModel(
                 relatedGoalId = relatedGoalId
             )
 
-            // Reload all messages to get proper IDs
-            val messages = chatRepository.getMessages(sessionId)
+            // Reload all messages to get proper IDs and correct order
+            val dbMessages = chatRepository.getMessages(sessionId)
 
             // Collect executed suggestion IDs from message metadata
-            val executedIds = messages
+            val executedIds = dbMessages
                 .mapNotNull { it.metadata?.executedSuggestionIds }
                 .flatten()
                 .toSet()
 
             _uiState.value = _uiState.value.copy(
                 isSending = false,
-                messages = messages,
+                messages = dbMessages,
                 executedSuggestionIds = executedIds
             )
 

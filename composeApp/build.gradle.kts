@@ -16,9 +16,16 @@ plugins {
     alias(libs.plugins.google.gms.google.services)
     alias(libs.plugins.firebase.crashlytics)
     alias(libs.plugins.firebase.performance)
+    alias(libs.plugins.kover)
 }
 
 kotlin {
+    compilerOptions {
+        optIn.addAll(
+            "kotlin.time.ExperimentalTime"
+        )
+    }
+
     androidTarget {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
@@ -51,6 +58,7 @@ kotlin {
             implementation(libs.sqldelight.android)
             //Http client
             implementation(libs.ktor.client.okhttp)
+            implementation(libs.ktor.client.cio)
             implementation(libs.koin.android)
 
             implementation(libs.accompanist.systemuicontroller)
@@ -83,6 +91,8 @@ kotlin {
 
             implementation(libs.sqldelight.coroutines)
 
+            implementation(libs.compose.mediaplayer)
+
             //Ktor
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.content.negotiation)
@@ -90,8 +100,6 @@ kotlin {
             implementation(libs.ktor.client.logging)
             implementation(libs.ktor.client.auth)
             implementation(libs.ktor.client.websockets)
-            implementation(libs.ktor.client.cio)
-
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
             implementation(libs.koin.compose.viewmodel)
@@ -181,8 +189,8 @@ android {
         applicationId = "az.tribe.lifeplanner"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 6
-        versionName = "2.0"
+        versionCode = 7
+        versionName = "2.1"
 
     }
     packaging {
@@ -264,6 +272,32 @@ buildkonfig {
     }
 }
 
+
+kover {
+    reports {
+        filters {
+            includes {
+                classes(
+                    "az.tribe.lifeplanner.data.mapper.*",
+                    "az.tribe.lifeplanner.domain.model.*",
+                    "az.tribe.lifeplanner.domain.enum.*",
+                    "az.tribe.lifeplanner.usecases.*",
+                    "az.tribe.lifeplanner.ui.*ViewModel*",
+                    "az.tribe.lifeplanner.ui.*UiState*",
+                    "az.tribe.lifeplanner.data.repository.GoalTemplateProvider",
+                )
+            }
+            excludes {
+                classes(
+                    "az.tribe.lifeplanner.data.repository.*Impl*",
+                    "az.tribe.lifeplanner.data.sync.*",
+                    "az.tribe.lifeplanner.ui.*Screen*",
+                    "az.tribe.lifeplanner.ui.*Component*",
+                )
+            }
+        }
+    }
+}
 
 rootProject.plugins.withType(org.jetbrains.kotlin.gradle.targets.js.yarn.YarnPlugin::class.java) {
     rootProject.the<YarnRootExtension>().yarnLockMismatchReport =

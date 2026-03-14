@@ -618,11 +618,22 @@ Deno.serve(async (req: Request) => {
       },
     });
   } catch (error: unknown) {
-    const message =
+    const rawMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
-    console.error("AI proxy error:", message);
+    console.error("AI proxy error:", rawMessage);
+
+    // Sanitize: strip upstream API details (keys, quota info, raw responses)
+    let userMessage = "Something went wrong with the AI request. Please try again.";
+    if (rawMessage.includes("rate limit") || rawMessage.includes("429")) {
+      userMessage = "AI provider is rate-limited. Please wait a moment and try again.";
+    } else if (rawMessage.includes("401") || rawMessage.includes("403")) {
+      userMessage = "AI provider authentication failed. Please contact support.";
+    } else if (rawMessage.includes("timeout") || rawMessage.includes("ETIMEDOUT")) {
+      userMessage = "AI provider timed out. Please try again.";
+    }
+
     return new Response(
-      JSON.stringify({ error: message }),
+      JSON.stringify({ error: userMessage }),
       {
         status: 500,
         headers: { "Content-Type": "application/json" },
@@ -820,8 +831,15 @@ function createStreamingResponse(
         // Fire-and-forget usage log
         logUsage(jwt, { text: "", provider, model, usage }, "chat");
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Stream error";
-        send("error", JSON.stringify({ error: message }));
+        const rawMsg = err instanceof Error ? err.message : "Stream error";
+        console.error("Stream error:", rawMsg);
+        let userMsg = "Something went wrong during streaming. Please try again.";
+        if (rawMsg.includes("rate limit") || rawMsg.includes("429")) {
+          userMsg = "AI provider is rate-limited. Please wait a moment and try again.";
+        } else if (rawMsg.includes("timeout") || rawMsg.includes("ETIMEDOUT")) {
+          userMsg = "AI provider timed out. Please try again.";
+        }
+        send("error", JSON.stringify({ error: userMsg }));
       } finally {
         controller.close();
       }

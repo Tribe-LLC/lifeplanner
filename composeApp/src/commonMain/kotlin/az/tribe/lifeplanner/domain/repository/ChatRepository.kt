@@ -6,6 +6,8 @@ import az.tribe.lifeplanner.domain.model.UserContext
 import kotlinx.coroutines.flow.Flow
 
 sealed class StreamingChatEvent {
+    /** Emitted right after the user message is saved to DB, before streaming starts */
+    data class UserMessageSaved(val message: ChatMessage) : StreamingChatEvent()
     data class PartialText(val chunk: String, val accumulatedText: String) : StreamingChatEvent()
     data class Completed(val message: ChatMessage) : StreamingChatEvent()
     data class Error(val message: String) : StreamingChatEvent()

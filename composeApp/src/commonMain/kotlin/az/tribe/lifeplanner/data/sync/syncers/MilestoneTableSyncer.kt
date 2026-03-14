@@ -23,9 +23,13 @@ class MilestoneTableSyncer(
     }
 
     override suspend fun getUnsyncedLocal(): List<MilestoneEntity> {
-        val milestones = db { it.lifePlannerDBQueries.getUnsyncedMilestones().executeAsList() }
-        val goalIds = db { it.lifePlannerDBQueries.selectAll().executeAsList().map { it.id }.toSet() }
-        return milestones.filter { it.goalId in goalIds }
+        // Single DB access: fetch milestones and validate goal FKs in one block
+        return db { d ->
+            val milestones = d.lifePlannerDBQueries.getUnsyncedMilestones().executeAsList()
+            if (milestones.isEmpty()) return@db emptyList()
+            val goalIds = d.lifePlannerDBQueries.selectAll().executeAsList().map { it.id }.toSet()
+            milestones.filter { it.goalId in goalIds }
+        }
     }
 
     override suspend fun getDeletedLocal(): List<MilestoneEntity> =
@@ -76,6 +80,11 @@ class MilestoneTableSyncer(
 
     override suspend fun markSynced(id: String, now: String) {
         db { it.lifePlannerDBQueries.markMilestoneSynced(now, id) }
+    }
+
+    override suspend fun markSyncedBatch(entities: List<MilestoneEntity>, now: String) {
+        if (entities.isEmpty()) return
+        db { d -> entities.forEach { d.lifePlannerDBQueries.markMilestoneSynced(now, it.id) } }
     }
 
     override suspend fun purgeDeleted() {

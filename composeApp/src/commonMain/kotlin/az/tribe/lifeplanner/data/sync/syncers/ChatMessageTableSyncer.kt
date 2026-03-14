@@ -9,6 +9,7 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import co.touchlab.kermit.Logger
 import kotlinx.datetime.Clock
+import kotlinx.serialization.json.Json
 
 class ChatMessageTableSyncer(
     supabase: SupabaseClient,
@@ -28,19 +29,25 @@ class ChatMessageTableSyncer(
     override suspend fun getDeletedLocal(): List<ChatMessageEntity> =
         db { it.lifePlannerDBQueries.getDeletedChatMessages().executeAsList() }
 
-    override suspend fun localToRemote(local: ChatMessageEntity, userId: String) = ChatMessageSyncDto(
-        id = local.id,
-        userId = userId,
-        sessionId = local.sessionId,
-        content = local.content,
-        role = local.role,
-        timestamp = local.timestamp,
-        relatedGoalId = local.relatedGoalId,
-        metadata = local.metadata,
-        updatedAt = local.sync_updated_at ?: Clock.System.now().toString(),
-        isDeleted = local.is_deleted != 0L,
-        syncVersion = local.sync_version
-    )
+    override suspend fun localToRemote(local: ChatMessageEntity, userId: String): ChatMessageSyncDto {
+        val metadataJson = try {
+            local.metadata?.let { Json.parseToJsonElement(it) }
+        } catch (_: Exception) { null }
+
+        return ChatMessageSyncDto(
+            id = local.id,
+            userId = userId,
+            sessionId = local.sessionId,
+            content = local.content,
+            role = local.role,
+            timestamp = local.timestamp,
+            relatedGoalId = local.relatedGoalId,
+            metadata = metadataJson,
+            updatedAt = local.sync_updated_at ?: Clock.System.now().toString(),
+            isDeleted = local.is_deleted != 0L,
+            syncVersion = local.sync_version
+        )
+    }
 
     override suspend fun remoteToLocal(remote: ChatMessageSyncDto) = ChatMessageEntity(
         id = remote.id,
@@ -49,7 +56,7 @@ class ChatMessageTableSyncer(
         role = remote.role,
         timestamp = remote.timestamp,
         relatedGoalId = remote.relatedGoalId,
-        metadata = remote.metadata,
+        metadata = remote.metadata?.toString(),
         sync_updated_at = remote.updatedAt,
         is_deleted = if (remote.isDeleted) 1L else 0L,
         sync_version = remote.syncVersion,
@@ -76,6 +83,11 @@ class ChatMessageTableSyncer(
 
     override suspend fun markSynced(id: String, now: String) {
         db { it.lifePlannerDBQueries.markChatMessageSynced(now, id) }
+    }
+
+    override suspend fun markSyncedBatch(entities: List<ChatMessageEntity>, now: String) {
+        if (entities.isEmpty()) return
+        db { d -> entities.forEach { d.lifePlannerDBQueries.markChatMessageSynced(now, it.id) } }
     }
 
     override suspend fun purgeDeleted() {

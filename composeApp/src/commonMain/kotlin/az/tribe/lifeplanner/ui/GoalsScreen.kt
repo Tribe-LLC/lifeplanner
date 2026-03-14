@@ -144,7 +144,7 @@ fun GoalsScreen(
         floatingActionButton = {
             // Single FAB that opens the Add Goal bottom sheet
             // Wrapped in Box with bottom padding to stay above bottom nav
-            Box(modifier = Modifier.padding(bottom = 80.dp)) {
+            Box(modifier = Modifier.padding(bottom = 96.dp)) {
                 FloatingActionButton(
                     onClick = { showAddGoalSheet = true },
                     containerColor = dynamicColor,

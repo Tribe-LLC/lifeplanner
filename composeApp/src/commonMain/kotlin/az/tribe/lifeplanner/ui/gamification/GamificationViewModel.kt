@@ -107,6 +107,18 @@ class GamificationViewModel(
         }
     }
 
+    /**
+     * Reset all cached state (called on sign-out to clear stale data).
+     */
+    fun resetState() {
+        _userProgress.value = null
+        _badges.value = emptyList()
+        _newBadges.value = emptyList()
+        _activeChallenges.value = emptyList()
+        _completedChallenges.value = emptyList()
+        _availableChallenges.value = emptyList()
+    }
+
     private suspend fun loadUserProgress() {
         gamificationRepository.getUserProgress().collect {
             _userProgress.value = it

@@ -8,6 +8,9 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -20,7 +23,7 @@ fun JournalEntryEntity.toDomain(): JournalEntry {
         linkedGoalId = linkedGoalId,
         linkedHabitId = linkedHabitId,
         promptUsed = promptUsed,
-        tags = if (tags.isBlank()) emptyList() else tags.split(",").map { it.trim() },
+        tags = parseTags(tags),
         date = LocalDate.parse(date),
         createdAt = parseLocalDateTime(createdAt),
         updatedAt = updatedAt?.let { parseLocalDateTime(it) }
@@ -49,6 +52,25 @@ fun JournalEntry.toEntity(): JournalEntryEntity {
 
 fun List<JournalEntryEntity>.toDomainJournalEntries(): List<JournalEntry> {
     return map { it.toDomain() }
+}
+
+/**
+ * Parse tags from SQLite TEXT column.
+ * Handles both formats:
+ * - JSON array from sync: `["tag1","tag2"]`
+ * - Comma-separated from local: `tag1,tag2`
+ */
+private fun parseTags(raw: String): List<String> {
+    if (raw.isBlank()) return emptyList()
+    // Try JSON array first (handles synced data that was stored as raw JSON)
+    if (raw.startsWith("[")) {
+        try {
+            return Json.parseToJsonElement(raw)
+                .jsonArray
+                .mapNotNull { it.jsonPrimitive.content.takeIf { s -> s.isNotBlank() } }
+        } catch (_: Exception) { /* fall through to comma split */ }
+    }
+    return raw.split(",").map { it.trim() }.filter { it.isNotBlank() }
 }
 
 @OptIn(ExperimentalUuidApi::class)

@@ -1,16 +1,30 @@
 package az.tribe.lifeplanner.ui
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.EaseInOutCubic
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -29,8 +43,21 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
@@ -78,11 +105,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.util.lerp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import az.tribe.lifeplanner.domain.model.ChatMessage
 import az.tribe.lifeplanner.domain.model.ChatSession
 import az.tribe.lifeplanner.domain.model.CoachPersona
@@ -98,7 +128,6 @@ import az.tribe.lifeplanner.domain.model.ReviewType
 import az.tribe.lifeplanner.ui.balance.InsightMessageHolder
 import az.tribe.lifeplanner.ui.chat.ChatViewModel
 import kotlinx.coroutines.launch
-import az.tribe.lifeplanner.ui.components.CoachListContent
 import az.tribe.lifeplanner.ui.components.CoachListContentExtended
 import az.tribe.lifeplanner.ui.components.CoachSuggestionButtons
 import az.tribe.lifeplanner.ui.components.OfflineBanner
@@ -114,14 +143,14 @@ fun AIChatScreen(
     onNavigateBack: () -> Unit,
     onNavigateToCoach: (String) -> Unit = {},
     onNavigateToCreateCoach: () -> Unit = {},
-    onNavigateToCreateGroup: () -> Unit = {}
+    onNavigateToCreateGroup: () -> Unit = {},
+    onNavigateToCoachProfile: (String) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val connectivityObserver: NetworkConnectivityObserver = koinInject()
     val isConnected by connectivityObserver.isConnected.collectAsState()
     val isOffline = !isConnected
-    val reviewMessageBuilder: ReviewMessageBuilder = koinInject()
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     val scope = rememberCoroutineScope()
 
@@ -149,14 +178,6 @@ fun AIChatScreen(
     }
 
 
-    // Show feedback snackbar when action is executed
-    LaunchedEffect(uiState.actionFeedback) {
-        uiState.actionFeedback?.let { feedback ->
-            snackbarHostState.showSnackbar(feedback)
-            viewModel.clearActionFeedback()
-        }
-    }
-
     // Show error snackbar
     LaunchedEffect(uiState.error) {
         uiState.error?.let { error ->
@@ -169,9 +190,9 @@ fun AIChatScreen(
     val screenTitle = when {
         uiState.showSessionList -> "Personal Coach"
         uiState.isCouncilMode -> "The Council"
-        uiState.isCustomCoachMode && uiState.currentCustomCoach != null -> uiState.currentCustomCoach!!.name
-        uiState.isCustomGroupMode && uiState.currentCoachGroup != null -> uiState.currentCoachGroup!!.name
-        uiState.currentCoach != null -> uiState.currentCoach!!.name
+        uiState.isCustomCoachMode && uiState.currentCustomCoach != null -> uiState.currentCustomCoach?.name ?: ""
+        uiState.isCustomGroupMode && uiState.currentCoachGroup != null -> uiState.currentCoachGroup?.name ?: ""
+        uiState.currentCoach != null -> uiState.currentCoach?.name ?: ""
         else -> "Luna"
     }
 
@@ -179,12 +200,14 @@ fun AIChatScreen(
         uiState.showSessionList -> null
         uiState.isCouncilMode -> "All coaches united"
         uiState.isCustomCoachMode && uiState.currentCustomCoach != null -> "Custom Coach"
-        uiState.isCustomGroupMode && uiState.currentCoachGroup != null -> "${uiState.currentCoachGroup!!.members.size} coaches"
-        uiState.currentCoach != null -> uiState.currentCoach!!.title
+        uiState.isCustomGroupMode && uiState.currentCoachGroup != null -> "${uiState.currentCoachGroup?.members?.size ?: 0} coaches"
+        uiState.currentCoach != null -> uiState.currentCoach?.title ?: ""
         else -> "Life Coach"
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = {
             SnackbarHost(snackbarHostState) { data ->
                 Snackbar(
@@ -206,14 +229,18 @@ fun AIChatScreen(
                             Box(
                                 modifier = Modifier
                                     .size(36.dp)
+                                    .clip(CircleShape)
                                     .background(
                                         MaterialTheme.colorScheme.primaryContainer,
                                         CircleShape
-                                    ),
+                                    )
+                                    .clickable {
+                                        uiState.currentCoach?.let { onNavigateToCoachProfile(it.id) }
+                                    },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = uiState.currentCoach!!.emoji,
+                                    text = uiState.currentCoach?.emoji ?: "",
                                     style = MaterialTheme.typography.titleMedium
                                 )
                             }
@@ -280,8 +307,10 @@ fun AIChatScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+
             if (uiState.showSessionList) {
                 CoachListContentExtended(
+                    modifier = Modifier.align(Alignment.TopCenter),
                     builtinCoaches = CoachPersona.ALL_COACHES,
                     customCoaches = uiState.customCoaches,
                     coachGroups = uiState.coachGroups,
@@ -314,7 +343,6 @@ fun AIChatScreen(
                     isCouncilMode = uiState.isCouncilMode,
                     isOffline = isOffline,
                     coach = uiState.currentCoach,
-                    reviewMessageBuilder = reviewMessageBuilder,
                     onCopyMessage = { text ->
                         clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
                         scope.launch {
@@ -355,14 +383,10 @@ fun ChatContent(
     isCouncilMode: Boolean = false,
     isOffline: Boolean = false,
     coach: CoachPersona? = null,
-    reviewMessageBuilder: ReviewMessageBuilder? = null,
     onCopyMessage: (String) -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     var inputText by remember { mutableStateOf("") }
-    var attachedGoal by remember { mutableStateOf<Goal?>(null) }
-    var attachedHabit by remember { mutableStateOf<Habit?>(null) }
-    var showAttachmentSheet by remember { mutableStateOf(false) }
 
     // For council mode: staggered message reveal
     var revealedMessageCount by remember { mutableStateOf(messages.size) }
@@ -407,15 +431,28 @@ fun ChatContent(
         }
     }
 
-    // Scroll to bottom when revealed count changes
+    // Scroll to bottom (index 0 in reversed layout) when revealed count changes
     LaunchedEffect(revealedMessageCount) {
         if (revealedMessageCount > 0) {
-            listState.animateScrollToItem(revealedMessageCount - 1)
+            listState.animateScrollToItem(0)
         }
     }
 
-    val reviewCoroutineScope = rememberCoroutineScope()
-    var reviewLoadingType by remember { mutableStateOf<ReviewType?>(null) }
+
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    val keyboardDismissConnection = remember(keyboardController) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput && available.y > 0) {
+                    keyboardController?.hide()
+                    focusManager.clearFocus()
+                }
+                return Offset.Zero
+            }
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         if (messages.isEmpty()) {
@@ -424,8 +461,6 @@ fun ChatContent(
             val coachEmoji = coach?.emoji ?: "✨"
             val coachGreeting = coach?.greeting ?: "Hey! I'm Luna, your personal life coach. What's on your mind today?"
             val coachSpecialties = coach?.specialties ?: listOf("Goal setting", "Motivation", "Life balance")
-            val isLuna = coach == null || coach.id == "luna_general"
-
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -478,30 +513,6 @@ fun ChatContent(
                         }
                     }
 
-                    // Review prompt chips — only for Luna
-                    if (isLuna && reviewMessageBuilder != null) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Reviews",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        ReviewPromptChips(
-                            onSelect = { type ->
-                                reviewLoadingType = type
-                                reviewCoroutineScope.launch {
-                                    try {
-                                        val message = reviewMessageBuilder.buildReviewMessage(type)
-                                        onSendMessage(message)
-                                    } finally {
-                                        reviewLoadingType = null
-                                    }
-                                }
-                            },
-                            isLoading = reviewLoadingType != null,
-                            loadingType = reviewLoadingType
-                        )
-                    }
                 }
             }
         } else {
@@ -512,15 +523,27 @@ fun ChatContent(
                 messages
             }
 
+            // Reversed list: index 0 = newest (at bottom, near input)
+            val reversedMessages = remember(visibleMessages) { visibleMessages.reversed() }
+
             LazyColumn(
                 state = listState,
+                reverseLayout = true,
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    .nestedScroll(keyboardDismissConnection),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(visibleMessages) { message ->
+                // Streaming bubble at index 0 (bottom) when active
+                if (isStreaming && !streamingText.isNullOrEmpty()) {
+                    item(key = "streaming_bubble") {
+                        StreamingMessageBubble(text = streamingText)
+                    }
+                }
+
+                items(reversedMessages, key = { it.id }) { message ->
                     // Get suggestions from metadata if this is an assistant message
                     val suggestions = remember(message.metadata) {
                         if (message.role == MessageRole.ASSISTANT) {
@@ -540,31 +563,22 @@ fun ChatContent(
                         onCopyMessage = onCopyMessage
                     )
                 }
-
-                // Show streaming message bubble while streaming
-                if (isStreaming && !streamingText.isNullOrEmpty()) {
-                    item {
-                        StreamingMessageBubble(text = streamingText)
-                    }
-                }
-
-                // Show typing indicator:
-                // - When sending but not yet streaming (brief wait before first chunk)
-                // - In council mode with coach name
-                if ((isSending && !isStreaming) || typingCoachName != null) {
-                    item {
-                        CoachTypingIndicator(coachName = typingCoachName)
-                    }
-                }
             }
 
-            // Auto-scroll when streaming text updates
-            LaunchedEffect(streamingText) {
-                if (isStreaming && !streamingText.isNullOrEmpty()) {
-                    val totalItems = listState.layoutInfo.totalItemsCount
-                    if (totalItems > 0) {
-                        listState.animateScrollToItem(totalItems - 1)
-                    }
+            // Auto-scroll to bottom (index 0 in reversed layout) on new messages
+            LaunchedEffect(messages.lastOrNull()?.id, isStreaming, streamingText) {
+                listState.animateScrollToItem(0)
+            }
+
+            // Dismiss keyboard when AI responds with action suggestions
+            val lastMessage = messages.lastOrNull()
+            LaunchedEffect(lastMessage?.id) {
+                if (lastMessage != null &&
+                    lastMessage.role == MessageRole.ASSISTANT &&
+                    !lastMessage.metadata?.coachSuggestions.isNullOrEmpty()
+                ) {
+                    keyboardController?.hide()
+                    focusManager.clearFocus()
                 }
             }
         }
@@ -578,52 +592,18 @@ fun ChatContent(
             onValueChange = { inputText = it },
             onSend = {
                 if (inputText.isNotBlank()) {
-                    // Include attachment context in message
-                    val messageWithContext = buildString {
-                        if (attachedGoal != null) {
-                            append("[Discussing Goal: ${attachedGoal?.title}] ")
-                        } else if (attachedHabit != null) {
-                            append("[Discussing Habit: ${attachedHabit?.title}] ")
-                        }
-                        append(inputText)
-                    }
-                    onSendMessage(messageWithContext)
+                    onSendMessage(inputText)
                     inputText = ""
-                    // Clear attachment after sending
-                    attachedGoal = null
-                    attachedHabit = null
+                    // Keep keyboard open after sending
+                    focusRequester.requestFocus()
+                    keyboardController?.show()
                 }
             },
             isSending = isSending,
+            isStreaming = isStreaming,
             isOffline = isOffline,
             coachName = coach?.name ?: "Luna",
-            attachedGoal = attachedGoal,
-            attachedHabit = attachedHabit,
-            onAttachClick = { showAttachmentSheet = true },
-            onClearAttachment = {
-                attachedGoal = null
-                attachedHabit = null
-            }
-        )
-    }
-
-    // Attachment selection bottom sheet
-    if (showAttachmentSheet) {
-        AttachmentSelectionSheet(
-            goals = goals,
-            habits = habits,
-            coachName = coach?.name ?: "Luna",
-            onGoalSelected = { goal ->
-                attachedGoal = goal
-                attachedHabit = null
-                showAttachmentSheet = false
-            },
-            onHabitSelected = { habit ->
-                attachedHabit = habit
-                attachedGoal = null
-                showAttachmentSheet = false
-            },
-            onDismiss = { showAttachmentSheet = false }
+            focusRequester = focusRequester
         )
     }
 }
@@ -853,6 +833,9 @@ fun SuggestionChip(
 
 @Composable
 fun StreamingMessageBubble(text: String) {
+    val textColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val styledText = parseMarkdownToAnnotatedString(text, textColor)
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start
@@ -894,15 +877,16 @@ fun StreamingMessageBubble(text: String) {
             color = MaterialTheme.colorScheme.surfaceVariant
         ) {
             Text(
-                text = text,
+                text = styledText,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = textColor,
                 modifier = Modifier.padding(12.dp)
             )
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MessageBubble(
     message: ChatMessage,
@@ -998,8 +982,24 @@ fun MessageBubble(
                     )
                 }
 
+                val bubbleTextColor = if (isUser) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                val styledContent = parseMarkdownToAnnotatedString(messageText, bubbleTextColor)
+
+                var showCopyButton by remember { mutableStateOf(false) }
+
                 Surface(
-                    modifier = Modifier.animateContentSize(),
+                    modifier = Modifier
+                        .animateContentSize()
+                        .then(
+                            if (!isUser) Modifier.combinedClickable(
+                                onClick = {},
+                                onLongClick = { showCopyButton = !showCopyButton }
+                            ) else Modifier
+                        ),
                     shape = RoundedCornerShape(
                         topStart = if (isUser) 16.dp else 4.dp,
                         topEnd = if (isUser) 4.dp else 16.dp,
@@ -1012,35 +1012,41 @@ fun MessageBubble(
                         MaterialTheme.colorScheme.surfaceVariant
                     }
                 ) {
-                    // Strip markdown for clean display (backward compatibility)
-                    val cleanContent = remember(messageText) {
-                        stripMarkdown(messageText)
-                    }
                     Text(
-                        text = cleanContent,
+                        text = styledContent,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (isUser) {
-                            MaterialTheme.colorScheme.onPrimary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
+                        color = bubbleTextColor,
                         modifier = Modifier.padding(12.dp)
                     )
                 }
 
-                // Copy button for assistant messages
+                // Copy button — only shows on long-press, auto-hides
                 if (!isUser) {
                     val cleanContent = remember(messageText) {
                         stripMarkdown(messageText)
                     }
-                    Row(
-                        modifier = Modifier.padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.Start
+
+                    // Auto-hide after 3 seconds
+                    if (showCopyButton) {
+                        LaunchedEffect(Unit) {
+                            kotlinx.coroutines.delay(3000)
+                            showCopyButton = false
+                        }
+                    }
+
+                    AnimatedVisibility(
+                        visible = showCopyButton,
+                        enter = fadeIn() + slideInVertically { -it / 2 },
+                        exit = fadeOut() + slideOutVertically { -it / 2 }
                     ) {
                         Surface(
-                            onClick = { onCopyMessage(cleanContent) },
+                            onClick = {
+                                onCopyMessage(cleanContent)
+                                showCopyButton = false
+                            },
                             shape = RoundedCornerShape(8.dp),
-                            color = Color.Transparent
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.padding(top = 4.dp)
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -1051,12 +1057,12 @@ fun MessageBubble(
                                     imageVector = Icons.Rounded.ContentCopy,
                                     contentDescription = "Copy",
                                     modifier = Modifier.size(14.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
                                     text = "Copy",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -1143,27 +1149,55 @@ fun TypingIndicator() {
 
 @Composable
 fun CoachTypingIndicator(coachName: String? = null) {
-    // Get coach emoji if we have a coach name
-    val coachEmoji = remember(coachName) {
-        when (coachName?.lowercase()) {
-            "luna" -> "✨"
-            "alex" -> "💼"
-            "morgan" -> "💰"
-            "kai" -> "💪"
-            "sam" -> "🤝"
-            "river" -> "🧘"
-            "jamie" -> "👨‍👩‍👧‍👦"
-            else -> null
+    val thinkingPhrases = remember {
+        listOf(
+            "Thinking",
+            "Reflecting",
+            "Considering your goals",
+            "Finding the best approach",
+            "Crafting a response"
+        )
+    }
+
+    var phraseIndex by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(2200)
+            phraseIndex = (phraseIndex + 1) % thinkingPhrases.size
         }
     }
+
+    // Pulsing glow animation
+    val infiniteTransition = rememberInfiniteTransition(label = "thinking")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = EaseInOutCubic),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+
+    val shimmerOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "shimmer"
+    )
 
     Row(
         horizontalArrangement = Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Pulsing AI avatar
         Box(
             modifier = Modifier
                 .size(32.dp)
+                .graphicsLayer { alpha = 0.6f + pulseAlpha * 0.4f }
                 .background(
                     brush = Brush.linearGradient(
                         colors = listOf(
@@ -1175,61 +1209,73 @@ fun CoachTypingIndicator(coachName: String? = null) {
                 ),
             contentAlignment = Alignment.Center
         ) {
-            if (coachEmoji != null) {
-                Text(
-                    text = coachEmoji,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            } else {
-                Icon(
-                    Icons.Rounded.AutoAwesome,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
+            Icon(
+                Icons.Rounded.AutoAwesome,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(16.dp)
+            )
         }
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        Column {
-            // Show coach name if available
-            if (coachName != null) {
-                Text(
-                    text = "$coachName is typing...",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            Surface(
-                shape = RoundedCornerShape(
-                    topStart = 4.dp,
-                    topEnd = 16.dp,
-                    bottomStart = 16.dp,
-                    bottomEnd = 16.dp
-                ),
-                color = MaterialTheme.colorScheme.surfaceVariant
+        Surface(
+            shape = RoundedCornerShape(
+                topStart = 4.dp,
+                topEnd = 16.dp,
+                bottomStart = 16.dp,
+                bottomEnd = 16.dp
+            ),
+            color = MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // Animated dots with staggered pulse
                 Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     repeat(3) { index ->
-                        val alpha by animateFloatAsState(
-                            targetValue = 1f,
-                            label = "dot_$index"
-                        )
+                        val dotDelay = index * 0.33f
+                        val dotPhase = (shimmerOffset + dotDelay) % 1f
+                        val dotScale = if (dotPhase < 0.5f) {
+                            lerp(0.6f, 1.2f, dotPhase * 2f)
+                        } else {
+                            lerp(1.2f, 0.6f, (dotPhase - 0.5f) * 2f)
+                        }
+
                         Box(
                             modifier = Modifier
-                                .size(8.dp)
+                                .size(6.dp)
+                                .graphicsLayer {
+                                    scaleX = dotScale
+                                    scaleY = dotScale
+                                }
                                 .background(
-                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha * 0.6f),
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.4f + dotScale * 0.3f),
                                     CircleShape
                                 )
                         )
                     }
+                }
+
+                // Rotating phrase
+                androidx.compose.animation.AnimatedContent(
+                    targetState = thinkingPhrases[phraseIndex],
+                    transitionSpec = {
+                        (fadeIn(tween(300)) + slideInVertically { it / 2 }) togetherWith
+                        (fadeOut(tween(200)) + slideOutVertically { -it / 2 })
+                    },
+                    label = "phrase"
+                ) { phrase ->
+                    Text(
+                        text = phrase,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
                 }
             }
         }
@@ -1311,106 +1357,158 @@ fun ChatInputField(
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
     isSending: Boolean,
+    isStreaming: Boolean = false,
     isOffline: Boolean = false,
     coachName: String = "Luna",
-    attachedGoal: Goal? = null,
-    attachedHabit: Habit? = null,
-    onAttachClick: () -> Unit = {},
-    onClearAttachment: () -> Unit = {}
+    focusRequester: FocusRequester? = null
 ) {
     val isDisabled = isSending || isOffline
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 8.dp
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            // Attachment preview
-            if (attachedGoal != null || attachedHabit != null) {
-                AttachmentPreview(
-                    goal = attachedGoal,
-                    habit = attachedHabit,
-                    onClear = onClearAttachment
-                )
+    val isThinking = isSending || isStreaming
+    val hasText = value.isNotBlank()
+
+    // Animated thinking phrases for the placeholder
+    val thinkingPhrases = remember {
+        listOf(
+            "Thinking...",
+            "Reflecting...",
+            "Considering your goals...",
+            "Finding the best approach...",
+            "Crafting a response..."
+        )
+    }
+    var phraseIndex by remember { mutableStateOf(0) }
+    LaunchedEffect(isThinking) {
+        if (isThinking) {
+            phraseIndex = 0
+            while (true) {
+                kotlinx.coroutines.delay(2200)
+                phraseIndex = (phraseIndex + 1) % thinkingPhrases.size
             }
+        }
+    }
 
-            Row(
+    // Re-request focus after sending completes to keep keyboard open
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var wasSending by remember { mutableStateOf(false) }
+    LaunchedEffect(isSending) {
+        if (isSending) {
+            wasSending = true
+        } else if (wasSending && focusRequester != null) {
+            wasSending = false
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .background(
+                MaterialTheme.colorScheme.background,
+                RoundedCornerShape(28.dp)
+            )
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .imePadding()
+            .navigationBarsPadding(),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 20.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                    .imePadding(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .weight(1f)
+                    .heightIn(min = 44.dp),
+                contentAlignment = Alignment.CenterStart
             ) {
-                // Attachment button
-                IconButton(
-                    onClick = onAttachClick,
-                    enabled = !isDisabled,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        Icons.Rounded.AttachFile,
-                        contentDescription = "Attach goal or habit",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                if (value.isEmpty()) {
+                    if (isThinking) {
+                        // Animated thinking placeholder
+                        AnimatedContent(
+                            targetState = thinkingPhrases[phraseIndex],
+                            transitionSpec = {
+                                (fadeIn(tween(300)) + slideInVertically { it / 2 }) togetherWith
+                                (fadeOut(tween(200)) + slideOutVertically { -it / 2 })
+                            },
+                            label = "placeholder_phrase"
+                        ) { phrase ->
+                            Text(
+                                text = phrase,
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = if (isOffline) "You're offline"
+                                   else "Message $coachName...",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
                 }
-
-                OutlinedTextField(
+                BasicTextField(
                     value = value,
                     onValueChange = onValueChange,
-                    modifier = Modifier.weight(1f),
-                    placeholder = {
-                        Text(
-                            if (isOffline) "You're offline"
-                            else if (attachedGoal != null) "Ask about this goal..."
-                            else if (attachedHabit != null) "Ask about this habit..."
-                            else "Message $coachName...",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
-                    },
-                    shape = RoundedCornerShape(24.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (focusRequester != null) Modifier.focusRequester(focusRequester)
+                            else Modifier
+                        ),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        color = MaterialTheme.colorScheme.onSurface
                     ),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { if (!isDisabled) onSend() }),
                     maxLines = 4,
-                    enabled = !isDisabled
+                    enabled = !isOffline
                 )
+            }
 
-                IconButton(
-                    onClick = onSend,
-                    enabled = value.isNotBlank() && !isDisabled,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .background(
-                            if (value.isNotBlank() && !isDisabled) {
-                                MaterialTheme.colorScheme.primary
+            // Plus icon when empty, Send icon when typing
+            IconButton(
+                onClick = {
+                    if (hasText && !isDisabled) onSend()
+                },
+                enabled = !isOffline,
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(
+                        if (hasText && !isDisabled) MaterialTheme.colorScheme.primary
+                        else Color.Transparent,
+                        CircleShape
+                    )
+            ) {
+                if (isSending) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    androidx.compose.animation.Crossfade(targetState = hasText) { showSend ->
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            if (showSend) {
+                                Icon(
+                                    Icons.AutoMirrored.Rounded.Send,
+                                    contentDescription = "Send",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onPrimary
+                                )
                             } else {
-                                MaterialTheme.colorScheme.surfaceVariant
-                            },
-                            CircleShape
-                        )
-                ) {
-                    if (isSending) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else {
-                        Icon(
-                            Icons.AutoMirrored.Rounded.Send,
-                            contentDescription = "Send",
-                            tint = if (value.isNotBlank()) {
-                                MaterialTheme.colorScheme.onPrimary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
+                                Icon(
+                                    Icons.Rounded.Add,
+                                    contentDescription = "More",
+                                    modifier = Modifier.size(24.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                        )
+                        }
                     }
                 }
             }
@@ -1557,20 +1655,129 @@ fun EmptyChatState(
 
 
 /**
- * Strip markdown formatting for clean display in chat bubbles.
- * Used for backward compatibility with old messages.
+ * Strip markdown formatting for plain-text contexts (copy, etc.).
  */
 private fun stripMarkdown(text: String): String {
     return text
-        .replace(Regex("\\*\\*(.+?)\\*\\*"), "$1")  // **bold** -> bold
-        .replace(Regex("\\*(.+?)\\*"), "$1")        // *italic* -> italic
-        .replace(Regex("__(.+?)__"), "$1")          // __bold__ -> bold
-        .replace(Regex("_(.+?)_"), "$1")            // _italic_ -> italic
-        .replace(Regex("~~(.+?)~~"), "$1")          // ~~strike~~ -> strike
-        .replace(Regex("`(.+?)`"), "$1")            // `code` -> code
-        .replace(Regex("^#+\\s*", RegexOption.MULTILINE), "") // # headers
-        .replace(Regex("^[-*]\\s+", RegexOption.MULTILINE), "• ") // bullet points
-        .replace(Regex("^\\d+\\.\\s+", RegexOption.MULTILINE), "") // numbered lists
-        .replace(Regex("\\[(.+?)\\]\\(.+?\\)"), "$1") // [link](url) -> link
+        .replace(Regex("\\*\\*(.+?)\\*\\*"), "$1")
+        .replace(Regex("\\*(.+?)\\*"), "$1")
+        .replace(Regex("__(.+?)__"), "$1")
+        .replace(Regex("_(.+?)_"), "$1")
+        .replace(Regex("~~(.+?)~~"), "$1")
+        .replace(Regex("`(.+?)`"), "$1")
+        .replace(Regex("^#+\\s*", RegexOption.MULTILINE), "")
+        .replace(Regex("^[-*]\\s+", RegexOption.MULTILINE), "• ")
+        .replace(Regex("^\\d+\\.\\s+", RegexOption.MULTILINE), "")
+        .replace(Regex("\\[(.+?)\\]\\(.+?\\)"), "$1")
         .trim()
+}
+
+/**
+ * Parse markdown into AnnotatedString with proper styling.
+ * Supports bold, italic, inline code, headers, bullet points, numbered lists, and links.
+ */
+@Composable
+private fun parseMarkdownToAnnotatedString(
+    text: String,
+    baseColor: Color
+): androidx.compose.ui.text.AnnotatedString {
+    val boldStyle = androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold)
+    val italicStyle = androidx.compose.ui.text.SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+    val codeStyle = androidx.compose.ui.text.SpanStyle(
+        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+        background = baseColor.copy(alpha = 0.08f)
+    )
+    val headerStyle = androidx.compose.ui.text.SpanStyle(
+        fontWeight = FontWeight.Bold,
+        fontSize = 15.sp
+    )
+
+    return androidx.compose.ui.text.buildAnnotatedString {
+        // Pre-process: clean up lines
+        val cleaned = text
+            .replace(Regex("\\[(.+?)\\]\\(.+?\\)"), "$1") // links → text only
+            .trim()
+
+        val lines = cleaned.split("\n")
+        lines.forEachIndexed { lineIndex, rawLine ->
+            var line = rawLine
+
+            // Headers: strip # prefix, apply bold+larger
+            val headerMatch = Regex("^(#{1,3})\\s+(.*)").find(line)
+            if (headerMatch != null) {
+                line = headerMatch.groupValues[2]
+                pushStyle(headerStyle)
+                appendInlineMarkdown(line, boldStyle, italicStyle, codeStyle)
+                pop()
+            }
+            // Bullet points
+            else if (line.matches(Regex("^\\s*[-*]\\s+.*"))) {
+                val content = line.replace(Regex("^\\s*[-*]\\s+"), "")
+                append("• ")
+                appendInlineMarkdown(content, boldStyle, italicStyle, codeStyle)
+            }
+            // Numbered lists
+            else if (line.matches(Regex("^\\s*\\d+\\.\\s+.*"))) {
+                val match = Regex("^\\s*(\\d+\\.)\\s+(.*)").find(line)
+                if (match != null) {
+                    append("${match.groupValues[1]} ")
+                    appendInlineMarkdown(match.groupValues[2], boldStyle, italicStyle, codeStyle)
+                } else {
+                    appendInlineMarkdown(line, boldStyle, italicStyle, codeStyle)
+                }
+            }
+            // Regular line
+            else {
+                appendInlineMarkdown(line, boldStyle, italicStyle, codeStyle)
+            }
+
+            if (lineIndex < lines.size - 1) append("\n")
+        }
+    }
+}
+
+/**
+ * Append a single line of text, parsing inline bold, italic, and code spans.
+ */
+private fun androidx.compose.ui.text.AnnotatedString.Builder.appendInlineMarkdown(
+    text: String,
+    boldStyle: androidx.compose.ui.text.SpanStyle,
+    italicStyle: androidx.compose.ui.text.SpanStyle,
+    codeStyle: androidx.compose.ui.text.SpanStyle
+) {
+    // Pattern: **bold**, *italic*, `code`
+    val pattern = Regex("(\\*\\*(.+?)\\*\\*|\\*(.+?)\\*|`(.+?)`)")
+    var lastIndex = 0
+
+    pattern.findAll(text).forEach { match ->
+        // Append text before the match
+        if (match.range.first > lastIndex) {
+            append(text.substring(lastIndex, match.range.first))
+        }
+        when {
+            match.groupValues[2].isNotEmpty() -> {
+                // **bold**
+                pushStyle(boldStyle)
+                append(match.groupValues[2])
+                pop()
+            }
+            match.groupValues[3].isNotEmpty() -> {
+                // *italic*
+                pushStyle(italicStyle)
+                append(match.groupValues[3])
+                pop()
+            }
+            match.groupValues[4].isNotEmpty() -> {
+                // `code`
+                pushStyle(codeStyle)
+                append(match.groupValues[4])
+                pop()
+            }
+        }
+        lastIndex = match.range.last + 1
+    }
+    // Append remaining text
+    if (lastIndex < text.length) {
+        append(text.substring(lastIndex))
+    }
 }

@@ -95,15 +95,15 @@ class FocusViewModel(
     private val _todaySessionCount = MutableStateFlow(0)
     val todaySessionCount: StateFlow<Int> = _todaySessionCount.asStateFlow()
 
-    private val _todayMinutes = MutableStateFlow(0)
-    val todayMinutes: StateFlow<Int> = _todayMinutes.asStateFlow()
+    private val _todaySeconds = MutableStateFlow(0)
+    val todaySeconds: StateFlow<Int> = _todaySeconds.asStateFlow()
 
     // All-time stats
     private val _allTimeSessionCount = MutableStateFlow(0)
     val allTimeSessionCount: StateFlow<Int> = _allTimeSessionCount.asStateFlow()
 
-    private val _allTimeMinutes = MutableStateFlow(0)
-    val allTimeMinutes: StateFlow<Int> = _allTimeMinutes.asStateFlow()
+    private val _allTimeSeconds = MutableStateFlow(0)
+    val allTimeSeconds: StateFlow<Int> = _allTimeSeconds.asStateFlow()
 
     // Mood, Ambient Sound, Focus Theme
     private val _selectedMood = MutableStateFlow<Mood?>(null)
@@ -168,9 +168,9 @@ class FocusViewModel(
             try {
                 val todaySessions = focusRepository.getTodaySessions()
                 _todaySessionCount.value = todaySessions.count { it.wasCompleted }
-                _todayMinutes.value = todaySessions
+                _todaySeconds.value = todaySessions
                     .filter { it.wasCompleted }
-                    .sumOf { it.actualDurationSeconds } / 60
+                    .sumOf { it.actualDurationSeconds }
             } catch (e: Exception) { Logger.e("FocusViewModel") { "loadTodayStats failed: ${e.message}" } }
         }
     }
@@ -179,7 +179,7 @@ class FocusViewModel(
         viewModelScope.launch {
             try {
                 _allTimeSessionCount.value = focusRepository.getTotalSessionCount()
-                _allTimeMinutes.value = focusRepository.getTotalFocusMinutes()
+                _allTimeSeconds.value = focusRepository.getTotalFocusSeconds().toInt()
             } catch (e: Exception) { Logger.e("FocusViewModel") { "loadAllTimeStats failed: ${e.message}" } }
         }
     }
@@ -266,9 +266,13 @@ class FocusViewModel(
 
     @OptIn(ExperimentalUuidApi::class)
     fun startTimer() {
-        val goal = _selectedGoal.value ?: return
-        val milestone = _selectedMilestone.value ?: return
         val freeFlow = _isFreeFlow.value
+        // In free flow mode, milestone is optional; in timed mode, it's required
+        if (!freeFlow) {
+            if (_selectedGoal.value == null || _selectedMilestone.value == null) return
+        }
+        val goalId = _selectedGoal.value?.id ?: ""
+        val milestoneId = _selectedMilestone.value?.id ?: ""
         val duration = if (freeFlow) 0 else _durationMinutes.value
 
         val totalSeconds = if (freeFlow) Int.MAX_VALUE / 2 else duration * 60
@@ -285,8 +289,8 @@ class FocusViewModel(
         viewModelScope.launch {
             val session = FocusSession(
                 id = sessionId,
-                goalId = goal.id,
-                milestoneId = milestone.id,
+                goalId = goalId,
+                milestoneId = milestoneId,
                 plannedDurationMinutes = duration,
                 actualDurationSeconds = 0,
                 wasCompleted = false,

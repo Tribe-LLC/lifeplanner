@@ -16,6 +16,7 @@ import az.tribe.lifeplanner.domain.model.UserActivityPattern
 import az.tribe.lifeplanner.domain.repository.ReminderRepository
 import az.tribe.lifeplanner.data.sync.SyncManager
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
+import az.tribe.lifeplanner.notification.NotificationSchedulerInterface
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDateTime
@@ -29,7 +30,8 @@ import kotlin.uuid.Uuid
 @OptIn(ExperimentalUuidApi::class)
 class ReminderRepositoryImpl(
     private val database: SharedDatabase,
-    private val syncManager: SyncManager
+    private val syncManager: SyncManager,
+    private val notificationScheduler: NotificationSchedulerInterface
 ) : ReminderRepository {
 
     override suspend fun createReminder(reminder: Reminder): Reminder {
@@ -52,6 +54,7 @@ class ReminderRepositoryImpl(
             updatedAt = null
         )
         syncManager.requestSync()
+        notificationScheduler.schedule(reminder)
         return reminder.copy(createdAt = now)
     }
 
@@ -72,9 +75,15 @@ class ReminderRepositoryImpl(
             updatedAt = now.toString()
         )
         syncManager.requestSync()
+        if (reminder.isEnabled) {
+            notificationScheduler.schedule(reminder)
+        } else {
+            notificationScheduler.cancel(reminder.id)
+        }
     }
 
     override suspend fun deleteReminder(reminderId: String) {
+        notificationScheduler.cancel(reminderId)
         database.deleteScheduledNotificationsByReminder(reminderId)
         database.deleteReminder(reminderId)
         syncManager.requestSync()
@@ -301,9 +310,13 @@ class ReminderRepositoryImpl(
     override suspend fun enableAllReminders() {
         database.enableAllReminders()
         syncManager.requestSync()
+        // Reschedule all reminders as OS notifications
+        getAllReminders().forEach { notificationScheduler.schedule(it) }
     }
 
     override suspend fun disableAllReminders() {
+        // Cancel all OS notifications first
+        getAllReminders().forEach { notificationScheduler.cancel(it.id) }
         database.disableAllReminders()
         syncManager.requestSync()
     }

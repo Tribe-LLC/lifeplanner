@@ -219,13 +219,14 @@ Frequencies: DAILY, WEEKLY
         /**
          * Get coach-specific system prompt
          */
-        private fun getCoachSystemPrompt(coach: CoachPersona): String {
+        private suspend fun getCoachSystemPrompt(coach: CoachPersona, personaOverride: String? = null): String {
             return """
 You are ${coach.name}, a ${coach.title} in the LifePlanner app. Reply ONLY with valid JSON.
 
 YOUR PERSONALITY: ${coach.personality}
 YOUR SPECIALTIES: ${coach.specialties.joinToString(", ")}
 YOUR GREETING STYLE: ${coach.greeting}
+${if (personaOverride != null) "USER'S CUSTOMIZATION (follow this closely): $personaOverride" else ""}
 
 FORMAT (strict):
 {"messages":["msg1","msg2"],"suggestions":[]}
@@ -601,8 +602,9 @@ Use this context to personalize your responses and make relevant suggestions.
         // Get conversation history BEFORE adding current message
         val recentMessages = getRecentMessages(sessionId, 10)
 
-        // Save user message to DB
-        addUserMessage(sessionId, userMessage, relatedGoalId)
+        // Save user message to DB and notify the ViewModel immediately
+        val savedUserMessage = addUserMessage(sessionId, userMessage, relatedGoalId)
+        emit(StreamingChatEvent.UserMessageSaved(savedUserMessage))
 
         // Build plain-text system prompt (no JSON schema for streaming)
         val systemPrompt = buildStreamingSystemPrompt(userContext, coach, recentMessages, coachId)
@@ -622,24 +624,32 @@ Use this context to personalize your responses and make relevant suggestions.
                 when (event) {
                     is AiProxyService.StreamEvent.TextChunk -> {
                         accumulated.append(event.text)
-                        emit(StreamingChatEvent.PartialText(event.text, accumulated.toString()))
+                        // Strip suggestion tags from display during streaming
+                        val tagPattern = Regex("""\[SUGGEST_(GOAL|HABIT|JOURNAL|ACTION)[^\]]*\]""")
+                        val displayText = accumulated.toString().replace(tagPattern, "").trimEnd()
+                        val chunkText = event.text.replace(tagPattern, "")
+                        emit(StreamingChatEvent.PartialText(chunkText, displayText))
                     }
                     is AiProxyService.StreamEvent.Done -> {
-                        val fullText = accumulated.toString().ifEmpty { event.fullText }
-                        val savedMessage = addAssistantMessage(sessionId, fullText, null)
+                        val rawText = accumulated.toString().ifEmpty { event.fullText }
 
-                        // Extract actionable suggestions from the streamed response
-                        try {
-                            val suggestions = extractStreamingSuggestions(userMessage, fullText)
-                            if (suggestions.isNotEmpty()) {
-                                val metadata = ChatMessageMetadata(coachSuggestions = suggestions)
-                                val metadataJson = json.encodeToString(ChatMessageMetadata.serializer(), metadata)
-                                database.updateChatMessageMetadata(savedMessage.id, metadataJson)
-                            }
-                        } catch (e: Exception) {
-                            Logger.w("ChatRepositoryImpl") { "Suggestion extraction failed (non-fatal): ${e.message}" }
+                        // Parse inline suggestion tags directly — no second API call needed
+                        val (cleanedText, suggestions) = parseInlineSuggestions(rawText)
+                        Logger.d("ChatRepositoryImpl") {
+                            "Parsed ${suggestions.size} inline suggestions from response"
                         }
 
+                        val metadataJson = if (suggestions.isNotEmpty()) {
+                            try {
+                                val metadata = ChatMessageMetadata(coachSuggestions = suggestions)
+                                json.encodeToString(ChatMessageMetadata.serializer(), metadata)
+                            } catch (e: Exception) {
+                                Logger.w("ChatRepositoryImpl") { "Metadata encoding failed: ${e.message}" }
+                                null
+                            }
+                        } else null
+
+                        val savedMessage = addAssistantMessage(sessionId, cleanedText, metadataJson)
                         emit(StreamingChatEvent.Completed(savedMessage))
                     }
                     is AiProxyService.StreamEvent.Error -> {
@@ -664,58 +674,75 @@ Use this context to personalize your responses and make relevant suggestions.
     }
 
     /**
-     * After streaming completes, extract actionable suggestions (goals, habits) via a fast follow-up call.
-     * This bridges the gap: streaming gives the nice typing UX, this adds the action buttons.
+     * Parse inline suggestion tags from streaming response text.
+     * Tags: [SUGGEST_GOAL:title|desc|category|timeline]
+     *        [SUGGEST_HABIT:title|desc|category|frequency]
+     *        [SUGGEST_JOURNAL:title|content|mood]
+     * Returns the cleaned text (tags removed) and parsed suggestions.
      */
     @OptIn(ExperimentalUuidApi::class)
-    private suspend fun extractStreamingSuggestions(
-        userMessage: String,
-        assistantResponse: String
-    ): List<CoachSuggestion> {
-        try {
-            val prompt = """
-Based on this conversation, generate actionable suggestions ONLY if the user described something concrete they want to achieve.
+    private fun parseInlineSuggestions(rawText: String): Pair<String, List<CoachSuggestion>> {
+        val suggestions = mutableListOf<CoachSuggestion>()
+        val tagPattern = Regex("""\[SUGGEST_(GOAL|HABIT|JOURNAL):([^\]]+)\]""")
+        val matches = tagPattern.findAll(rawText)
 
-User: $userMessage
-Coach: $assistantResponse
+        for (match in matches) {
+            try {
+                val type = match.groupValues[1]
+                val parts = match.groupValues[2].split("|").map { it.trim() }
+                val id = Uuid.random().toString()
 
-Reply ONLY with valid JSON, nothing else:
-{"suggestions":[]}
+                val suggestion: CoachSuggestion? = when (type) {
+                    "GOAL" -> {
+                        if (parts.size >= 2) {
+                            CoachSuggestion.CreateGoal(
+                                id = id,
+                                label = "Add Goal",
+                                title = parts[0],
+                                description = parts.getOrElse(1) { "" },
+                                category = parts.getOrElse(2) { "CAREER" },
+                                timeline = parts.getOrElse(3) { "MID_TERM" }
+                            )
+                        } else null
+                    }
+                    "HABIT" -> {
+                        if (parts.size >= 2) {
+                            CoachSuggestion.CreateHabit(
+                                id = id,
+                                label = "Add Habit",
+                                title = parts[0],
+                                description = parts.getOrElse(1) { "" },
+                                category = parts.getOrElse(2) { "PERSONAL" },
+                                frequency = parts.getOrElse(3) { "DAILY" }
+                            )
+                        } else null
+                    }
+                    "JOURNAL" -> {
+                        if (parts.size >= 2) {
+                            CoachSuggestion.CreateJournalEntry(
+                                id = id,
+                                label = "Add Entry",
+                                title = parts[0],
+                                content = parts.getOrElse(1) { "" },
+                                mood = parts.getOrElse(2) { null }
+                            )
+                        } else null
+                    }
+                    else -> null
+                }
 
-SUGGESTION FORMATS:
-- Goal: {"type":"CREATE_GOAL","label":"Add Goal","data":{"title":"...","description":"...","category":"CAREER","timeline":"MID_TERM","milestones":[{"title":"Step 1","weekOffset":1},{"title":"Step 2","weekOffset":2}]}}
-- Habit: {"type":"CREATE_HABIT","label":"Add Habit","data":{"title":"...","description":"...","category":"HEALTH","frequency":"DAILY"}}
-- Journal: {"type":"CREATE_JOURNAL","label":"Add Entry","data":{"title":"...","content":"...","mood":"HAPPY"}}
-
-Categories: CAREER, FINANCIAL, PHYSICAL, SOCIAL, EMOTIONAL, SPIRITUAL, FAMILY
-Timelines: SHORT_TERM (30d), MID_TERM (90d), LONG_TERM (1yr)
-Frequencies: DAILY, WEEKLY
-
-RULES:
-- Include 3-5 milestones with weekOffset for goals
-- Return empty suggestions if the conversation is just greeting/general chat
-- Max 2 suggestions
-            """.trimIndent()
-
-            val response = aiProxy.generateText(prompt)
-            val trimmed = response.trim()
-
-            if (!trimmed.startsWith("{")) return emptyList()
-
-            val jsonObj = json.parseToJsonElement(trimmed).jsonObject
-            val suggestionsArr = jsonObj["suggestions"]?.jsonArray ?: return emptyList()
-            if (suggestionsArr.isEmpty()) return emptyList()
-
-            return suggestionsArr.mapNotNull { elem ->
-                try {
-                    val suggestionData = json.decodeFromJsonElement<SuggestionData>(elem)
-                    convertToCoachSuggestion(suggestionData)
-                } catch (_: Exception) { null }
+                if (suggestion != null) {
+                    suggestions.add(suggestion)
+                    Logger.d("ChatRepositoryImpl") { "Parsed suggestion: $type - ${parts[0]}" }
+                }
+            } catch (e: Exception) {
+                Logger.w("ChatRepositoryImpl") { "Failed to parse suggestion tag: ${match.value}, error: ${e.message}" }
             }
-        } catch (e: Exception) {
-            Logger.w("ChatRepositoryImpl") { "Suggestion extraction failed: ${e.message}" }
-            return emptyList()
         }
+
+        // Also handle legacy [SUGGEST_ACTION] tag (just remove it)
+        val cleanedText = rawText.replace(tagPattern, "").replace("[SUGGEST_ACTION]", "").trimEnd()
+        return Pair(cleanedText, suggestions)
     }
 
     private suspend fun buildStreamingSystemPrompt(
@@ -739,6 +766,10 @@ RULES:
             }
         } else ""
 
+        val personaOverride = if (customCoach == null && coach != null) {
+            coachRepository?.getPersonaOverride(coach.id)
+        } else null
+
         val coachIntro = if (customCoach != null) {
             """
 You are ${customCoach.name}, a personal coach in the LifePlanner app.
@@ -748,6 +779,7 @@ YOUR PERSONALITY AND INSTRUCTIONS: ${customCoach.systemPrompt}
             """
 You are $coachName, a friendly ${coach?.title ?: "Life Coach"} in LifePlanner app.
 ${if (coach != null) "YOUR PERSONALITY: $coachPersonality\nYOUR SPECIALTIES: ${coach.specialties.joinToString(", ")}" else ""}
+${if (personaOverride != null) "USER'S CUSTOMIZATION (follow this closely): $personaOverride" else ""}
 """.trimIndent()
         }
 
@@ -768,6 +800,17 @@ INSTRUCTIONS:
 - Stay in character as $coachName.
 - Be encouraging and actionable.
 - If the user already provided details in the conversation history, don't re-ask.
+- NEVER claim you have created, added, or set up a goal, habit, or journal entry. You cannot do that directly. Instead say you'll suggest one, or offer to help set it up. The user will see action buttons to create items themselves.
+- IMPORTANT: When the user mentions something that could become a goal, habit, or journal entry, naturally offer to help AND append ONE OR MORE hidden suggestion tags at the very end of your message (after your natural text). Use these exact formats:
+  For a goal: [SUGGEST_GOAL:title|description|CATEGORY|TIMELINE]
+  For a habit: [SUGGEST_HABIT:title|description|CATEGORY|FREQUENCY]
+  For a journal entry: [SUGGEST_JOURNAL:title|content|MOOD]
+  Categories: CAREER, FINANCIAL, PHYSICAL, SOCIAL, EMOTIONAL, SPIRITUAL, FAMILY
+  Timelines: SHORT_TERM, MID_TERM, LONG_TERM
+  Frequencies: DAILY, WEEKLY
+  Moods: HAPPY, SAD, ANXIOUS, CALM, EXCITED, GRATEFUL, ANGRY, NEUTRAL
+  Example: "I'd love to help you build a running routine! Here's a suggestion for you." then at the very end: [SUGGEST_HABIT:Daily Running|Run for 30 minutes every morning to build endurance|PHYSICAL|DAILY]
+  Do NOT include these tags for greetings, general chat, or non-actionable questions. The tags must be the very last thing in your response. You can include up to 2 tags.
 """.trimIndent()
     }
 
@@ -779,6 +822,7 @@ INSTRUCTIONS:
     ): CoachResponse {
         val coachName = coach?.name ?: "Luna"
         val coachPersonality = coach?.personality ?: "warm, encouraging, holistic thinker"
+        val personaOverride = coach?.let { coachRepository?.getPersonaOverride(it.id) }
 
         // Build conversation history with last 10 messages for better context
         val historyText = if (conversationHistory.isNotEmpty()) {
@@ -800,6 +844,7 @@ INSTRUCTIONS:
         val prompt = """
 You are $coachName, a friendly ${coach?.title ?: "Life Coach"} in LifePlanner app.
 ${if (coach != null) "YOUR PERSONALITY: $coachPersonality\nYOUR SPECIALTIES: ${coach.specialties.joinToString(", ")}" else ""}
+${if (personaOverride != null) "USER'S CUSTOMIZATION (follow this closely): $personaOverride" else ""}
 
 User Context:
 - Level: ${userContext.level} (${userContext.totalXp} XP)
@@ -829,7 +874,7 @@ Categories: CAREER, FINANCIAL, PHYSICAL, SOCIAL, EMOTIONAL, SPIRITUAL, FAMILY
 Timelines: SHORT_TERM (30 days), MID_TERM (90 days), LONG_TERM (1 year)
 Frequencies: DAILY, WEEKLY
 
-IMPORTANT: If user explained what they want to achieve, CREATE the goal/habit immediately with suggestions! Don't just talk about it.
+IMPORTANT: If user explained what they want to achieve, include the goal/habit in the suggestions array immediately. In your messages, say you're suggesting it — never claim you created it. The user will see action buttons to create items themselves.
         """.trimIndent()
 
         // Log the full prompt for debugging

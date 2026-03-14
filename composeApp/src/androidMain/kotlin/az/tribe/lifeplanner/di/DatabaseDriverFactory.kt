@@ -39,6 +39,7 @@ actual class DatabaseDriverFactory {
                     migrateToVersion11(db)
                     migrateToVersion12(db)
                     migrateToSyncColumns(db)
+                    migrateToVersion13(db)
                 }
 
                 override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -546,6 +547,22 @@ actual class DatabaseDriverFactory {
                             db.execSQL("ALTER TABLE $table ADD COLUMN $column $def")
                         } catch (_: Exception) { }
                     }
+                }
+
+                private fun migrateToVersion13(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS CoachPersonaOverrideEntity (
+                            coachId TEXT PRIMARY KEY NOT NULL,
+                            userPersona TEXT NOT NULL DEFAULT '',
+                            updatedAt TEXT NOT NULL,
+                            sync_updated_at TEXT,
+                            is_deleted INTEGER NOT NULL DEFAULT 0,
+                            sync_version INTEGER NOT NULL DEFAULT 0,
+                            last_synced_at TEXT
+                        )
+                        """.trimIndent()
+                    )
                 }
 
                 private fun migrateToVersion11(db: SupportSQLiteDatabase) {

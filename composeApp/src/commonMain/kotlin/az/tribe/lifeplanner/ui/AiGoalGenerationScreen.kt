@@ -242,7 +242,7 @@ private fun StepByStepQuestionFlow(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 80.dp) // Add padding at bottom to make room for nav buttons
+                .padding(bottom = 96.dp) // Add padding at bottom to make room for nav buttons
         ) {
             // Progress header
             if (allQuestions.isNotEmpty()) {

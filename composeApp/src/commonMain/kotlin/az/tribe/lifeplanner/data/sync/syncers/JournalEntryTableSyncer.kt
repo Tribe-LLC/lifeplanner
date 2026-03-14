@@ -12,6 +12,8 @@ import kotlinx.datetime.Clock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
 
 class JournalEntryTableSyncer(
     supabase: SupabaseClient,
@@ -67,7 +69,11 @@ class JournalEntryTableSyncer(
         linkedGoalId = remote.linkedGoalId,
         linkedHabitId = remote.linkedHabitId,
         promptUsed = remote.promptUsed,
-        tags = remote.tags.toString(), // JsonElement → String for local SQLite storage
+        tags = try {
+            remote.tags.jsonArray.joinToString(",") { it.jsonPrimitive.content }
+        } catch (_: Exception) {
+            remote.tags.toString()
+        },
         date = remote.date,
         createdAt = remote.createdAt,
         updatedAt = remote.updatedAt,
@@ -101,6 +107,11 @@ class JournalEntryTableSyncer(
 
     override suspend fun markSynced(id: String, now: String) {
         db { it.lifePlannerDBQueries.markJournalEntrySynced(now, id) }
+    }
+
+    override suspend fun markSyncedBatch(entities: List<JournalEntryEntity>, now: String) {
+        if (entities.isEmpty()) return
+        db { d -> entities.forEach { d.lifePlannerDBQueries.markJournalEntrySynced(now, it.id) } }
     }
 
     override suspend fun purgeDeleted() {

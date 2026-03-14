@@ -19,6 +19,7 @@ fun createAllSyncers(
         BadgeTableSyncer(supabase, db),
         CustomCoachTableSyncer(supabase, db),
         CoachGroupTableSyncer(supabase, db),
+        CoachPersonaOverrideTableSyncer(supabase, db),
         ReviewTableSyncer(supabase, db),
 
         // Tier 2: Depends on Tier 1

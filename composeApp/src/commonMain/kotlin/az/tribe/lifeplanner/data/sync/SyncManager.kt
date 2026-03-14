@@ -11,6 +11,7 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,7 +20,9 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+import io.github.jan.supabase.exceptions.HttpRequestException
 import kotlinx.datetime.Clock
+import kotlin.math.min
 
 class SyncManager private constructor(
     private val supabase: SupabaseClient?,
@@ -67,11 +70,21 @@ class SyncManager private constructor(
     private val _syncStatus = MutableStateFlow(SyncStatus())
     val syncStatus: StateFlow<SyncStatus> = _syncStatus.asStateFlow()
 
+    // Cooldown: skip sync if one just completed successfully within this window
+    private var lastSuccessfulSyncAt: Long = 0L
+    private val syncCooldownMs = 30_000L
+
     private val _hasCompletedInitialSync = MutableStateFlow(false)
 
     fun hasCompletedInitialSync(): Boolean = _hasCompletedInitialSync.value
 
     private val syncRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    // Auto-retry state
+    private var retryJob: Job? = null
+    private var retryCount = 0
+    private val retryDelays = longArrayOf(5_000L, 15_000L, 30_000L, 60_000L)
+    private val maxRetries = retryDelays.size
 
     // Table syncers ordered by FK dependency tiers
     private val syncers: List<TableSyncer<*, *>> by lazy {
@@ -79,6 +92,13 @@ class SyncManager private constructor(
     }
 
     init {
+        startListeners()
+    }
+
+    /**
+     * Start (or restart) the debounce and connectivity listeners.
+     */
+    private fun startListeners() {
         // Debounce sync requests to avoid rapid-fire syncing
         scope.launch {
             syncRequests
@@ -109,10 +129,43 @@ class SyncManager private constructor(
         syncRequests.tryEmit(Unit)
     }
 
+    private fun cancelRetry() {
+        retryJob?.cancel()
+        retryJob = null
+    }
+
+    private fun scheduleRetry() {
+        if (retryCount >= maxRetries) {
+            Logger.w("SyncManager") { "Max retries ($maxRetries) reached, giving up auto-retry" }
+            return
+        }
+        val delayMs = retryDelays[min(retryCount, retryDelays.size - 1)]
+        retryCount++
+        Logger.d("SyncManager") { "Scheduling retry #$retryCount in ${delayMs / 1000}s" }
+        cancelRetry()
+        retryJob = scope.launch {
+            delay(delayMs)
+            performFullSync()
+        }
+    }
+
     /**
      * Perform a full push-then-pull sync for all tables.
+     * @param resetRetry true when triggered manually (user tap) to reset the backoff counter.
      */
-    suspend fun performFullSync() {
+    suspend fun performFullSync(resetRetry: Boolean = false) {
+        cancelRetry()
+        if (resetRetry) retryCount = 0
+
+        // Cooldown: skip if a successful sync just completed (unless manual retry)
+        if (!resetRetry) {
+            val elapsed = Clock.System.now().toEpochMilliseconds() - lastSuccessfulSyncAt
+            if (elapsed < syncCooldownMs) {
+                Logger.d("SyncManager") { "Sync cooldown active (${elapsed / 1000}s ago), skipping" }
+                return
+            }
+        }
+
         val userId = getCurrentUserId() ?: run {
             Logger.d("SyncManager") { "No authenticated user, skipping sync" }
             _syncStatus.value = _syncStatus.value.copy(state = SyncState.IDLE)
@@ -130,6 +183,9 @@ class SyncManager private constructor(
             return
         }
 
+        // Ensure the JWT is fresh before starting sync
+        if (!refreshSessionIfNeeded()) return
+
         _syncStatus.value = _syncStatus.value.copy(
             state = SyncState.SYNCING,
             errorMessage = null
@@ -139,6 +195,7 @@ class SyncManager private constructor(
             var totalPushed = 0
             var totalPulled = 0
             val failedTables = mutableListOf<String>()
+            var networkDown = false
 
             // Detect fresh sync (no pull timestamps = first sync after login/account switch)
             val isFreshSync = syncers.any { it.getLastPullTimestamp() == null }
@@ -147,52 +204,73 @@ class SyncManager private constructor(
                 // Pull first to avoid overwriting remote data with empty defaults
                 Logger.d("SyncManager") { "Fresh sync detected — pulling before pushing" }
                 for (syncer in syncers) {
+                    if (networkDown) { failedTables.add(syncer.tableName); continue }
                     try {
                         totalPulled += syncer.pullRemoteChanges(userId)
                     } catch (e: Exception) {
-                        Logger.e("SyncManager") { "Pull failed for ${syncer.tableName}: ${e.message}\n${e.stackTraceToString()}" }
+                        Logger.e("SyncManager") { "Pull failed for ${syncer.tableName}: ${e.message}" }
                         failedTables.add(syncer.tableName)
+                        if (isNetworkException(e)) networkDown = true
                     }
                 }
                 for (syncer in syncers) {
+                    if (networkDown) { if (syncer.tableName !in failedTables) failedTables.add(syncer.tableName); continue }
                     try {
                         totalPushed += syncer.pushLocalChanges(userId)
                     } catch (e: Exception) {
-                        Logger.e("SyncManager") { "Push failed for ${syncer.tableName}: ${e.message}\n${e.stackTraceToString()}" }
+                        Logger.e("SyncManager") { "Push failed for ${syncer.tableName}: ${e.message}" }
                         if (syncer.tableName !in failedTables) failedTables.add(syncer.tableName)
+                        if (isNetworkException(e)) networkDown = true
                     }
                 }
             } else {
                 // Normal sync: push then pull
                 for (syncer in syncers) {
+                    if (networkDown) { failedTables.add(syncer.tableName); continue }
                     try {
                         totalPushed += syncer.pushLocalChanges(userId)
                     } catch (e: Exception) {
-                        Logger.e("SyncManager") { "Push failed for ${syncer.tableName}: ${e.message}\n${e.stackTraceToString()}" }
+                        Logger.e("SyncManager") { "Push failed for ${syncer.tableName}: ${e.message}" }
                         failedTables.add(syncer.tableName)
+                        if (isNetworkException(e)) networkDown = true
                     }
                 }
                 for (syncer in syncers) {
+                    if (networkDown) { if (syncer.tableName !in failedTables) failedTables.add(syncer.tableName); continue }
                     try {
                         totalPulled += syncer.pullRemoteChanges(userId)
                     } catch (e: Exception) {
-                        Logger.e("SyncManager") { "Pull failed for ${syncer.tableName}: ${e.message}\n${e.stackTraceToString()}" }
+                        Logger.e("SyncManager") { "Pull failed for ${syncer.tableName}: ${e.message}" }
                         if (syncer.tableName !in failedTables) failedTables.add(syncer.tableName)
+                        if (isNetworkException(e)) networkDown = true
                     }
                 }
             }
 
             val now = Clock.System.now()
             if (failedTables.isNotEmpty()) {
-                _syncStatus.value = SyncStatus(
-                    state = SyncState.ERROR,
-                    lastSyncedAt = now,
-                    pendingChanges = 0,
-                    errorMessage = "Partial sync: ${failedTables.size} tables failed (${failedTables.joinToString()})"
-                )
-                Logger.w("SyncManager") { "Partial sync: pushed=$totalPushed, pulled=$totalPulled, failed=${failedTables}" }
+                if (networkDown) {
+                    Logger.w("SyncManager") { "Network down during sync, setting OFFLINE" }
+                    _syncStatus.value = SyncStatus(
+                        state = SyncState.OFFLINE,
+                        lastSyncedAt = _syncStatus.value.lastSyncedAt,
+                        pendingChanges = 0,
+                        errorMessage = null
+                    )
+                } else {
+                    _syncStatus.value = SyncStatus(
+                        state = SyncState.ERROR,
+                        lastSyncedAt = now,
+                        pendingChanges = 0,
+                        errorMessage = "Partial sync: ${failedTables.size} tables failed (${failedTables.joinToString()})"
+                    )
+                    Logger.w("SyncManager") { "Partial sync: pushed=$totalPushed, pulled=$totalPulled, failed=${failedTables}" }
+                }
                 _hasCompletedInitialSync.value = true
+                scheduleRetry()
             } else {
+                retryCount = 0
+                lastSuccessfulSyncAt = Clock.System.now().toEpochMilliseconds()
                 _syncStatus.value = SyncStatus(
                     state = SyncState.SYNCED,
                     lastSyncedAt = now,
@@ -203,11 +281,20 @@ class SyncManager private constructor(
             }
 
         } catch (e: Exception) {
-            Logger.e("SyncManager") { "Sync failed: ${e.message}" }
-            _syncStatus.value = _syncStatus.value.copy(
-                state = SyncState.ERROR,
-                errorMessage = e.message
-            )
+            if (isNetworkException(e)) {
+                Logger.w("SyncManager") { "Sync failed due to network: ${e.message}" }
+                _syncStatus.value = _syncStatus.value.copy(
+                    state = SyncState.OFFLINE,
+                    errorMessage = null
+                )
+            } else {
+                Logger.e("SyncManager") { "Sync failed: ${e.message}" }
+                _syncStatus.value = _syncStatus.value.copy(
+                    state = SyncState.ERROR,
+                    errorMessage = e.message
+                )
+            }
+            scheduleRetry()
         }
     }
 
@@ -222,9 +309,14 @@ class SyncManager private constructor(
      * Cancel in-flight syncs and reset state. Called on logout.
      */
     fun onLogout() {
+        cancelRetry()
+        retryCount = 0
+        lastSuccessfulSyncAt = 0L
         scope.coroutineContext[Job]?.cancelChildren()
         _hasCompletedInitialSync.value = false
         clearSyncTimestamps()
+        // Restart listeners since cancelChildren() killed them
+        startListeners()
     }
 
     /**
@@ -240,12 +332,43 @@ class SyncManager private constructor(
                 "sync_pull_challenges", "sync_pull_goal_dependencies", "sync_pull_chat_sessions",
                 "sync_pull_chat_messages", "sync_pull_review_reports", "sync_pull_reminders",
                 "sync_pull_custom_coaches", "sync_pull_coach_groups", "sync_pull_coach_group_members",
-                "sync_pull_focus_sessions", "sync_pull_reviews"
+                "sync_pull_focus_sessions", "sync_pull_reviews", "sync_pull_coach_persona_overrides"
             ).forEach { settings.remove(it) }
         } catch (e: Exception) {
             Logger.w("SyncManager") { "Failed to clear sync timestamps: ${e.message}" }
         }
         _syncStatus.value = SyncStatus()
+    }
+
+    /**
+     * Refresh the Supabase session before sync to guarantee a fresh JWT.
+     * Returns true if session is valid, false if refresh failed (sets ERROR state).
+     */
+    private suspend fun refreshSessionIfNeeded(): Boolean {
+        if (supabase == null) return true // test constructor
+        return try {
+            val session = supabase.auth.currentSessionOrNull()
+            if (session == null) {
+                Logger.w("SyncManager") { "No session found, cannot sync" }
+                _syncStatus.value = _syncStatus.value.copy(
+                    state = SyncState.ERROR,
+                    errorMessage = "Not authenticated"
+                )
+                false
+            } else {
+                supabase.auth.refreshCurrentSession()
+                Logger.d("SyncManager") { "Session refreshed before sync" }
+                true
+            }
+        } catch (e: Exception) {
+            Logger.e("SyncManager") { "Session refresh failed: ${e.message}" }
+            _syncStatus.value = _syncStatus.value.copy(
+                state = SyncState.ERROR,
+                errorMessage = "Session expired"
+            )
+            scheduleRetry()
+            false
+        }
     }
 
     private fun getCurrentUserId(): String? {
@@ -270,5 +393,33 @@ class SyncManager private constructor(
      */
     private fun createSyncers(supabase: SupabaseClient, sharedDatabase: SharedDatabase): List<TableSyncer<*, *>> {
         return az.tribe.lifeplanner.data.sync.syncers.createAllSyncers(supabase, sharedDatabase)
+    }
+
+    private fun isNetworkException(e: Exception): Boolean {
+        // Check exception type first (reliable, locale-independent)
+        if (e is HttpRequestException) return true
+        // Check causes recursively for platform-specific network exceptions
+        var cause: Throwable? = e
+        while (cause != null) {
+            val name = cause::class.simpleName ?: ""
+            if (name in networkExceptionNames) return true
+            cause = cause.cause
+        }
+        // Fallback: check message for keywords (covers edge cases)
+        val message = e.message ?: ""
+        return networkKeywords.any { message.contains(it, ignoreCase = true) }
+    }
+
+    companion object {
+        private val networkExceptionNames = setOf(
+            "UnknownHostException", "ConnectException", "SocketException",
+            "SocketTimeoutException", "NoRouteToHostException",
+            "HttpRequestTimeoutException", "HttpRequestException",
+            "ConnectTimeoutException", "NSURLErrorDomain"
+        )
+        private val networkKeywords = listOf(
+            "Unable to resolve host", "Network is unreachable",
+            "Connection refused", "Connection reset", "timeout"
+        )
     }
 }

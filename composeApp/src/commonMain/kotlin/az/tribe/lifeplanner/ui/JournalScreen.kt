@@ -18,7 +18,7 @@ import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,6 +35,7 @@ import az.tribe.lifeplanner.domain.model.JournalEntry
 import az.tribe.lifeplanner.domain.model.JournalPrompts
 import az.tribe.lifeplanner.ui.components.DayEntriesBottomSheet
 import az.tribe.lifeplanner.ui.components.EmptyStateCard
+import az.tribe.lifeplanner.ui.components.GlassCard
 import az.tribe.lifeplanner.ui.components.MoodCalendar
 import az.tribe.lifeplanner.ui.components.rememberHapticManager
 import az.tribe.lifeplanner.ui.GoalViewModel
@@ -71,7 +72,6 @@ fun JournalScreen(
     var isCalendarExpanded by remember { mutableStateOf(false) }
     val error by viewModel.error.collectAsState()
 
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Show error in snackbar
@@ -83,36 +83,9 @@ fun JournalScreen(
     }
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            TopAppBar(
-                scrollBehavior = scrollBehavior,
-                title = {
-                    Text(
-                        "Journal",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold
-                        )
-                    )
-                },
-                navigationIcon = {
-                    if (!isFromBottomNav) {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                                contentDescription = "Back"
-                            )
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        },
         floatingActionButton = {
             // Wrapped in Box with bottom padding to stay above bottom nav
-            Box(modifier = Modifier.padding(bottom = 80.dp)) {
+            Box(modifier = Modifier.padding(bottom = 96.dp)) {
                 ExtendedFloatingActionButton(
                     onClick = onNavigateToWizard,
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -137,74 +110,94 @@ fun JournalScreen(
             }
         }
     ) { padding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues = PaddingValues(top = padding.calculateTopPadding()))
+                .padding(paddingValues = PaddingValues(top = padding.calculateTopPadding())),
+            contentPadding = PaddingValues(
+                top = 8.dp,
+                bottom = 136.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Collapsible Mood Calendar
-            MoodCalendar(
-                entries = entries,
-                selectedMonth = selectedMonth,
-                isExpanded = isCalendarExpanded,
-                onToggleExpand = { isCalendarExpanded = !isCalendarExpanded },
-                onMonthChange = { viewModel.setSelectedMonth(it) },
-                onDayClick = { date ->
-                    val entriesForDay = viewModel.getEntriesForDay(date)
-                    if (entriesForDay.isNotEmpty()) {
-                        viewModel.selectDay(date)
+            // Hero banner
+            item(key = "hero_banner") {
+                JournalHeroBanner(
+                    entryCount = entries.size,
+                    isFromBottomNav = isFromBottomNav,
+                    onNavigateBack = onNavigateBack,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+
+            // Mood Calendar (has its own 16dp horizontal padding)
+            item(key = "mood_calendar") {
+                MoodCalendar(
+                    entries = entries,
+                    selectedMonth = selectedMonth,
+                    isExpanded = isCalendarExpanded,
+                    onToggleExpand = { isCalendarExpanded = !isCalendarExpanded },
+                    onMonthChange = { viewModel.setSelectedMonth(it) },
+                    onDayClick = { date ->
+                        val entriesForDay = viewModel.getEntriesForDay(date)
+                        if (entriesForDay.isNotEmpty()) {
+                            viewModel.selectDay(date)
+                        }
                     }
-                },
-                modifier = Modifier.padding(top = 8.dp)
-            )
+                )
+            }
 
             if (isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
+                item(key = "loading") {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().height(200.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
                 }
             } else if (entries.isEmpty()) {
-                EmptyStateCard(
-                    icon = Icons.AutoMirrored.Rounded.MenuBook,
-                    title = "Start Your Journal",
-                    subtitle = "Reflect on your day, track your mood,\nand document your journey.",
-                    actionLabel = "Write Your First Entry",
-                    onAction = onNavigateToWizard
-                )
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = 16.dp,
-                        top = 16.dp,
-                        end = 16.dp,
-                        bottom = 120.dp // Space for bottom nav and FAB
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(
-                        items = entries,
-                        key = { it.id }
-                    ) { entry ->
-                        // Look up linked goal/habit names
-                        val linkedGoalName = entry.linkedGoalId?.let { goalId ->
-                            goals.find { it.id == goalId }?.title
-                        }
-                        val linkedHabitName = entry.linkedHabitId?.let { habitId ->
-                            habits.find { it.id == habitId }?.title
-                        }
-
-                        SwipeableJournalEntryCard(
-                            entry = entry,
-                            onClick = { onEntryClick(entry.id) },
-                            onDelete = { viewModel.deleteEntry(entry.id) },
-                            linkedGoalName = linkedGoalName,
-                            linkedHabitName = linkedHabitName,
-                            modifier = Modifier.animateItem()
+                item(key = "empty") {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 32.dp, vertical = 48.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            "Your story starts here",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Tap Write to capture your first thought",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                         )
                     }
+                }
+            } else {
+                items(
+                    items = entries,
+                    key = { it.id }
+                ) { entry ->
+                    val linkedGoalName = entry.linkedGoalId?.let { goalId ->
+                        goals.find { it.id == goalId }?.title
+                    }
+                    val linkedHabitName = entry.linkedHabitId?.let { habitId ->
+                        habits.find { it.id == habitId }?.title
+                    }
+
+                    SwipeableJournalEntryCard(
+                        entry = entry,
+                        onClick = { onEntryClick(entry.id) },
+                        onDelete = { viewModel.deleteEntry(entry.id) },
+                        linkedGoalName = linkedGoalName,
+                        linkedHabitName = linkedHabitName,
+                        modifier = Modifier.padding(horizontal = 16.dp).animateItem()
+                    )
                 }
             }
         }
@@ -1155,5 +1148,70 @@ private fun formatJournalDate(date: kotlinx.datetime.LocalDate): String {
         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
     )
     return "${months[date.monthNumber - 1]} ${date.dayOfMonth}, ${date.year}"
+}
+
+@Composable
+private fun JournalHeroBanner(
+    entryCount: Int,
+    isFromBottomNav: Boolean,
+    onNavigateBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    GlassCard(
+        modifier = modifier,
+            cornerRadius = 20.dp
+        ) {
+            Column {
+                // Gradient accent bar
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primary,
+                                    MaterialTheme.colorScheme.tertiary
+                                )
+                            )
+                        )
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            top = 16.dp,
+                            start = if (isFromBottomNav) 20.dp else 8.dp,
+                            end = 20.dp,
+                            bottom = 16.dp
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (!isFromBottomNav) {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                contentDescription = "Back"
+                            )
+                        }
+                    }
+
+                    Column {
+                        Text(
+                            text = "Journal",
+                            style = MaterialTheme.typography.headlineSmall.copy(
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                        Text(
+                            text = if (entryCount > 0) "$entryCount entries" else "Start reflecting",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
 }
 

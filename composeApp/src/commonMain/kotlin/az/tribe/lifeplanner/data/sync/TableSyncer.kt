@@ -35,6 +35,13 @@ abstract class TableSyncer<LocalEntity, RemoteDto>(
     abstract suspend fun upsertRemote(dtos: List<RemoteDto>)
 
     /**
+     * Batch mark multiple entities as synced. Override in concrete syncers to use a transaction.
+     */
+    open suspend fun markSyncedBatch(entities: List<LocalEntity>, now: String) {
+        entities.forEach { markSynced(getEntityId(it), now) }
+    }
+
+    /**
      * Push local changes to Supabase. Returns number of items pushed.
      */
     open suspend fun pushLocalChanges(userId: String): Int {
@@ -47,7 +54,7 @@ abstract class TableSyncer<LocalEntity, RemoteDto>(
             if (unsynced.isNotEmpty()) {
                 val dtos = unsynced.map { localToRemote(it, userId) }
                 upsertRemote(dtos)
-                unsynced.forEach { markSynced(getEntityId(it), now) }
+                markSyncedBatch(unsynced, now)
                 pushed += unsynced.size
                 Logger.d("SyncEngine") { "Pushed ${unsynced.size} items to $tableName" }
             }
@@ -57,7 +64,7 @@ abstract class TableSyncer<LocalEntity, RemoteDto>(
             if (deleted.isNotEmpty()) {
                 val deleteDtos = deleted.map { localToRemote(it, userId) }
                 upsertRemote(deleteDtos)
-                deleted.forEach { markSynced(getEntityId(it), now) }
+                markSyncedBatch(deleted, now)
                 pushed += deleted.size
                 Logger.d("SyncEngine") { "Pushed ${deleted.size} deletes to $tableName" }
             }

@@ -168,6 +168,12 @@ SELECT * FROM MilestoneEntity
 WHERE goalId = ? AND is_deleted = 0
 ORDER BY createdAt ASC;
 
+-- Batch fetch all active milestones (eliminates N+1 when loading goals)
+getAllActiveMilestones:
+SELECT * FROM MilestoneEntity
+WHERE is_deleted = 0
+ORDER BY goalId, createdAt ASC;
+
 updateMilestone:
 UPDATE MilestoneEntity
 SET title = ?, isCompleted = ?, dueDate = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -437,6 +443,12 @@ DELETE FROM HabitCheckInEntity WHERE id = ?;
 
 getCheckInsInRange:
 SELECT * FROM HabitCheckInEntity WHERE habitId = ? AND date >= ? AND date <= ? AND is_deleted = 0 ORDER BY date ASC;
+
+-- Get completed check-in dates for a habit in descending order (for streak calculation)
+getCompletedCheckInDatesDesc:
+SELECT date FROM HabitCheckInEntity
+WHERE habitId = ? AND completed = 1 AND is_deleted = 0
+ORDER BY date DESC;
 
 getTodayCheckIns:
 SELECT h.id, h.title, h.description, h.category, h.frequency, h.targetCount,
@@ -1187,6 +1199,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 getCoachGroupMembers:
 SELECT * FROM CoachGroupMemberEntity WHERE groupId = ? AND is_deleted = 0 ORDER BY displayOrder ASC;
 
+-- Batch fetch all active coach group members (eliminates N+1 when loading groups)
+getAllActiveCoachGroupMembers:
+SELECT * FROM CoachGroupMemberEntity
+WHERE is_deleted = 0
+ORDER BY groupId, displayOrder ASC;
+
 deleteCoachGroupMember:
 DELETE FROM CoachGroupMemberEntity WHERE id = ?;
 
@@ -1263,6 +1281,30 @@ CREATE INDEX IF NOT EXISTS idx_focus_goal ON FocusSessionEntity(goalId);
 CREATE INDEX IF NOT EXISTS idx_focus_milestone ON FocusSessionEntity(milestoneId);
 CREATE INDEX IF NOT EXISTS idx_focus_completed ON FocusSessionEntity(wasCompleted);
 CREATE INDEX IF NOT EXISTS idx_focus_started ON FocusSessionEntity(startedAt);
+
+-- ============== Sync Performance Indexes ==============
+-- Composite indexes for getUnsynced* queries: WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0
+-- and getDeleted* queries: WHERE is_deleted = 1
+
+CREATE INDEX IF NOT EXISTS idx_goal_sync ON GoalEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_milestone_sync ON MilestoneEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_goal_history_sync ON GoalHistoryEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_user_progress_sync ON UserProgressEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_user_sync ON UserEntity(is_deleted, lastSyncedAt);
+CREATE INDEX IF NOT EXISTS idx_habit_sync ON HabitEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_habit_checkin_sync ON HabitCheckInEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_journal_sync ON JournalEntryEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_badge_sync ON BadgeEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_challenge_sync ON ChallengeEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_goal_dependency_sync ON GoalDependencyEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_chat_session_sync ON ChatSessionEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_chat_message_sync ON ChatMessageEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_review_sync ON ReviewReportEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_reminder_sync ON ReminderEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_custom_coach_sync ON CustomCoachEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_coach_group_sync ON CoachGroupEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_coach_group_member_sync ON CoachGroupMemberEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_focus_session_sync ON FocusSessionEntity(is_deleted, last_synced_at);
 
 -- ============== Retrospective Queries ==============
 
@@ -1748,3 +1790,41 @@ DELETE FROM CoachGroupMemberEntity;
 
 deleteAllFocusSessions:
 DELETE FROM FocusSessionEntity;
+
+-- Coach Persona Override Table for customizing built-in coach behavior
+CREATE TABLE IF NOT EXISTS CoachPersonaOverrideEntity (
+    coachId TEXT PRIMARY KEY NOT NULL,
+    userPersona TEXT NOT NULL DEFAULT '',
+    updatedAt TEXT NOT NULL,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
+);
+
+getCoachPersonaOverride:
+SELECT * FROM CoachPersonaOverrideEntity WHERE coachId = ? AND is_deleted = 0;
+
+upsertCoachPersonaOverride:
+INSERT OR REPLACE INTO CoachPersonaOverrideEntity(coachId, userPersona, updatedAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, 0, 0, NULL);
+
+deleteCoachPersonaOverride:
+UPDATE CoachPersonaOverrideEntity SET is_deleted = 1, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE coachId = ?;
+
+-- CoachPersonaOverride sync queries
+getUnsyncedCoachPersonaOverrides:
+SELECT * FROM CoachPersonaOverrideEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedCoachPersonaOverrides:
+SELECT * FROM CoachPersonaOverrideEntity WHERE is_deleted = 1;
+
+markCoachPersonaOverrideSynced:
+UPDATE CoachPersonaOverrideEntity SET last_synced_at = ? WHERE coachId = ?;
+
+purgeDeletedCoachPersonaOverrides:
+DELETE FROM CoachPersonaOverrideEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+upsertCoachPersonaOverrideFromSync:
+INSERT OR REPLACE INTO CoachPersonaOverrideEntity(coachId, userPersona, updatedAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?);

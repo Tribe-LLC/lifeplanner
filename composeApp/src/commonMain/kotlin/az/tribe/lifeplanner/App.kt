@@ -1,10 +1,13 @@
 package az.tribe.lifeplanner
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -53,6 +56,8 @@ import az.tribe.lifeplanner.ui.focus.FocusScreen
 import az.tribe.lifeplanner.ui.retrospective.RetrospectiveScreen
 import az.tribe.lifeplanner.ui.OnboardingScreen
 import az.tribe.lifeplanner.ui.SignInScreen
+import az.tribe.lifeplanner.ui.WelcomeScreen
+import az.tribe.lifeplanner.ui.coach.CoachProfileScreen
 import az.tribe.lifeplanner.ui.coach.CoachViewModel
 import az.tribe.lifeplanner.ui.coach.CreateCoachScreen
 import az.tribe.lifeplanner.ui.coach.CreateGroupScreen
@@ -65,6 +70,7 @@ import az.tribe.lifeplanner.ui.navigation.Screen
 import co.touchlab.kermit.Logger
 import org.koin.compose.viewmodel.koinViewModel
 import az.tribe.lifeplanner.ui.theme.LifePlannerTheme
+import az.tribe.lifeplanner.ui.viewmodel.AuthState
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
 import az.tribe.lifeplanner.data.sync.SyncManager
 import az.tribe.lifeplanner.util.NetworkConnectivityObserver
@@ -80,6 +86,7 @@ import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.ui.tooling.preview.Preview
+import androidx.savedstate.read
 import org.koin.compose.koinInject
 
 @Composable
@@ -93,6 +100,7 @@ fun App(
 
         // Collect onboarding state from ViewModel
         val hasCompletedOnboarding by authViewModel.hasCompletedOnboarding.collectAsState()
+        val authState by authViewModel.authState.collectAsState()
 
         LaunchedEffect(true) {
             Logger.d("App") { "LaunchedEffectApp is called" }
@@ -103,7 +111,7 @@ fun App(
                 }
             })
             myPushNotificationToken = NotifierManager.getPushNotifier().getToken() ?: ""
-            Logger.d("App") { "Firebase Token: $myPushNotificationToken" }
+            Logger.d("App") { "Push notification token retrieved" }
         }
 
         // Start network connectivity observation
@@ -115,10 +123,10 @@ fun App(
         // Sync widget data on every app resume (processes pending widget check-ins)
         var resumeCount by remember { mutableIntStateOf(0) }
 
-        // Trigger Supabase sync on app foreground
+        // Trigger Supabase sync on app foreground — only for real accounts
         val syncManager: SyncManager = koinInject()
-        LaunchedEffect(resumeCount) {
-            if (resumeCount > 0) {
+        LaunchedEffect(resumeCount, authState) {
+            if (resumeCount > 0 && authState is AuthState.Authenticated) {
                 syncManager.performFullSync()
             }
         }
@@ -225,11 +233,39 @@ fun App(
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentRoute = navBackStackEntry?.destination?.route
 
-        // Wait for onboarding check to complete
-        val startDestination = when (hasCompletedOnboarding) {
-            true -> Screen.Home.route
-            false -> Screen.Onboarding.route
-            null -> return@LifePlannerTheme // Still loading
+        // Determine start destination based on auth state
+        val startDestination = when (authState) {
+            is AuthState.Loading -> return@LifePlannerTheme // Still loading
+            is AuthState.Authenticated, is AuthState.Guest -> Screen.Home.route
+            else -> Screen.Welcome.route
+        }
+
+        // React to auth state changes — navigate to the right screen
+        LaunchedEffect(authState) {
+            when {
+                // Authenticated or Guest → ensure on Home
+                authState is AuthState.Authenticated || authState is AuthState.Guest -> {
+                    if (authState is AuthState.Authenticated) {
+                        syncManager.performFullSync(resetRetry = true)
+                    }
+                    val current = navController.currentDestination?.route
+                    if (current == Screen.Welcome.route || current == "sign_in") {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                }
+                // Signed out → reset cached data and go to Welcome
+                authState is AuthState.Unauthenticated -> {
+                    gamificationViewModel.resetState()
+                    val current = navController.currentDestination?.route
+                    if (current != Screen.Welcome.route && current != "sign_in") {
+                        navController.navigate(Screen.Welcome.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                }
+            }
         }
 
         // Routes where bottom navigation should be visible
@@ -243,7 +279,14 @@ fun App(
 
         // Use Box layout to prevent jumping when bottom nav hides
         // NavHost fills entire space, bottom bar overlays at bottom
-        Box(modifier = Modifier.fillMaxSize()) {
+        val focusManager = LocalFocusManager.current
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTapGestures(onTap = { focusManager.clearFocus() })
+                }
+        ) {
 
         NavHost(
             navController = navController,
@@ -298,6 +341,25 @@ fun App(
                         },
                         onNavigateToProfile = {
                             navController.navigate(Screen.Profile.route) {
+                                popUpTo(navController.graph.startDestinationRoute!!) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        onNavigateToRetrospective = {
+                            navController.navigate(Screen.Retrospective.route) {
+                                launchSingleTop = true
+                            }
+                        },
+                        onNavigateToChat = {
+                            navController.navigate(Screen.AIChat.route) {
+                                launchSingleTop = true
+                            }
+                        },
+                        onContinueChat = { coachId ->
+                            navController.navigate("ai_chat/$coachId") {
                                 launchSingleTop = true
                             }
                         },
@@ -373,7 +435,7 @@ fun App(
                     defaultValue = null
                 })
             ) { backStackEntry ->
-                val goalId = backStackEntry.arguments?.getString("goalId")
+                val goalId = backStackEntry.arguments?.read { getStringOrNull("goalId") }
                 JournalCreationWizardScreen(
                     onNavigateBack = { navController.popBackStack() },
                     preSelectedGoalId = goalId
@@ -385,7 +447,7 @@ fun App(
                 route = Screen.JournalEntryDetail.route,
                 arguments = listOf(navArgument("entryId") { type = NavType.StringType })
             ) { backStackEntry ->
-                val entryId = backStackEntry.arguments?.getString("entryId") ?: return@composable
+                val entryId = backStackEntry.arguments?.read { getStringOrNull("entryId") } ?: return@composable
                 JournalEntryDetailScreen(
                     entryId = entryId,
                     onBackClick = { navController.popBackStack() },
@@ -402,11 +464,6 @@ fun App(
                 ProfileScreen(
                     onNavigateToAchievements = {
                         navController.navigate(Screen.Achievements.route) {
-                            launchSingleTop = true
-                        }
-                    },
-                    onNavigateToReviewChat = {
-                        navController.navigate("ai_chat/luna_general") {
                             launchSingleTop = true
                         }
                     },
@@ -435,11 +492,6 @@ fun App(
                             launchSingleTop = true
                         }
                     },
-                    onNavigateToOnboarding = {
-                        navController.navigate(Screen.Onboarding.route) {
-                            launchSingleTop = true
-                        }
-                    },
                     onNavigateToSignIn = {
                         navController.navigate("sign_in") {
                             launchSingleTop = true
@@ -453,7 +505,7 @@ fun App(
                 route = "goal_detail/{goalId}",
                 arguments = listOf(navArgument("goalId") { type = NavType.StringType })
             ) { backStackEntry ->
-                val goalId = backStackEntry.arguments?.getString("goalId") ?: return@composable
+                val goalId = backStackEntry.arguments?.read { getStringOrNull("goalId") } ?: return@composable
                 GoalDetailScreen(
                     goalId = goalId,
                     viewModel = viewModel,
@@ -491,7 +543,18 @@ fun App(
                 )
             }
 
-            // Onboarding Screen
+            // Welcome Screen (video background + auth buttons)
+            composable(Screen.Welcome.route) {
+                WelcomeScreen(
+                    onComplete = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Welcome.route) { inclusive = true }
+                        }
+                    }
+                )
+            }
+
+            // Onboarding Screen (kept for existing users)
             composable(Screen.Onboarding.route) {
                 OnboardingScreen(
                     onOnboardingComplete = {
@@ -550,8 +613,8 @@ fun App(
                     navArgument("milestoneId") { type = NavType.StringType; defaultValue = "" }
                 )
             ) { backStackEntry ->
-                val goalId = backStackEntry.arguments?.getString("goalId")?.takeIf { it.isNotEmpty() }
-                val milestoneId = backStackEntry.arguments?.getString("milestoneId")?.takeIf { it.isNotEmpty() }
+                val goalId = backStackEntry.arguments?.read { getStringOrNull("goalId") }?.takeIf { it.isNotEmpty() }
+                val milestoneId = backStackEntry.arguments?.read { getStringOrNull("milestoneId") }?.takeIf { it.isNotEmpty() }
                 FocusScreen(
                     onNavigateBack = { navController.popBackStack() },
                     goalId = goalId,
@@ -574,7 +637,7 @@ fun App(
                 route = Screen.DependencyGraphForGoal.route,
                 arguments = listOf(navArgument("goalId") { type = NavType.StringType })
             ) { backStackEntry ->
-                val goalId = backStackEntry.arguments?.getString("goalId") ?: return@composable
+                val goalId = backStackEntry.arguments?.read { getStringOrNull("goalId") } ?: return@composable
                 DependencyGraphScreen(
                     focusGoalId = goalId,
                     onNavigateBack = { navController.popBackStack() },
@@ -602,13 +665,18 @@ fun App(
                         navController.navigate(Screen.CreateGroup.route) {
                             launchSingleTop = true
                         }
+                    },
+                    onNavigateToCoachProfile = { coachId ->
+                        navController.navigate("coach_profile/$coachId") {
+                            launchSingleTop = true
+                        }
                     }
                 )
             }
 
             // AI Chat Screen - Chat with specific Coach
             composable(Screen.AIChatSession.route) { backStackEntry ->
-                val coachId = backStackEntry.arguments?.getString("sessionId")
+                val coachId = backStackEntry.arguments?.read { getStringOrNull("sessionId") }
                 AIChatScreen(
                     coachId = coachId,
                     onNavigateBack = { navController.popBackStack() },
@@ -626,7 +694,24 @@ fun App(
                         navController.navigate(Screen.CreateGroup.route) {
                             launchSingleTop = true
                         }
+                    },
+                    onNavigateToCoachProfile = { profileCoachId ->
+                        navController.navigate("coach_profile/$profileCoachId") {
+                            launchSingleTop = true
+                        }
                     }
+                )
+            }
+
+            // Coach Profile Screen
+            composable(
+                Screen.CoachProfile.route,
+                arguments = listOf(navArgument("coachId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val profileCoachId = backStackEntry.arguments?.read { getStringOrNull("coachId") } ?: return@composable
+                CoachProfileScreen(
+                    coachId = profileCoachId,
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
 
@@ -647,7 +732,7 @@ fun App(
                 route = Screen.EditCoach.route,
                 arguments = listOf(navArgument("coachId") { type = NavType.StringType })
             ) { backStackEntry ->
-                val coachId = backStackEntry.arguments?.getString("coachId") ?: return@composable
+                val coachId = backStackEntry.arguments?.read { getStringOrNull("coachId") } ?: return@composable
                 val coachViewModel: CoachViewModel = koinInject()
                 val coachToEdit = coachViewModel.getCoachById(coachId)
                 CreateCoachScreen(
@@ -679,7 +764,7 @@ fun App(
                 route = Screen.EditGroup.route,
                 arguments = listOf(navArgument("groupId") { type = NavType.StringType })
             ) { backStackEntry ->
-                val groupId = backStackEntry.arguments?.getString("groupId") ?: return@composable
+                val groupId = backStackEntry.arguments?.read { getStringOrNull("groupId") } ?: return@composable
                 val coachViewModel: CoachViewModel = koinInject()
                 val uiState by coachViewModel.uiState.collectAsState()
                 val groupToEdit = coachViewModel.getGroupById(groupId)
@@ -712,7 +797,7 @@ fun App(
                 arguments = listOf(navArgument("templateId") { type = NavType.StringType })
             ) { backStackEntry ->
                 val templateId =
-                    backStackEntry.arguments?.getString("templateId") ?: return@composable
+                    backStackEntry.arguments?.read { getStringOrNull("templateId") } ?: return@composable
                 AddGoalFromTemplateScreen(
                     templateId = templateId,
                     viewModel = viewModel,
@@ -767,7 +852,7 @@ fun App(
                 route = Screen.EditGoal.route,
                 arguments = listOf(navArgument("goalId") { type = NavType.StringType })
             ) { backStackEntry ->
-                val goalId = backStackEntry.arguments?.getString("goalId") ?: return@composable
+                val goalId = backStackEntry.arguments?.read { getStringOrNull("goalId") } ?: return@composable
                 EditGoalScreen(
                     goalId = goalId,
                     viewModel = viewModel,

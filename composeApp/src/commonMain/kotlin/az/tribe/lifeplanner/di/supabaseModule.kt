@@ -10,6 +10,8 @@ import io.github.jan.supabase.serializer.KotlinXSerializer
 import kotlinx.serialization.json.Json
 import org.koin.dsl.module
 
+expect fun getSupabaseHttpEngine(): io.ktor.client.engine.HttpClientEngine?
+
 val supabaseModule = module {
 
     single<SupabaseClient> {
@@ -17,6 +19,7 @@ val supabaseModule = module {
             supabaseUrl = BuildKonfig.SUPABASE_URL,
             supabaseKey = BuildKonfig.SUPABASE_ANON_KEY
         ) {
+            getSupabaseHttpEngine()?.let { httpEngine = it }
             install(Auth) {
                 alwaysAutoRefresh = true
                 autoLoadFromStorage = true

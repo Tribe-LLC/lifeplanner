@@ -142,22 +142,20 @@ class HabitRepositoryImpl(
     }
 
     override suspend fun calculateStreak(habitId: String): Int {
-        val habit = getHabitById(habitId) ?: return 0
+        getHabitById(habitId) ?: return 0
         val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+
+        // Single query: fetch all completed check-in dates in descending order
+        val completedDates = database.getCompletedCheckInDatesDesc(habitId)
+            .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
+            .toSet()
 
         var streak = 0
         var currentDate = today
-
-        while (true) {
-            val checkIn = getCheckInByHabitAndDate(habitId, currentDate)
-            if (checkIn != null && checkIn.completed) {
-                streak++
-                currentDate = currentDate.minus(DatePeriod(days = 1))
-            } else {
-                break
-            }
+        while (currentDate in completedDates) {
+            streak++
+            currentDate = currentDate.minus(DatePeriod(days = 1))
         }
-
         return streak
     }
 
@@ -183,10 +181,16 @@ class HabitRepositoryImpl(
         // Clean up any duplicate check-ins first
         database.deleteDuplicateCheckIns()
 
+        // Batch: fetch all habits + today's check-ins in 2 queries instead of 1+N
         val habits = getAllHabits()
+        val todayCheckIns = getCheckInsByDate(today)
+        val completedHabitIds = todayCheckIns
+            .filter { it.completed }
+            .map { it.habitId }
+            .toSet()
+
         return habits.map { habit ->
-            val checkIn = getCheckInByHabitAndDate(habit.id, today)
-            habit to (checkIn?.completed == true)
+            habit to (habit.id in completedHabitIds)
         }
     }
 

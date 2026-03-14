@@ -43,8 +43,7 @@ fun SignInScreen(
     val magicLinkSent by authViewModel.magicLinkSent.collectAsState()
 
     val focusManager = LocalFocusManager.current
-    // TODO: Remove debug pre-fill before release
-    var email by remember { mutableStateOf("demo@lifeplanner.app") }
+    var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
     var isSignUp by remember { mutableStateOf(false) }

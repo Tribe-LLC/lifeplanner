@@ -1,7 +1,5 @@
 package az.tribe.lifeplanner.ui
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -23,12 +21,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -36,40 +38,43 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import az.tribe.lifeplanner.ui.components.getIcon
 import az.tribe.lifeplanner.ui.habit.HabitWithStatus
+import az.tribe.lifeplanner.domain.repository.ChatRepository
 import az.tribe.lifeplanner.domain.repository.FocusRepository
+import az.tribe.lifeplanner.domain.model.ChatSession
+import az.tribe.lifeplanner.domain.model.CoachPersona
+import az.tribe.lifeplanner.domain.model.MessageRole
 import az.tribe.lifeplanner.ui.theme.LifePlannerGradients
 import az.tribe.lifeplanner.ui.theme.backgroundColor
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.domain.model.Milestone
 import az.tribe.lifeplanner.ui.components.CompactGoalTile
-import az.tribe.lifeplanner.ui.components.InlineGreetingRow
 import az.tribe.lifeplanner.ui.components.InlineStatsRow
 import az.tribe.lifeplanner.ui.components.NextAction
 import az.tribe.lifeplanner.ui.components.NextActionCard
 import az.tribe.lifeplanner.ui.components.GlassCard
 import az.tribe.lifeplanner.ui.components.QuickActionsPillRow
+import az.tribe.lifeplanner.ui.components.SyncStatusIndicator
 import az.tribe.lifeplanner.data.sync.SyncManager
-import az.tribe.lifeplanner.data.sync.SyncState
+import az.tribe.lifeplanner.data.sync.SyncStatus
+import kotlinx.coroutines.flow.StateFlow
 import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
 import az.tribe.lifeplanner.ui.habit.HabitViewModel
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
@@ -78,10 +83,10 @@ import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
 import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: GoalViewModel,
@@ -95,6 +100,9 @@ fun HomeScreen(
     onNavigateToAchievements: () -> Unit = {},
     onNavigateToFocus: () -> Unit = {},
     onNavigateToProfile: () -> Unit = {},
+    onNavigateToRetrospective: () -> Unit = {},
+    onNavigateToChat: () -> Unit = {},
+    onContinueChat: (sessionId: String) -> Unit = {},
     onStartFocusForMilestone: (goalId: String, milestoneId: String) -> Unit = { _, _ -> },
 ) {
     val snackBarHostState = remember { SnackbarHostState() }
@@ -153,6 +161,17 @@ fun HomeScreen(
         }
     }
 
+    // Load recent chat session for Coach AI card
+    val chatRepository: ChatRepository = koinInject()
+    var recentSession by remember { mutableStateOf<ChatSession?>(null) }
+    var recentCoach by remember { mutableStateOf<CoachPersona?>(null) }
+    LaunchedEffect(Unit) {
+        val sessions = chatRepository.getAllSessions()
+        val latest = sessions.maxByOrNull { it.lastMessageAt }
+        recentSession = latest
+        recentCoach = latest?.let { CoachPersona.getById(it.coachId) }
+    }
+
     // Calculate habits stats
     val habitsCompleted = habits.count { it.isCompletedToday }
     val totalHabits = habits.size
@@ -180,52 +199,34 @@ fun HomeScreen(
         gamificationViewModel.refresh()
     }
 
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    val syncStatus by syncManager.syncStatus.collectAsState()
+    val scope = rememberCoroutineScope()
 
-    val targetTitleColor = when (syncStatus.state) {
-        SyncState.SYNCED -> Color(0xFF4CAF50)
-        SyncState.SYNCING -> MaterialTheme.colorScheme.tertiary
-        SyncState.ERROR -> MaterialTheme.colorScheme.error
-        SyncState.OFFLINE -> MaterialTheme.colorScheme.outline
-        SyncState.IDLE -> MaterialTheme.colorScheme.primary
+    val greetingLine = remember(currentUser?.displayName) {
+        val hour = Clock.System.now()
+            .toLocalDateTime(TimeZone.currentSystemDefault()).hour
+        when (hour) {
+            in 5..11 -> "Good morning"
+            in 12..16 -> "Good afternoon"
+            in 17..20 -> "Good evening"
+            else -> "Good night"
+        } + (currentUser?.displayName?.let { ", $it" } ?: "") + "!"
     }
-    val titleColor by animateColorAsState(
-        targetValue = targetTitleColor,
-        animationSpec = tween(durationMillis = 600)
-    )
+
+    val motivationLine = remember {
+        val hour = Clock.System.now()
+            .toLocalDateTime(TimeZone.currentSystemDefault()).hour
+        when (hour) {
+            in 5..11 -> "Let's make today count"
+            in 12..16 -> "Keep the momentum going"
+            in 17..20 -> "Great work today"
+            else -> "Rest well, recharge"
+        }
+    }
+
+    val level = userProgress?.currentLevel ?: 1
+    val streak = userProgress?.currentStreak ?: 0
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            TopAppBar(
-                scrollBehavior = scrollBehavior,
-                title = {
-                    Text(
-                        "Life Planner",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = titleColor
-                    )
-                },
-                actions = {
-                    IconButton(onClick = onNavigateToProfile) {
-                        Icon(
-                            Icons.Rounded.AccountCircle,
-                            contentDescription = "Profile",
-                            tint = if (authState is AuthState.Authenticated)
-                                Color(0xFF4CAF50)
-                            else
-                                MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        },
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = {
             SnackbarHost(snackBarHostState) { data ->
@@ -248,17 +249,22 @@ fun HomeScreen(
                 top = LifePlannerDesign.Padding.screenHorizontal,
                 start = LifePlannerDesign.Padding.screenHorizontal,
                 end = LifePlannerDesign.Padding.screenHorizontal,
-                bottom = innerPadding.calculateBottomPadding() + 96.dp
+                bottom = innerPadding.calculateBottomPadding() + 112.dp
             ),
             verticalArrangement = Arrangement.spacedBy(LifePlannerDesign.Spacing.sm)
         ) {
-            // 1. Inline Greeting Row
-            item {
-                InlineGreetingRow(
-                    userName = currentUser?.displayName,
-                    streak = userProgress?.currentStreak ?: 0,
-                    level = userProgress?.currentLevel ?: 1,
-                    levelTitle = userProgress?.title ?: "Novice"
+            // 1. Hero Banner
+            item(key = "hero_banner") {
+                HeroBanner(
+                    greeting = greetingLine,
+                    subtitle = motivationLine,
+                    level = level,
+                    streak = streak,
+                    levelTitle = userProgress?.title ?: "Novice",
+                    syncStatus = syncManager.syncStatus,
+                    onRetrySync = { scope.launch { syncManager.performFullSync(resetRetry = true) } },
+                    isSignedIn = authState is AuthState.Authenticated && currentUser?.email != null,
+                    onProfileClick = onNavigateToProfile
                 )
             }
 
@@ -284,8 +290,8 @@ fun HomeScreen(
                 )
             }
 
-            // Secure Account CTA for guests
-            if (currentUser?.isGuest != false) {
+            // Secure Account CTA — show for anyone without a verified email account
+            if (currentUser?.email == null) {
                 item {
                     SecureAccountCTABanner(onClick = { showAccountSheet = true })
                 }
@@ -333,32 +339,48 @@ fun HomeScreen(
             item {
                 if (upcomingGoals.isEmpty()) {
                     GlassCard(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = onAddGoalClick),
                         cornerRadius = 16.dp
                     ) {
                         Row(
                             modifier = Modifier.padding(16.dp),
                             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
                         ) {
-                            androidx.compose.material3.Icon(
-                                Icons.Rounded.CheckCircle,
-                                null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(32.dp)
-                            )
-                            Spacer(Modifier.width(16.dp))
-                            Column {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                                contentAlignment = androidx.compose.ui.Alignment.Center
+                            ) {
+                                androidx.compose.material3.Icon(
+                                    Icons.Rounded.Add,
+                                    null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            Spacer(Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    "All caught up!",
+                                    "Set your first goal",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.SemiBold
                                 )
                                 Text(
-                                    "No urgent deadlines. Keep up the great work!",
+                                    "Tap to create a goal and start tracking progress",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                            androidx.compose.material3.Icon(
+                                Icons.Rounded.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     }
                 } else {
@@ -416,9 +438,9 @@ fun HomeScreen(
             }
 
             // 6. Today's Habits
-            if (habits.isNotEmpty()) {
+            run {
                 val pendingHabits = habits.filter { !it.isCompletedToday }
-                val allDone = pendingHabits.isEmpty()
+                val allDone = habits.isNotEmpty() && pendingHabits.isEmpty()
 
                 item(key = "habits_header") {
                     Row(
@@ -427,36 +449,87 @@ fun HomeScreen(
                         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
                     ) {
                         Text(
-                            "Today's Habits ($habitsCompleted/$totalHabits)",
+                            if (habits.isNotEmpty()) "Today's Habits ($habitsCompleted/$totalHabits)"
+                            else "Today's Habits",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
-                        androidx.compose.material3.Surface(
-                            onClick = onNavigateToHabits,
-                            shape = RoundedCornerShape(50),
-                            color = Color.Transparent
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                        if (habits.isNotEmpty()) {
+                            androidx.compose.material3.Surface(
+                                onClick = onNavigateToHabits,
+                                shape = RoundedCornerShape(50),
+                                color = Color.Transparent
                             ) {
-                                Text(
-                                    "See all",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                androidx.compose.material3.Icon(
-                                    Icons.Rounded.ChevronRight,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(18.dp)
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "See all",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    androidx.compose.material3.Icon(
+                                        Icons.Rounded.ChevronRight,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
-                if (allDone) {
+                if (habits.isEmpty()) {
+                    item(key = "habits_empty_cta") {
+                        GlassCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(onClick = onNavigateToHabits),
+                            cornerRadius = 16.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFF4CAF50).copy(alpha = 0.12f)),
+                                    contentAlignment = androidx.compose.ui.Alignment.Center
+                                ) {
+                                    androidx.compose.material3.Icon(
+                                        Icons.Rounded.Add,
+                                        null,
+                                        tint = Color(0xFF4CAF50),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                Spacer(Modifier.width(14.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "Build your first habit",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        "Tap to create a daily habit and build consistency",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                androidx.compose.material3.Icon(
+                                    Icons.Rounded.ChevronRight,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                } else if (allDone) {
                     item(key = "habits_all_done") {
                         AllHabitsDoneCard(
                             totalCompleted = habits.size,
@@ -492,7 +565,188 @@ fun HomeScreen(
                 }
             }
 
-            // 7. Next Action Card (moved to bottom as shortcut)
+            // 7. Explore section — Retrospective, Flow Focus, Coach AI
+            item(key = "explore_header") {
+                Text(
+                    "Explore",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // Day Retrospective card
+            item(key = "retrospective_card") {
+                GlassCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onNavigateToRetrospective),
+                    cornerRadius = 16.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFF7C4DFF).copy(alpha = 0.12f)),
+                            contentAlignment = androidx.compose.ui.Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Rounded.History,
+                                contentDescription = null,
+                                tint = Color(0xFF7C4DFF),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Yesterday's Recap",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                "Review what you accomplished",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(
+                            Icons.Rounded.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            // Flow Focus card
+            item(key = "flow_focus_card") {
+                GlassCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onNavigateToFocus),
+                    cornerRadius = 16.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFFFF6B35).copy(alpha = 0.12f)),
+                            contentAlignment = androidx.compose.ui.Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Rounded.PlayArrow,
+                                contentDescription = null,
+                                tint = Color(0xFFFF6B35),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Flow Focus",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                "Start a free-flow focus session",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(
+                            Icons.Rounded.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            // Coach AI card
+            item(key = "coach_ai_card") {
+                val session = recentSession
+                val coach = recentCoach
+
+                GlassCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = {
+                            if (session != null) {
+                                onContinueChat(session.coachId)
+                            } else {
+                                onNavigateToChat()
+                            }
+                        }),
+                    cornerRadius = 16.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFF00BFA5).copy(alpha = 0.12f)),
+                            contentAlignment = androidx.compose.ui.Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Rounded.Psychology,
+                                contentDescription = null,
+                                tint = Color(0xFF00BFA5),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            if (session != null && coach != null) {
+                                Text(
+                                    "Continue with ${coach.name}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                val lastMsg = session.messages.lastOrNull { it.role == MessageRole.ASSISTANT }
+                                Text(
+                                    lastMsg?.content?.take(60) ?: session.title,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            } else {
+                                Text(
+                                    "Coach AI",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    "Start a conversation with your coach",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Icon(
+                            Icons.Rounded.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            // 8. Next Action Card (moved to bottom as shortcut)
             item {
                 NextActionCard(
                     nextAction = nextAction,
@@ -506,14 +760,146 @@ fun HomeScreen(
     }
 
     if (showAccountSheet) {
-        AccountCreationBottomSheet(
+        AuthBottomSheet(
+            isSignUp = true,
             authViewModel = authViewModel,
+            authState = authState,
             onDismiss = { showAccountSheet = false },
-            onNavigateToSignIn = {
-                showAccountSheet = false
-                onNavigateToProfile()
-            }
+            onSuccess = { showAccountSheet = false }
         )
+    }
+}
+
+@Composable
+private fun HeroBanner(
+    greeting: String,
+    subtitle: String,
+    level: Int,
+    streak: Int,
+    levelTitle: String,
+    syncStatus: StateFlow<SyncStatus>,
+    onRetrySync: () -> Unit,
+    isSignedIn: Boolean,
+    onProfileClick: () -> Unit
+) {
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        cornerRadius = 20.dp
+    ) {
+        Box {
+            // Gradient accent at the top
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primary,
+                                MaterialTheme.colorScheme.tertiary
+                            )
+                        )
+                    )
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp, start = 20.dp, end = 12.dp, bottom = 16.dp)
+            ) {
+                // Top row: greeting + profile icon
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = greeting,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (isSignedIn) subtitle else "Sign in to sync & back up your data",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (isSignedIn) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    IconButton(onClick = onProfileClick) {
+                        Icon(
+                            Icons.Rounded.AccountCircle,
+                            contentDescription = "Profile",
+                            tint = if (isSignedIn) Color(0xFF4CAF50)
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(30.dp)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // Pills row: Level + Streak + Sync
+                Row(
+                    modifier = Modifier.padding(end = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        Text(
+                            "Lv.$level · $levelTitle",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                        )
+                    }
+
+                    if (streak > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color(0xFFFF6B35).copy(alpha = 0.12f)
+                        ) {
+                            Text(
+                                "\uD83D\uDD25 $streak day streak",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFF6B35),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.weight(1f))
+
+                    if (isSignedIn) {
+                        SyncStatusIndicator(
+                            syncStatus = syncStatus,
+                            onRetryClick = onRetrySync,
+                            compact = false
+                        )
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)
+                        ) {
+                            Text(
+                                "Guest",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

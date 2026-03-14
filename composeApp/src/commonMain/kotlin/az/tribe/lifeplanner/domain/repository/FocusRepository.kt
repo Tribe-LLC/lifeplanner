@@ -12,6 +12,7 @@ interface FocusRepository {
     suspend fun getSessionsByMilestoneId(milestoneId: String): List<FocusSession>
     suspend fun getCompletedSessions(): List<FocusSession>
     suspend fun getTotalFocusMinutes(): Int
+    suspend fun getTotalFocusSeconds(): Long
     suspend fun getTotalSessionCount(): Int
     suspend fun getTodaySessions(): List<FocusSession>
 }

@@ -242,7 +242,7 @@ fun HabitTrackerScreen(
             // Show FAB when not in onboarding
             // Wrapped in Box with bottom padding to stay above bottom nav
             if (!showOnboarding && habits.isNotEmpty()) {
-                Box(modifier = Modifier.padding(bottom = 80.dp)) {
+                Box(modifier = Modifier.padding(bottom = 96.dp)) {
                     ExtendedFloatingActionButton(
                         onClick = { viewModel.showAddHabitDialog() },
                         containerColor = MaterialTheme.colorScheme.primary,
@@ -306,7 +306,7 @@ fun HabitTrackerScreen(
                         start = 16.dp,
                         top = 8.dp,
                         end = 16.dp,
-                        bottom = 120.dp
+                        bottom = 136.dp
                     ),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -393,9 +393,10 @@ fun HabitTrackerScreen(
         }
 
         // Quick Reflection Bottom Sheet
-        if (showReflectionSheet && habitForReflection != null) {
+        val currentHabitForReflection = habitForReflection
+        if (showReflectionSheet && currentHabitForReflection != null) {
             QuickReflectionBottomSheet(
-                habit = habitForReflection!!,
+                habit = currentHabitForReflection,
                 linkedGoal = linkedGoalForReflection,
                 aiProxy = aiProxy,
                 onDismiss = {
@@ -409,7 +410,7 @@ fun HabitTrackerScreen(
                         content = content,
                         mood = mood,
                         linkedGoalId = linkedGoalForReflection?.id,
-                        linkedHabitId = habitForReflection!!.id
+                        linkedHabitId = currentHabitForReflection.id
                     )
                     showReflectionSheet = false
                     habitForReflection = null

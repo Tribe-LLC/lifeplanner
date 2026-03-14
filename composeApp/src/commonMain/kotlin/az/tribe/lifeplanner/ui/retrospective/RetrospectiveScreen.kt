@@ -146,11 +146,11 @@ fun RetrospectiveScreen(
                         )
                     }
                 }
-            } else if (uiState.snapshot != null && !uiState.snapshot!!.hasAnyActivity) {
+            } else if (uiState.snapshot != null && uiState.snapshot?.hasAnyActivity == false) {
                 // Empty state
                 item { EmptyDayState() }
-            } else if (uiState.snapshot != null) {
-                val snapshot = uiState.snapshot!!
+            } else {
+                val snapshot = uiState.snapshot ?: return@LazyColumn
 
                 // 2. Day Summary Card
                 item { DaySummaryCard(snapshot) }
@@ -194,11 +194,12 @@ fun RetrospectiveScreen(
                 }
 
                 // Compare section
-                if (uiState.compareMode && uiState.todaySnapshot != null) {
+                val todaySnap = uiState.todaySnapshot
+                if (uiState.compareMode && todaySnap != null) {
                     item {
                         CompareSection(
                             thenSnapshot = snapshot,
-                            nowSnapshot = uiState.todaySnapshot!!
+                            nowSnapshot = todaySnap
                         )
                     }
                 }

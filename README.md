@@ -123,8 +123,9 @@ supabase/
 
 ## Documentation
 
-- [Product Overview](PRODUCT_OVERVIEW.md) — investor-facing narrative, architecture, and roadmap
 - [Terminology](TERMINOLOGY.md) — full glossary of features, domain terms, and shorthand
+- [Implementation Plan](IMPLEMENTATION_PLAN.md) — development phases and progress
+- [Security](SECURITY.md) — security practices and vulnerability reporting
 
 ---
 

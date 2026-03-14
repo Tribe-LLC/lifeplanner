@@ -298,17 +298,18 @@ fun LifeBalanceScreen(
     }
 
     // Coach Selection Bottom Sheet
-    if (uiState.showCoachSheet && uiState.selectedInsight != null) {
+    val currentSelectedInsight = uiState.selectedInsight
+    if (uiState.showCoachSheet && currentSelectedInsight != null) {
         CoachSelectionSheet(
-            insight = uiState.selectedInsight!!,
+            insight = currentSelectedInsight,
             relevantCoaches = uiState.relevantCoaches,
             onCoachSelected = { coachId ->
-                val message = viewModel.buildInsightMessage(uiState.selectedInsight!!)
+                val message = viewModel.buildInsightMessage(currentSelectedInsight)
                 viewModel.hideCoachSheet()
                 onNavigateToCoach(coachId, message)
             },
             onCouncilSelected = {
-                val message = viewModel.buildInsightMessage(uiState.selectedInsight!!)
+                val message = viewModel.buildInsightMessage(currentSelectedInsight)
                 viewModel.hideCoachSheet()
                 onNavigateToCoach(CoachPersona.COUNCIL_ID, message)
             },

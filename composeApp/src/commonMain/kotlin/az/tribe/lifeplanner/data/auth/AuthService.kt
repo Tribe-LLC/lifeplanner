@@ -28,6 +28,8 @@ interface AuthService {
     suspend fun signInWithMagicLink(email: String)
     /** Verify a 6-digit OTP code sent via magic link. */
     suspend fun verifyOtp(email: String, token: String): AuthResult
+    /** Verify a 6-digit OTP code sent for email signup confirmation. */
+    suspend fun verifySignupOtp(email: String, token: String): AuthResult
 }
 
 /**
@@ -37,6 +39,10 @@ interface AuthService {
 class SupabaseAuthService(
     private val supabase: SupabaseClient
 ) : AuthService {
+
+    companion object {
+        private const val REDIRECT_URL = "https://tribe.az/lifeplanner/auth/callback"
+    }
 
     override suspend fun signInWithEmail(email: String, password: String): AuthResult {
         return try {
@@ -80,7 +86,7 @@ class SupabaseAuthService(
         displayName: String
     ): AuthResult {
         return try {
-            val signUpResult = supabase.auth.signUpWith(Email) {
+            val signUpResult = supabase.auth.signUpWith(Email, redirectUrl = REDIRECT_URL) {
                 this.email = email
                 this.password = password
                 this.data = kotlinx.serialization.json.buildJsonObject {
@@ -168,18 +174,19 @@ class SupabaseAuthService(
 
     override suspend fun getCurrentUser(): FirebaseUser? {
         val user = supabase.auth.currentUserOrNull() ?: return null
+        val email = user.email?.takeIf { it.isNotBlank() }
         return FirebaseUser(
             uid = user.id,
-            email = user.email,
+            email = email,
             displayName = user.userMetadata?.get("display_name")?.toString()?.removeSurrounding("\""),
             photoUrl = null,
-            isAnonymous = user.email == null
+            isAnonymous = email == null
         )
     }
 
     override suspend fun sendPasswordResetEmail(email: String) {
         try {
-            supabase.auth.resetPasswordForEmail(email)
+            supabase.auth.resetPasswordForEmail(email, redirectUrl = REDIRECT_URL)
         } catch (e: Exception) {
             Logger.e("SupabaseAuth") { "Password reset failed: ${e.message}" }
         }
@@ -190,12 +197,13 @@ class SupabaseAuthService(
             // supabase-kt 3.x auto-loads the session from storage when you access currentUserOrNull()
             val user = supabase.auth.currentUserOrNull()
             if (user != null) {
+                val email = user.email?.takeIf { it.isNotBlank() }
                 FirebaseUser(
                     uid = user.id,
-                    email = user.email,
+                    email = email,
                     displayName = user.userMetadata?.get("display_name")?.toString()?.removeSurrounding("\""),
                     photoUrl = null,
-                    isAnonymous = user.email == null
+                    isAnonymous = email == null
                 )
             } else {
                 null
@@ -212,7 +220,7 @@ class SupabaseAuthService(
         displayName: String?
     ): AuthResult {
         return try {
-            supabase.auth.updateUser {
+            supabase.auth.updateUser(redirectUrl = REDIRECT_URL) {
                 this.email = email
                 this.password = password
                 if (displayName != null) {
@@ -260,11 +268,19 @@ class SupabaseAuthService(
 
     override suspend fun signInWithMagicLink(email: String) {
         try {
-            supabase.auth.signInWith(OTP) {
+            supabase.auth.signInWith(OTP, redirectUrl = REDIRECT_URL) {
                 this.email = email
-                this.createUser = true
+                this.createUser = false
             }
         } catch (e: Exception) {
+            // Timeout errors usually mean the email was sent but the response was slow.
+            // Treat timeouts as success since the OTP is fire-and-forget.
+            val isTimeout = e.message?.contains("timeout", ignoreCase = true) == true ||
+                    e.message?.contains("timed out", ignoreCase = true) == true
+            if (isTimeout) {
+                Logger.w("SupabaseAuth") { "Magic link request timed out (email likely sent): ${e.message}" }
+                return // treat as success
+            }
             Logger.e("SupabaseAuth") { "Magic link send failed: ${e.message}" }
             throw e
         }
@@ -295,6 +311,36 @@ class SupabaseAuthService(
                 e.message?.contains("invalid", ignoreCase = true) == true ->
                     "Invalid code. Please check and try again."
                 else -> e.message ?: "OTP verification failed"
+            }
+            AuthResult.Error(message)
+        }
+    }
+
+    override suspend fun verifySignupOtp(email: String, token: String): AuthResult {
+        return try {
+            supabase.auth.verifyEmailOtp(OtpType.Email.SIGNUP, email, token)
+            val user = supabase.auth.currentUserOrNull()
+            if (user != null) {
+                AuthResult.Success(
+                    FirebaseUser(
+                        uid = user.id,
+                        email = user.email,
+                        displayName = user.userMetadata?.get("display_name")?.toString()?.removeSurrounding("\""),
+                        photoUrl = null,
+                        isAnonymous = false
+                    )
+                )
+            } else {
+                AuthResult.Error("Verification failed")
+            }
+        } catch (e: Exception) {
+            Logger.e("SupabaseAuth") { "Signup OTP verification failed: ${e.message}" }
+            val message = when {
+                e.message?.contains("expired", ignoreCase = true) == true ->
+                    "Code expired. Please request a new verification email."
+                e.message?.contains("invalid", ignoreCase = true) == true ->
+                    "Invalid code. Please check and try again."
+                else -> e.message ?: "Verification failed"
             }
             AuthResult.Error(message)
         }

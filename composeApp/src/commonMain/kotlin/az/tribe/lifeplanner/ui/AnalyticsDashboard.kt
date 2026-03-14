@@ -65,7 +65,8 @@ fun AnalyticsDashboard(viewModel: GoalViewModel, onBackClick: () -> Unit) {
         }
     ) { innerPadding ->
 
-        if (analytics == null) {
+        val currentAnalytics = analytics
+        if (currentAnalytics == null) {
             LoadingState(modifier = Modifier.padding(innerPadding))
         } else {
             LazyColumn(
@@ -77,27 +78,27 @@ fun AnalyticsDashboard(viewModel: GoalViewModel, onBackClick: () -> Unit) {
             ) {
                 // Hero Stats
                 item {
-                    HeroStatsSection(analytics!!)
+                    HeroStatsSection(currentAnalytics)
                 }
 
                 // Progress Overview
                 item {
-                    ProgressOverviewSection(analytics!!)
+                    ProgressOverviewSection(currentAnalytics)
                 }
 
                 // Category Breakdown
                 item {
-                    CategoryBreakdownSection(analytics!!)
+                    CategoryBreakdownSection(currentAnalytics)
                 }
 
                 // Timeline Distribution
                 item {
-                    TimelineDistributionSection(analytics!!)
+                    TimelineDistributionSection(currentAnalytics)
                 }
 
                 // Performance Insights
                 item {
-                    PerformanceInsightsSection(analytics!!)
+                    PerformanceInsightsSection(currentAnalytics)
                 }
 
                 // Bottom padding

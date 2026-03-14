@@ -1,0 +1,31 @@
+-- Coach Persona Override Table for customizing built-in coach behavior
+CREATE TABLE IF NOT EXISTS CoachPersonaOverrideEntity (
+    coachId TEXT PRIMARY KEY NOT NULL,
+    userPersona TEXT NOT NULL DEFAULT '',
+    updatedAt TEXT NOT NULL,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
+);
+
+-- Sync performance indexes (composite for getUnsynced/getDeleted queries)
+CREATE INDEX IF NOT EXISTS idx_goal_sync ON GoalEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_milestone_sync ON MilestoneEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_goal_history_sync ON GoalHistoryEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_user_progress_sync ON UserProgressEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_user_sync ON UserEntity(is_deleted, lastSyncedAt);
+CREATE INDEX IF NOT EXISTS idx_habit_sync ON HabitEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_habit_checkin_sync ON HabitCheckInEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_journal_sync ON JournalEntryEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_badge_sync ON BadgeEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_challenge_sync ON ChallengeEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_goal_dependency_sync ON GoalDependencyEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_chat_session_sync ON ChatSessionEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_chat_message_sync ON ChatMessageEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_review_sync ON ReviewReportEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_reminder_sync ON ReminderEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_custom_coach_sync ON CustomCoachEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_coach_group_sync ON CoachGroupEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_coach_group_member_sync ON CoachGroupMemberEntity(is_deleted, last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_focus_session_sync ON FocusSessionEntity(is_deleted, last_synced_at);

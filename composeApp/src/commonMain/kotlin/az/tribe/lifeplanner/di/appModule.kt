@@ -43,6 +43,8 @@ import az.tribe.lifeplanner.domain.repository.LifeBalanceRepository
 import az.tribe.lifeplanner.domain.repository.ReminderRepository
 import az.tribe.lifeplanner.domain.repository.UserRepository
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
+import az.tribe.lifeplanner.notification.NotificationSchedulerInterface
+import az.tribe.lifeplanner.notification.getNotificationScheduler
 import az.tribe.lifeplanner.util.NetworkConnectivityObserver
 import az.tribe.lifeplanner.widget.WidgetDataSyncService
 import az.tribe.lifeplanner.ui.GoalViewModel
@@ -115,6 +117,7 @@ val appModule = module {
     single<FileSharer> { createFileSharer() }
     single { WidgetDataSyncService() }
     single { NetworkConnectivityObserver() }
+    single<NotificationSchedulerInterface> { getNotificationScheduler() }
 
     // Auth Service (Supabase — multiplatform, no platform-specific needed)
     single<AuthService> { SupabaseAuthService(get()) }
@@ -130,15 +133,25 @@ val appModule = module {
                 val now = kotlinx.datetime.Clock.System.now()
                 val timeUntilExpiry = session.expiresAt - now
                 if (timeUntilExpiry.inWholeSeconds <= 30) {
-                    // Token expired or about to — force refresh
-                    try {
-                        supabase.auth.refreshCurrentSession()
-                        supabase.auth.currentSessionOrNull()?.accessToken
-                            ?: throw IllegalStateException("No session after refresh")
-                    } catch (e: Exception) {
-                        co.touchlab.kermit.Logger.e("AuthTokenProvider") { "Token refresh failed: ${e.message}" }
-                        throw IllegalStateException("Authentication expired. Please sign in again.")
+                    // Token expired or about to — force refresh with retry
+                    var lastException: Exception? = null
+                    for (attempt in 1..3) {
+                        try {
+                            supabase.auth.refreshCurrentSession()
+                            val refreshed = supabase.auth.currentSessionOrNull()?.accessToken
+                            if (refreshed != null) return@AuthTokenProvider refreshed
+                        } catch (e: Exception) {
+                            lastException = e
+                            co.touchlab.kermit.Logger.w("AuthTokenProvider") {
+                                "Token refresh attempt $attempt failed: ${e.message}"
+                            }
+                            if (attempt < 3) kotlinx.coroutines.delay(500L * attempt)
+                        }
                     }
+                    co.touchlab.kermit.Logger.e("AuthTokenProvider") {
+                        "Token refresh failed after 3 attempts: ${lastException?.message}"
+                    }
+                    throw IllegalStateException("Authentication expired. Please sign in again.")
                 } else {
                     session.accessToken
                 }
@@ -165,7 +178,7 @@ val appModule = module {
     single<CoachRepository> { CoachRepositoryImpl(get(), get()) }
     single<ChatRepository> { ChatRepositoryImpl(get(), get<AiProxyService>(), get(), get()) }
     single { ReviewMessageBuilder(get()) }
-    single<ReminderRepository> { ReminderRepositoryImpl(get(), get()) }
+    single<ReminderRepository> { ReminderRepositoryImpl(get(), get(), get()) }
     single<FocusRepository> { FocusRepositoryImpl(get(), get()) }
     single<AiUsageRepository> { AiUsageRepositoryImpl(get()) }
     single<RetrospectiveRepository> { RetrospectiveRepositoryImpl(get()) }
