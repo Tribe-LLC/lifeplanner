@@ -168,7 +168,9 @@ fun JournalCreationWizardScreen(
                                     generatedTags = it.tags
                                 }
                             } catch (e: Exception) {
-                                Logger.e("JournalCreationWizard") { "AI journal generation failed: ${e.message}" }
+                                Logger.e("JournalCreationWizard", e) { "AI journal generation failed" }
+                                // Stay on current step so user can retry
+                                currentStep = JournalWizardStep.CONTEXT_GENERATE
                             } finally {
                                 isGenerating = false
                             }

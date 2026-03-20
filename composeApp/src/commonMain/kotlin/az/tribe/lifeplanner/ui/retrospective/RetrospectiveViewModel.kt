@@ -21,7 +21,7 @@ import kotlinx.datetime.toLocalDateTime
 
 data class RetrospectiveUiState(
     val selectedDate: LocalDate = Clock.System.now()
-        .toLocalDateTime(TimeZone.currentSystemDefault()).date.minus(DatePeriod(days = 1)),
+        .toLocalDateTime(TimeZone.currentSystemDefault()).date,
     val snapshot: DaySnapshot? = null,
     val todaySnapshot: DaySnapshot? = null,
     val isLoading: Boolean = false,
@@ -41,8 +41,16 @@ class RetrospectiveViewModel(
         get() = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
 
     init {
-        loadSnapshot(_uiState.value.selectedDate)
-        loadActiveDatesForMonth(_uiState.value.selectedDate)
+        // Default to today, but switch to yesterday if the user has prior activity
+        viewModelScope.launch {
+            val yesterday = today.minus(DatePeriod(days = 1))
+            val yesterdaySnapshot = repository.getDaySnapshot(yesterday)
+            val hasYesterdayActivity = yesterdaySnapshot?.hasAnyActivity == true
+            val startDate = if (hasYesterdayActivity) yesterday else today
+            _uiState.update { it.copy(selectedDate = startDate) }
+            loadSnapshot(startDate)
+            loadActiveDatesForMonth(startDate)
+        }
     }
 
     fun selectDate(date: LocalDate) {

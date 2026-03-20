@@ -606,30 +606,46 @@ private fun FocusSection(sessions: List<FocusSession>) {
 
 @Composable
 private fun GoalChangesSection(changes: List<GoalChangeWithTitle>) {
+    // Sort by time and group changes by the same goal
+    val sortedChanges = changes.sortedBy { it.changedAt }
+
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = 16.dp
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            changes.forEachIndexed { index, change ->
+            sortedChanges.forEachIndexed { index, change ->
                 Row(modifier = Modifier.fillMaxWidth()) {
-                    // Timeline dot
+                    // Timeline with time label
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(end = 12.dp)
+                        modifier = Modifier.width(52.dp).padding(end = 8.dp)
                     ) {
+                        Text(
+                            formatTime(change.changedAt),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
                         Box(
                             modifier = Modifier
-                                .size(10.dp)
+                                .padding(top = 4.dp)
+                                .size(8.dp)
                                 .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
+                                .background(
+                                    when (change.field.lowercase()) {
+                                        "status" -> MaterialTheme.colorScheme.primary
+                                        "progress" -> Color(0xFF4CAF50)
+                                        else -> MaterialTheme.colorScheme.tertiary
+                                    }
+                                )
                         )
-                        if (index < changes.size - 1) {
+                        if (index < sortedChanges.size - 1) {
                             Box(
                                 modifier = Modifier
                                     .width(2.dp)
-                                    .height(40.dp)
-                                    .background(MaterialTheme.colorScheme.outlineVariant)
+                                    .height(28.dp)
+                                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                             )
                         }
                     }
@@ -642,15 +658,14 @@ private fun GoalChangesSection(changes: List<GoalChangeWithTitle>) {
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        val description = buildChangeDescription(change)
                         Text(
-                            description,
+                            buildChangeDescription(change),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
-                if (index < changes.size - 1) {
+                if (index < sortedChanges.size - 1) {
                     Spacer(Modifier.height(4.dp))
                 }
             }
@@ -660,46 +675,124 @@ private fun GoalChangesSection(changes: List<GoalChangeWithTitle>) {
 
 private fun buildChangeDescription(change: GoalChangeWithTitle): String {
     return when (change.field.lowercase()) {
-        "progress" -> "Progress: ${change.oldValue ?: "0"}% \u2192 ${change.newValue ?: "?"}%"
-        "status" -> "Status: ${change.oldValue ?: "?"} \u2192 ${change.newValue ?: "?"}"
-        "notes" -> "Notes updated"
-        else -> "${change.field}: ${change.oldValue ?: "?"} \u2192 ${change.newValue ?: "?"}"
+        "progress" -> {
+            val old = change.oldValue?.toIntOrNull() ?: 0
+            val new = change.newValue?.toIntOrNull() ?: 0
+            if (new > old) "Progress increased from $old% to $new%"
+            else if (new < old) "Progress adjusted from $old% to $new%"
+            else "Progress is at $new%"
+        }
+        "status" -> {
+            val old = formatStatus(change.oldValue)
+            val new = formatStatus(change.newValue)
+            "Moved from $old to $new"
+        }
+        "notes" -> "Notes were updated"
+        "title" -> "Renamed to \"${change.newValue ?: "?"}\""
+        "description" -> "Description was updated"
+        "category" -> "Category changed to ${formatCategory(change.newValue)}"
+        "timeline" -> "Timeline changed to ${formatTimeline(change.newValue)}"
+        "duedate", "due_date" -> "Due date updated to ${change.newValue ?: "?"}"
+        else -> "${formatFieldName(change.field)} was updated"
     }
+}
+
+private fun formatStatus(status: String?): String {
+    return when (status?.uppercase()) {
+        "NOT_STARTED" -> "Not Started"
+        "IN_PROGRESS" -> "In Progress"
+        "COMPLETED" -> "Completed"
+        "ON_HOLD" -> "On Hold"
+        "CANCELLED" -> "Cancelled"
+        else -> status?.replace("_", " ")?.lowercase()
+            ?.replaceFirstChar { it.uppercase() } ?: "Unknown"
+    }
+}
+
+private fun formatCategory(category: String?): String {
+    return category?.replace("_", " ")?.lowercase()
+        ?.replaceFirstChar { it.uppercase() } ?: "Unknown"
+}
+
+private fun formatTimeline(timeline: String?): String {
+    return when (timeline?.uppercase()) {
+        "SHORT_TERM" -> "Short Term"
+        "MID_TERM" -> "Mid Term"
+        "LONG_TERM" -> "Long Term"
+        else -> timeline?.replace("_", " ")?.lowercase()
+            ?.replaceFirstChar { it.uppercase() } ?: "Unknown"
+    }
+}
+
+private fun formatFieldName(field: String): String {
+    return field.replace("_", " ").lowercase()
+        .replaceFirstChar { it.uppercase() }
+}
+
+private fun formatTime(dateTime: kotlinx.datetime.LocalDateTime): String {
+    val hour = dateTime.hour
+    val minute = dateTime.minute.toString().padStart(2, '0')
+    val amPm = if (hour < 12) "AM" else "PM"
+    val displayHour = if (hour == 0) 12 else if (hour > 12) hour - 12 else hour
+    return "$displayHour:$minute $amPm"
 }
 
 // ============== BADGES SECTION ==============
 
 @Composable
 private fun BadgesSection(badges: List<Badge>) {
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(horizontal = 4.dp)
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        cornerRadius = 16.dp
     ) {
-        items(badges) { badge ->
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color(badge.type.color).copy(alpha = 0.1f),
-                modifier = Modifier.border(
-                    1.dp,
-                    Color(badge.type.color).copy(alpha = 0.3f),
-                    RoundedCornerShape(16.dp)
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+        Column(modifier = Modifier.padding(16.dp)) {
+            badges.forEachIndexed { index, badge ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        badge.type.icon,
-                        style = MaterialTheme.typography.headlineMedium
+                    // Badge icon in colored circle
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Color(badge.type.color).copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            badge.type.icon,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            badge.type.displayName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "Earned on this day",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        Icons.Rounded.EmojiEvents,
+                        contentDescription = null,
+                        tint = Color(badge.type.color),
+                        modifier = Modifier.size(20.dp)
                     )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        badge.type.displayName,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center
+                }
+                if (index < badges.size - 1) {
+                    Spacer(Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                     )
+                    Spacer(Modifier.height(8.dp))
                 }
             }
         }
@@ -759,30 +852,53 @@ private fun CompareSection(thenSnapshot: DaySnapshot, nowSnapshot: DaySnapshot) 
         cornerRadius = 16.dp
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                "Then vs Now",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
+            // Header row with labels
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "How you're doing",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    "That day",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.width(56.dp)
+                )
+                Spacer(Modifier.width(24.dp))
+                Text(
+                    "Today",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.width(56.dp)
+                )
+            }
 
             CompareRow(
-                label = "Habits",
+                label = "Habits completed",
                 thenValue = "${thenSnapshot.habitSummary.completedHabits}/${thenSnapshot.habitSummary.totalHabits}",
                 nowValue = "${nowSnapshot.habitSummary.completedHabits}/${nowSnapshot.habitSummary.totalHabits}"
             )
             CompareRow(
-                label = "Focus Time",
+                label = "Focus time",
                 thenValue = "${thenSnapshot.totalFocusMinutes}m",
                 nowValue = "${nowSnapshot.totalFocusMinutes}m"
             )
             CompareRow(
-                label = "Journal Entries",
+                label = "Journal entries",
                 thenValue = "${thenSnapshot.journalEntries.size}",
                 nowValue = "${nowSnapshot.journalEntries.size}"
             )
             CompareRow(
-                label = "XP Earned",
+                label = "XP earned",
                 thenValue = "${thenSnapshot.xpEarnedOnDay}",
                 nowValue = "${nowSnapshot.xpEarnedOnDay}"
             )
@@ -808,23 +924,24 @@ private fun CompareRow(label: String, thenValue: String, nowValue: String) {
         Text(
             thenValue,
             style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
-            modifier = Modifier.width(60.dp)
+            modifier = Modifier.width(56.dp)
         )
         Text(
             "\u2192",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.outlineVariant,
             textAlign = TextAlign.Center,
             modifier = Modifier.width(24.dp)
         )
         Text(
             nowValue,
             style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
             textAlign = TextAlign.Center,
-            modifier = Modifier.width(60.dp)
+            modifier = Modifier.width(56.dp)
         )
     }
 }

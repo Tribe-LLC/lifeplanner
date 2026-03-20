@@ -44,6 +44,8 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Devices
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -129,6 +131,7 @@ fun ProfileScreen(
     var showAccountSheet by remember { mutableStateOf(false) }
     var showAiProviderDialog by remember { mutableStateOf(false) }
     var showSignOutConfirm by remember { mutableStateOf(false) }
+    var showEditNameDialog by remember { mutableStateOf(false) }
     var selectedAiProvider by remember {
         val saved = settings.getStringOrNull("ai_provider")
         mutableStateOf(saved?.let {
@@ -168,7 +171,8 @@ fun ProfileScreen(
                     user = currentUser,
                     userProgress = userProgress,
                     syncStatus = syncStatus,
-                    onRetrySync = { scope.launch { syncManager.performFullSync(resetRetry = true) } }
+                    onRetrySync = { scope.launch { syncManager.performFullSync(resetRetry = true) } },
+                    onEditName = { showEditNameDialog = true }
                 )
             }
 
@@ -327,6 +331,7 @@ fun ProfileScreen(
         AiProviderDialog(
             currentProvider = selectedAiProvider,
             isGuest = currentUser?.isGuest != false,
+            userLevel = userProgress?.currentLevel ?: 1,
             onProviderSelected = { provider ->
                 selectedAiProvider = provider
                 settings.putString("ai_provider", provider.name)
@@ -337,8 +342,10 @@ fun ProfileScreen(
     }
 
     if (showAccountSheet) {
+        // Guest users should see sign-up (link account) flow, not sign-in
+        val isGuest = currentUser?.isGuest == true
         AuthBottomSheet(
-            isSignUp = false,
+            isSignUp = isGuest,
             authViewModel = authViewModel,
             authState = authState,
             onDismiss = { showAccountSheet = false },
@@ -393,6 +400,44 @@ fun ProfileScreen(
             dismissButton = {
                 TextButton(onClick = { showSignOutConfirm = false }) {
                     Text(if (isOfflineOrError) "Wait for Sync" else "Stay")
+                }
+            }
+        )
+    }
+
+    if (showEditNameDialog) {
+        var editedName by remember { mutableStateOf(currentUser?.displayName ?: "") }
+        AlertDialog(
+            onDismissRequest = { showEditNameDialog = false },
+            title = { Text("Edit Display Name", fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = editedName,
+                    onValueChange = { editedName = it },
+                    label = { Text("Display Name") },
+                    singleLine = true,
+                    supportingText = if (editedName.trim().length < 2) {
+                        { Text("At least 2 characters", color = MaterialTheme.colorScheme.error) }
+                    } else null,
+                    isError = editedName.trim().length < 2 && editedName.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        authViewModel.updateDisplayName(editedName)
+                        showEditNameDialog = false
+                    },
+                    enabled = editedName.trim().length >= 2
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditNameDialog = false }) {
+                    Text("Cancel")
                 }
             }
         )
@@ -512,6 +557,7 @@ internal fun CTAFeaturePill(icon: ImageVector, label: String) {
 private fun AiProviderDialog(
     currentProvider: AiProvider,
     isGuest: Boolean,
+    userLevel: Int = 1,
     onProviderSelected: (AiProvider) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -648,28 +694,54 @@ private fun AiProviderDialog(
                 Spacer(Modifier.height(4.dp))
 
                 AiProvider.entries.forEach { provider ->
+                    val isUnlocked = provider.isUnlocked(userLevel)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onProviderSelected(provider) }
+                            .then(
+                                if (isUnlocked) Modifier.clickable { onProviderSelected(provider) }
+                                else Modifier
+                            )
                             .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         RadioButton(
                             selected = provider == currentProvider,
-                            onClick = { onProviderSelected(provider) }
+                            onClick = { if (isUnlocked) onProviderSelected(provider) },
+                            enabled = isUnlocked
                         )
                         Spacer(Modifier.width(8.dp))
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    provider.displayName,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (isUnlocked) MaterialTheme.colorScheme.onSurface
+                                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                )
+                                if (!isUnlocked) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer
+                                    ) {
+                                        Text(
+                                            "Lv. ${provider.requiredLevel}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
                             Text(
-                                provider.displayName,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                provider.modelInfo,
+                                if (isUnlocked) provider.modelInfo
+                                else "Reach level ${provider.requiredLevel} to unlock",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (isUnlocked) MaterialTheme.colorScheme.onSurfaceVariant
+                                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                             )
                         }
                     }
@@ -730,7 +802,8 @@ private fun UserProfileHeaderCard(
     user: User?,
     userProgress: UserProgress?,
     syncStatus: SyncStatus,
-    onRetrySync: () -> Unit
+    onRetrySync: () -> Unit,
+    onEditName: () -> Unit = {}
 ) {
     // Gradient colors shift based on sync state
     val gradientStart by animateColorAsState(
@@ -808,12 +881,29 @@ private fun UserProfileHeaderCard(
             Spacer(Modifier.width(16.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    user?.displayName ?: "Guest User",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = androidx.compose.ui.graphics.Color.White
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        user?.displayName ?: "Guest User",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = androidx.compose.ui.graphics.Color.White,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    IconButton(
+                        onClick = onEditName,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.Edit,
+                            contentDescription = "Edit display name",
+                            modifier = Modifier.size(16.dp),
+                            tint = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f)
+                        )
+                    }
+                }
 
                 user?.email?.let {
                     Text(

@@ -66,7 +66,6 @@ import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.domain.model.Milestone
 import az.tribe.lifeplanner.ui.components.CompactGoalTile
-import az.tribe.lifeplanner.ui.components.InlineStatsRow
 import az.tribe.lifeplanner.ui.components.NextAction
 import az.tribe.lifeplanner.ui.components.NextActionCard
 import az.tribe.lifeplanner.ui.components.GlassCard
@@ -78,6 +77,10 @@ import kotlinx.coroutines.flow.StateFlow
 import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
 import az.tribe.lifeplanner.ui.habit.HabitViewModel
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
+import az.tribe.lifeplanner.ui.objectives.BeginnerObjectiveViewModel
+import az.tribe.lifeplanner.ui.objectives.BeginnerObjectivesCard
+import az.tribe.lifeplanner.domain.model.ObjectiveType
+import az.tribe.lifeplanner.ui.components.AddGoalBottomSheet
 import az.tribe.lifeplanner.ui.viewmodel.AuthState
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
 import kotlinx.datetime.Clock
@@ -102,17 +105,22 @@ fun HomeScreen(
     onNavigateToProfile: () -> Unit = {},
     onNavigateToRetrospective: () -> Unit = {},
     onNavigateToChat: () -> Unit = {},
+    onNavigateToReminders: () -> Unit = {},
+    onNavigateToLifeBalance: () -> Unit = {},
+    onNavigateToTemplates: () -> Unit = {},
     onContinueChat: (sessionId: String) -> Unit = {},
     onStartFocusForMilestone: (goalId: String, milestoneId: String) -> Unit = { _, _ -> },
 ) {
     val snackBarHostState = remember { SnackbarHostState() }
     var showAccountSheet by remember { mutableStateOf(false) }
+    var showAddGoalSheet by remember { mutableStateOf(false) }
 
     // Inject ViewModels
     val authViewModel: AuthViewModel = koinInject()
     val gamificationViewModel: GamificationViewModel = koinViewModel()
     val habitViewModel: HabitViewModel = koinViewModel()
     val syncManager: SyncManager = koinInject()
+    val objectiveViewModel: BeginnerObjectiveViewModel = koinViewModel()
 
     val authState by authViewModel.authState.collectAsState()
     val userProgress by gamificationViewModel.userProgress.collectAsState()
@@ -173,6 +181,10 @@ fun HomeScreen(
     }
 
     // Calculate habits stats
+    val beginnerObjectives by objectiveViewModel.objectives.collectAsState()
+    val objectivesExpanded by objectiveViewModel.isExpanded.collectAsState()
+    val objectivesDismissed by objectiveViewModel.isDismissed.collectAsState()
+
     val habitsCompleted = habits.count { it.isCompletedToday }
     val totalHabits = habits.size
 
@@ -268,26 +280,62 @@ fun HomeScreen(
                 )
             }
 
-            // 2. Quick Actions Pill Row
+            // 2. Smart Actions — contextual based on user state
             item {
                 QuickActionsPillRow(
-                    onAddGoal = onAddGoalClick,
+                    onAddGoal = { showAddGoalSheet = true },
                     onAiSuggest = goToAiGeneration,
                     onNewHabit = onNavigateToHabits,
                     onJournal = onNavigateToJournal,
-                    onFocus = onNavigateToFocus
+                    onFocus = onNavigateToFocus,
+                    onCoach = onNavigateToChat,
+                    isCoachLocked = level < 3,
+                    hasGoals = goals.isNotEmpty(),
+                    hasHabits = habits.isNotEmpty(),
+                    pendingHabits = habits.count { !it.isCompletedToday },
+                    streak = streak,
+                    goalsDueToday = goalsDueToday.size
                 )
             }
 
-            // 3. Inline Stats Row
-            item {
-                InlineStatsRow(
-                    streak = userProgress?.currentStreak ?: 0,
-                    habitsCompleted = habitsCompleted,
-                    totalHabits = totalHabits,
-                    goalsDueToday = goalsDueToday.size,
-                    totalProgress = totalProgress
-                )
+
+            // 3. Beginner Objectives — getting started checklist
+            if (!objectivesDismissed && beginnerObjectives.isNotEmpty()) {
+                val allCompleted = beginnerObjectives.all { it.isCompleted }
+                // Show always if not all done, or show collapsed if all done
+                if (!allCompleted || objectivesExpanded) {
+                    item(key = "beginner_objectives") {
+                        BeginnerObjectivesCard(
+                            objectives = beginnerObjectives,
+                            isExpanded = objectivesExpanded,
+                            onToggleExpanded = { objectiveViewModel.toggleExpanded() },
+                            onObjectiveClick = { type ->
+                                when (type) {
+                                    ObjectiveType.CREATE_GOAL -> onAddGoalClick()
+                                    ObjectiveType.CREATE_HABIT -> onNavigateToHabits()
+                                    ObjectiveType.WRITE_JOURNAL -> onNavigateToJournal()
+                                    ObjectiveType.COMPLETE_HABIT_CHECKIN -> onNavigateToHabits()
+                                    ObjectiveType.START_FOCUS_SESSION -> onNavigateToFocus()
+                                    ObjectiveType.CHAT_WITH_COACH -> onNavigateToChat()
+                                    ObjectiveType.SET_REMINDER -> onNavigateToReminders()
+                                    ObjectiveType.CHECK_LIFE_BALANCE -> onNavigateToLifeBalance()
+                                    ObjectiveType.COMPLETE_GOAL -> onNavigateToGoals()
+                                    ObjectiveType.SECURE_ACCOUNT -> { showAccountSheet = true }
+                                }
+                            }
+                        )
+                    }
+                } else if (allCompleted) {
+                    // Show compact "all done" that can be dismissed
+                    item(key = "beginner_objectives") {
+                        BeginnerObjectivesCard(
+                            objectives = beginnerObjectives,
+                            isExpanded = false,
+                            onToggleExpanded = { objectiveViewModel.toggleExpanded() },
+                            onObjectiveClick = {}
+                        )
+                    }
+                }
             }
 
             // Secure Account CTA — show for anyone without a verified email account
@@ -341,7 +389,7 @@ fun HomeScreen(
                     GlassCard(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable(onClick = onAddGoalClick),
+                            .clickable(onClick = { showAddGoalSheet = true }),
                         cornerRadius = 16.dp
                     ) {
                         Row(
@@ -365,12 +413,13 @@ fun HomeScreen(
                             Spacer(Modifier.width(14.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    "Set your first goal",
+                                    if (goals.isEmpty()) "Set your first goal" else "All goals completed!",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.SemiBold
                                 )
                                 Text(
-                                    "Tap to create a goal and start tracking progress",
+                                    if (goals.isEmpty()) "Tap to create a goal and start tracking progress"
+                                    else "Tap to set a new goal",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -672,19 +721,24 @@ fun HomeScreen(
                 }
             }
 
-            // Coach AI card
+            // Coach AI card — locked until level 2
             item(key = "coach_ai_card") {
                 val session = recentSession
                 val coach = recentCoach
+                val coachUnlocked = level >= 3
 
                 GlassCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(onClick = {
-                            if (session != null) {
-                                onContinueChat(session.coachId)
+                            if (coachUnlocked) {
+                                if (session != null) {
+                                    onContinueChat(session.coachId)
+                                } else {
+                                    onNavigateToChat()
+                                }
                             } else {
-                                onNavigateToChat()
+                                onNavigateToChat() // Will show locked screen
                             }
                         }),
                     cornerRadius = 16.dp
@@ -697,19 +751,35 @@ fun HomeScreen(
                             modifier = Modifier
                                 .size(40.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(Color(0xFF00BFA5).copy(alpha = 0.12f)),
+                                .background(
+                                    if (coachUnlocked) Color(0xFF00BFA5).copy(alpha = 0.12f)
+                                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
+                                ),
                             contentAlignment = androidx.compose.ui.Alignment.Center
                         ) {
                             Icon(
                                 Icons.Rounded.Psychology,
                                 contentDescription = null,
-                                tint = Color(0xFF00BFA5),
+                                tint = if (coachUnlocked) Color(0xFF00BFA5)
+                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                                 modifier = Modifier.size(22.dp)
                             )
                         }
                         Spacer(Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            if (session != null && coach != null) {
+                            if (!coachUnlocked) {
+                                Text(
+                                    "Coach AI",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    "Unlocks at Level 3",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFFFF6B35)
+                                )
+                            } else if (session != null && coach != null) {
                                 Text(
                                     "Continue with ${coach.name}",
                                     style = MaterialTheme.typography.titleSmall,
@@ -746,22 +816,40 @@ fun HomeScreen(
                 }
             }
 
-            // 8. Next Action Card (moved to bottom as shortcut)
-            item {
-                NextActionCard(
-                    nextAction = nextAction,
-                    onGoalClick = onGoalClick,
-                    onHabitCheckIn = { habitId ->
-                        habitViewModel.toggleCheckIn(habitId)
-                    }
-                )
+            // 8. Next Action Card — only show when there's something actionable
+            if (nextAction !is NextAction.AllCaughtUp || goals.isNotEmpty() || habits.isNotEmpty()) {
+                item {
+                    NextActionCard(
+                        nextAction = nextAction,
+                        onGoalClick = onGoalClick,
+                        onHabitCheckIn = { habitId ->
+                            habitViewModel.toggleCheckIn(habitId)
+                        }
+                    )
+                }
             }
         }
     }
 
+    if (showAddGoalSheet) {
+        AddGoalBottomSheet(
+            onDismiss = { showAddGoalSheet = false },
+            onQuickAddClick = {
+                showAddGoalSheet = false
+                onAddGoalClick()
+            },
+            onAiGenerateClick = {
+                showAddGoalSheet = false
+                goToAiGeneration()
+            }
+        )
+    }
+
     if (showAccountSheet) {
+        // Guest users should see sign-up (link account) flow, not sign-in
+        val isGuest = authState is AuthState.Guest
         AuthBottomSheet(
-            isSignUp = true,
+            isSignUp = isGuest,
             authViewModel = authViewModel,
             authState = authState,
             onDismiss = { showAccountSheet = false },

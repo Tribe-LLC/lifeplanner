@@ -153,8 +153,14 @@ fun HabitTrackerScreen(
     val allTemplatesAdded = habitTemplates.all { it.title.lowercase() in existingHabitTitles }
     val showOnboarding = !onboardingDismissed && !allTemplatesAdded
 
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Show smart reminder snackbar events
+    LaunchedEffect(Unit) {
+        viewModel.reminderEvent.collect { message ->
+            snackbarHostState.showSnackbar(message)
+        }
+    }
 
     // Show error in snackbar
     LaunchedEffect(error) {
@@ -187,10 +193,8 @@ fun HabitTrackerScreen(
     val totalHabits = viewModel.getTotalHabitsCount()
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
-                scrollBehavior = scrollBehavior,
                 title = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -684,7 +688,7 @@ private fun AddHabitBottomSheet(
     var description by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf(GoalCategory.PHYSICAL) }
     var selectedFrequency by remember { mutableStateOf(HabitFrequency.DAILY) }
-    var showCustomForm by remember { mutableStateOf(false) }
+    var showTemplates by remember { mutableStateOf(false) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -708,15 +712,15 @@ private fun AddHabitBottomSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (showCustomForm) {
-                    IconButton(onClick = { showCustomForm = false }) {
+                if (showTemplates) {
+                    IconButton(onClick = { showTemplates = false }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                             contentDescription = "Back"
                         )
                     }
                     Text(
-                        "Custom Habit",
+                        "Pick a Template",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -735,8 +739,17 @@ private fun AddHabitBottomSheet(
                 }
             }
 
-            if (showCustomForm) {
-                // Custom form
+            if (showTemplates) {
+                // Template selection — picking a template saves immediately
+                TemplateSelectionContent(
+                    existingHabitTitles = existingHabitTitles,
+                    onTemplateClick = { template ->
+                        onConfirm(template.title, template.description, template.category, template.frequency)
+                    },
+                    onCustomClick = { showTemplates = false }
+                )
+            } else {
+                // Custom form first (like goals), with template option
                 CustomHabitForm(
                     title = title,
                     onTitleChange = { title = it },
@@ -750,16 +763,8 @@ private fun AddHabitBottomSheet(
                         if (title.isNotBlank()) {
                             onConfirm(title, description, selectedCategory, selectedFrequency)
                         }
-                    }
-                )
-            } else {
-                // Template selection
-                TemplateSelectionContent(
-                    existingHabitTitles = existingHabitTitles,
-                    onTemplateClick = { template ->
-                        onConfirm(template.title, template.description, template.category, template.frequency)
                     },
-                    onCustomClick = { showCustomForm = true }
+                    onPickTemplate = { showTemplates = true }
                 )
             }
         }
@@ -853,7 +858,7 @@ private fun TemplateSelectionContent(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    "Create Custom Habit",
+                    "Create Your Own",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -936,7 +941,8 @@ private fun CustomHabitForm(
     onCategoryChange: (GoalCategory) -> Unit,
     selectedFrequency: HabitFrequency,
     onFrequencyChange: (HabitFrequency) -> Unit,
-    onConfirm: () -> Unit
+    onConfirm: () -> Unit,
+    onPickTemplate: (() -> Unit)? = null
 ) {
     var expandedCategory by remember { mutableStateOf(false) }
     var expandedFrequency by remember { mutableStateOf(false) }
@@ -1053,6 +1059,28 @@ private fun CustomHabitForm(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
+        }
+
+        if (onPickTemplate != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedButton(
+                onClick = onPickTemplate,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(16.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.ContentCopy,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "Pick from Templates",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))

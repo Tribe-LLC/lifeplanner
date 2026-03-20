@@ -1,6 +1,7 @@
 package az.tribe.lifeplanner.ui
 
 import az.tribe.lifeplanner.BuildKonfig
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -8,7 +9,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,11 +56,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.SpanStyle
@@ -86,7 +86,6 @@ import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 import kotlin.random.Random
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WelcomeScreen(
     onComplete: () -> Unit = {}
@@ -109,28 +108,32 @@ fun WelcomeScreen(
         resolvedUrls = VideoCache.resolveUrls(remoteUrls, httpClient)
     }
 
-    var showSignUpSheet by remember { mutableStateOf(false) }
-    var showSignInSheet by remember { mutableStateOf(false) }
     var hasNavigated by remember { mutableStateOf(false) }
+    var animationDone by remember { mutableStateOf(false) }
+    val fadeOut = remember { Animatable(1f) }
 
-    var guestSignInRequested by remember { mutableStateOf(false) }
+    // Auto-create guest in background immediately
+    LaunchedEffect(Unit) {
+        authViewModel.signInAsGuest()
+    }
 
-    fun navigateAfterAuth() {
-        if (!hasNavigated) {
+    // When both animation is done and auth is ready, fade out and navigate
+    LaunchedEffect(animationDone, authState) {
+        if (!hasNavigated && animationDone && (authState is AuthState.Guest || authState is AuthState.Authenticated)) {
             hasNavigated = true
             authViewModel.completeOnboarding()
+            fadeOut.animateTo(0f, animationSpec = tween(600))
             onComplete()
         }
     }
 
-    // Navigate after guest sign-in completes
-    LaunchedEffect(authState) {
-        if (guestSignInRequested && authState is AuthState.Guest) {
-            navigateAfterAuth()
-        }
+    // Mark animation done after minimum splash duration
+    LaunchedEffect(Unit) {
+        delay(5000)
+        animationDone = true
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().alpha(fadeOut.value)) {
         // Video background — plays both videos in queue, loops forever
         if (resolvedUrls.isNotEmpty()) {
             VideoBackground(
@@ -138,7 +141,7 @@ fun WelcomeScreen(
                 modifier = Modifier.fillMaxSize()
             )
         } else {
-            Box(modifier = Modifier.fillMaxSize().background(Color.Red))
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black))
         }
 
         // Dark gradient overlay for readability
@@ -159,168 +162,17 @@ fun WelcomeScreen(
                 )
         )
 
-        // Content
+        // Content — centered typewriter headline
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .navigationBarsPadding()
-                .padding(horizontal = 32.dp)
-                .padding(bottom = 48.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
+                .padding(horizontal = 32.dp),
+            verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.weight(1f))
-
-            // Animated typewriter headline
             TypewriterHeadline()
-
-            Spacer(Modifier.weight(1f))
-
-            // Buttons section
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                val isLoading = authState is AuthState.Loading
-
-                // Button 1: Sign up in 10 seconds
-                Button(
-                    onClick = { showSignUpSheet = true },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    enabled = !isLoading,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF4CAF50)
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Text(
-                        "Sign up in 10 seconds",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White
-                    )
-                }
-
-                // Badge under the sign-up button
-                Button(
-                    onClick = { showSignUpSheet = true },
-                    modifier = Modifier.height(28.dp),
-                    enabled = !isLoading,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White.copy(alpha = 0.15f)
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    contentPadding = ButtonDefaults.TextButtonContentPadding
-                ) {
-                    Icon(
-                        Icons.Default.Shield,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                        tint = Color(0xFF81C784)
-                    )
-                    Spacer(Modifier.size(4.dp))
-                    Text(
-                        "Keep our data safe!",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.9f)
-                    )
-                }
-
-                Spacer(Modifier.height(4.dp))
-
-                // Button 2: Start without signup (guest)
-                OutlinedButton(
-                    onClick = {
-                        guestSignInRequested = true
-                        authViewModel.signInAsGuest()
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = Color.White
-                    ),
-                    border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
-                        brush = Brush.linearGradient(
-                            listOf(Color.White.copy(alpha = 0.5f), Color.White.copy(alpha = 0.5f))
-                        )
-                    ),
-                    shape = RoundedCornerShape(16.dp),
-                    enabled = !isLoading
-                ) {
-                    if (isLoading && guestSignInRequested) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            "Setting things up…",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Color.White
-                        )
-                    } else {
-                        Text(
-                            "Start without signup",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Color.White
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(4.dp))
-
-                // Button 3: Already signed up? Sign in
-                TextButton(
-                    onClick = { showSignInSheet = true },
-                    enabled = !isLoading
-                ) {
-                    Text(
-                        "Already signed up? ",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = if (isLoading) 0.3f else 0.7f)
-                    )
-                    Text(
-                        "Sign in",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White.copy(alpha = if (isLoading) 0.3f else 1f)
-                    )
-                }
-            }
         }
-    }
-
-    // Sign Up Bottom Sheet
-    if (showSignUpSheet) {
-        AuthBottomSheet(
-            isSignUp = true,
-            authViewModel = authViewModel,
-            authState = authState,
-            onDismiss = { showSignUpSheet = false },
-            onSuccess = {
-                showSignUpSheet = false
-                navigateAfterAuth()
-            }
-        )
-    }
-
-    // Sign In Bottom Sheet
-    if (showSignInSheet) {
-        AuthBottomSheet(
-            isSignUp = false,
-            authViewModel = authViewModel,
-            authState = authState,
-            onDismiss = { showSignInSheet = false },
-            onSuccess = {
-                showSignInSheet = false
-                navigateAfterAuth()
-            }
-        )
     }
 }
 
@@ -612,12 +464,18 @@ internal fun AuthBottomSheet(
             if (isSignUp && !isVerifying) {
                 val emailFocus = remember { FocusRequester() }
                 val passwordFocus = remember { FocusRequester() }
+                val isCurrentlyGuest = authState is AuthState.Guest
 
                 fun submitSignUp() {
                     attempted = true
                     hideKeyboard()
                     if (isFormValid(includesName = true)) {
-                        authViewModel.signUpWithEmail(email.trim(), password, displayName.trim())
+                        if (isCurrentlyGuest) {
+                            // Link guest account — preserves UID and all local data
+                            authViewModel.linkGuestAccount(email.trim(), password, displayName.trim())
+                        } else {
+                            authViewModel.signUpWithEmail(email.trim(), password, displayName.trim())
+                        }
                     }
                 }
 
@@ -701,8 +559,11 @@ internal fun AuthBottomSheet(
                     if (authState is AuthState.Loading) {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
                     } else {
-                        Text("Create Account", style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold, color = Color.White)
+                        Text(
+                            if (isCurrentlyGuest) "Link Account" else "Create Account",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold, color = Color.White
+                        )
                     }
                 }
 

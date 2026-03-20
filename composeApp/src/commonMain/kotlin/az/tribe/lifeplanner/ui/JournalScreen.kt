@@ -577,6 +577,7 @@ private fun NewJournalEntryBottomSheet(
     var showGoalDropdown by remember { mutableStateOf(false) }
     var showHabitDropdown by remember { mutableStateOf(false) }
     var isGeneratingAi by remember { mutableStateOf(false) }
+    var aiErrorMessage by remember { mutableStateOf<String?>(null) }
     var selectedPrompt by remember { mutableStateOf<String?>(null) }
     var showPromptLibrary by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
@@ -864,14 +865,14 @@ private fun NewJournalEntryBottomSheet(
                             }
                         }
 
-                        // AI Generate Button - requires title AND a linked goal/habit
-                        val hasLinkedItem = selectedGoalId != null || selectedHabitId != null
-                        val canUseAi = title.isNotBlank() && hasLinkedItem
+                        // AI Generate Button - requires title or prompt
+                        val canUseAi = title.isNotBlank() || selectedPrompt != null
 
                         OutlinedButton(
                             onClick = {
                                 coroutineScope.launch {
                                     isGeneratingAi = true
+                                    aiErrorMessage = null
                                     try {
                                         val linkedGoal = selectedGoalId?.let { id -> goals.find { it.id == id } }
                                         val linkedHabit = selectedHabitId?.let { id -> habits.find { it.id == id } }
@@ -883,17 +884,29 @@ private fun NewJournalEntryBottomSheet(
                                             linkedGoal = linkedGoal,
                                             linkedHabit = linkedHabit
                                         )
-                                        result?.let { aiResult ->
+                                        if (result != null) {
                                             if (title.isBlank()) {
-                                                title = aiResult.title
+                                                title = result.title
                                             }
-                                            content = aiResult.content
-                                            if (aiResult.tags.isNotEmpty()) {
-                                                tagsText = aiResult.tags.joinToString(", ")
+                                            content = result.content
+                                            if (result.tags.isNotEmpty()) {
+                                                tagsText = result.tags.joinToString(", ")
                                             }
+                                        } else {
+                                            aiErrorMessage = "AI generation returned no result. Please try again."
                                         }
                                     } catch (e: Exception) {
-                                        Logger.e("JournalScreen") { "AI journal generation failed: ${e.message}" }
+                                        Logger.e("JournalScreen", e) { "AI journal generation failed" }
+                                        aiErrorMessage = when {
+                                            e.message?.contains("timeout", ignoreCase = true) == true ||
+                                            e.message?.contains("connect", ignoreCase = true) == true ||
+                                            e.message?.contains("network", ignoreCase = true) == true ->
+                                                "No internet connection. Check your network and try again."
+                                            e.message?.contains("authenticated", ignoreCase = true) == true ||
+                                            e.message?.contains("sign in", ignoreCase = true) == true ->
+                                                "Session expired. Please sign in again."
+                                            else -> "AI generation failed. Please try again."
+                                        }
                                     } finally {
                                         isGeneratingAi = false
                                     }
@@ -920,6 +933,16 @@ private fun NewJournalEntryBottomSheet(
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("Write with AI")
                             }
+                        }
+
+                        // Show AI error inline
+                        aiErrorMessage?.let { errorMsg ->
+                            Text(
+                                text = errorMsg,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
                         }
                     }
                 }

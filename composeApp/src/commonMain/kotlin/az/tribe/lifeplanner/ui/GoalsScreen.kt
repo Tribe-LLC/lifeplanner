@@ -43,7 +43,6 @@ import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.ui.components.AddGoalBottomSheet
 import az.tribe.lifeplanner.ui.components.CategoryHeader
 import az.tribe.lifeplanner.ui.components.EmptyGoalsView
-import az.tribe.lifeplanner.ui.components.GoalFilterTabs
 import az.tribe.lifeplanner.ui.components.GoalsTopAppBar
 import az.tribe.lifeplanner.ui.components.SwipeableGoalItem
 import az.tribe.lifeplanner.ui.components.SearchResultsSummary
@@ -57,33 +56,36 @@ fun GoalsScreen(
     onGoalClick: (Goal) -> Unit,
     onAddGoalClick: () -> Unit,
     onAiGenerateClick: () -> Unit,
-    onTemplatesClick: () -> Unit,
-    onTemplateSelected: (String) -> Unit = {},
     onBack: (() -> Unit)? = null
 ) {
     val snackBarHostState = remember { SnackbarHostState() }
     val goals by viewModel.goals.collectAsState()
 
+    // Show smart reminder snackbar events
+    LaunchedEffect(Unit) {
+        viewModel.reminderEvent.collect { message ->
+            snackBarHostState.showSnackbar(message)
+        }
+    }
+
     var searchQuery by remember { mutableStateOf(TextFieldValue("")) }
-    var selectedFilter by remember { mutableStateOf(GoalFilter.ALL) }
     var showSearchBar by remember { mutableStateOf(false) }
     var showAddGoalSheet by remember { mutableStateOf(false) }
 
     val scrollState = rememberLazyListState()
 
-    // Filter goals based on search and filter criteria
-    val filteredGoals = remember(goals, searchQuery.text, selectedFilter) {
+    // Filter by search, then auto-sort: In Progress → Not Started → Completed
+    val filteredGoals = remember(goals, searchQuery.text) {
+        val statusOrder = mapOf(
+            GoalStatus.IN_PROGRESS to 0,
+            GoalStatus.NOT_STARTED to 1,
+            GoalStatus.COMPLETED to 2
+        )
         goals.filter { goal ->
-            val matchesSearch = if (searchQuery.text.isBlank()) true
+            if (searchQuery.text.isBlank()) true
             else goal.title.contains(searchQuery.text, ignoreCase = true) ||
                     goal.description.contains(searchQuery.text, ignoreCase = true)
-            val matchesFilter = when (selectedFilter) {
-                GoalFilter.ALL -> true
-                GoalFilter.ACTIVE -> goal.status != GoalStatus.COMPLETED
-                GoalFilter.COMPLETED -> goal.status == GoalStatus.COMPLETED
-            }
-            matchesSearch && matchesFilter
-        }
+        }.sortedBy { statusOrder[it.status] ?: 1 }
     }
 
     // Category expansion state
@@ -121,12 +123,11 @@ fun GoalsScreen(
         viewModel.loadAllGoals()
     }
 
-    LaunchedEffect(searchQuery.text, selectedFilter) {
+    LaunchedEffect(searchQuery.text) {
         viewModel.updateSearchQuery(searchQuery.text)
-        viewModel.updateFilter(selectedFilter)
     }
 
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -181,13 +182,6 @@ fun GoalsScreen(
                 .fillMaxSize()
                 .padding(top = innerPadding.calculateTopPadding())
         ) {
-            // Filter Tabs
-            GoalFilterTabs(
-                selectedFilter = selectedFilter,
-                onFilterSelected = { selectedFilter = it },
-                dynamicColor = dynamicColor
-            )
-
             // Goals List
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -203,7 +197,7 @@ fun GoalsScreen(
                         SearchResultsSummary(
                             resultCount = filteredGoals.size,
                             searchQuery = searchQuery.text,
-                            selectedFilter = selectedFilter,
+                            selectedFilter = GoalFilter.ALL,
                             onClear = {
                                 searchQuery = TextFieldValue("")
                                 showSearchBar = false
@@ -218,12 +212,12 @@ fun GoalsScreen(
                 if (groupedGoals.isEmpty()) {
                     item {
                         EmptyGoalsView(
-                            isFiltered = searchQuery.text.isNotEmpty() || selectedFilter != GoalFilter.ALL,
+                            isFiltered = searchQuery.text.isNotEmpty(),
                             onQuickAddClick = onAddGoalClick,
-                            onTemplatesClick = onTemplatesClick,
+                            onTemplatesClick = onAddGoalClick,
                             onAiGenerateClick = onAiGenerateClick,
                             onTemplateClick = { template ->
-                                onTemplateSelected(template.id)
+                                onAddGoalClick()
                             }
                         )
                     }
@@ -277,10 +271,6 @@ fun GoalsScreen(
             onQuickAddClick = {
                 showAddGoalSheet = false
                 onAddGoalClick()
-            },
-            onTemplatesClick = {
-                showAddGoalSheet = false
-                onTemplatesClick()
             },
             onAiGenerateClick = {
                 showAddGoalSheet = false
