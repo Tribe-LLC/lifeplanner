@@ -23,6 +23,7 @@ import az.tribe.lifeplanner.database.ScheduledNotificationEntity
 import az.tribe.lifeplanner.database.UserActivityPatternEntity
 import az.tribe.lifeplanner.database.CustomCoachEntity
 import az.tribe.lifeplanner.database.CoachGroupEntity
+import az.tribe.lifeplanner.database.BeginnerObjectiveEntity
 import az.tribe.lifeplanner.database.CoachGroupMemberEntity
 import az.tribe.lifeplanner.database.FocusSessionEntity
 import kotlinx.coroutines.Dispatchers
@@ -81,6 +82,7 @@ class SharedDatabase(
             q.deleteAllScheduledNotifications()
             q.deleteAllReviewReports()
             q.deleteAllUserProgress()
+            q.deleteAllBeginnerObjectives()
             // Tier 1 (no deps)
             q.deleteAllGoals()
             q.deleteAllHabits()
@@ -121,6 +123,7 @@ class SharedDatabase(
                 createdAt = goal.createdAt,
                 completionRate = goal.completionRate ?: 0.0,
                 isArchived = goal.isArchived,
+                aiReasoning = goal.aiReasoning,
                 sync_updated_at = nowTimestamp(),
                 is_deleted = 0L,
                 sync_version = 0L,
@@ -145,6 +148,7 @@ class SharedDatabase(
                     createdAt = goal.createdAt,
                     completionRate = goal.completionRate,
                     isArchived = goal.isArchived,
+                    aiReasoning = goal.aiReasoning,
                     sync_updated_at = nowTimestamp(),
                     is_deleted = 0L,
                     sync_version = 0L,
@@ -168,7 +172,10 @@ class SharedDatabase(
 
     suspend fun deleteGoalById(id: String) {
         this { db ->
-            db.lifePlannerDBQueries.softDeleteGoal(nowTimestamp(), id)
+            val now = nowTimestamp()
+            // Cascade soft-delete to milestones (FK ON DELETE CASCADE only works for hard deletes)
+            db.lifePlannerDBQueries.softDeleteMilestonesByGoalId(now, id)
+            db.lifePlannerDBQueries.softDeleteGoal(now, id)
         }
     }
 
@@ -186,6 +193,7 @@ class SharedDatabase(
                 notes = goal.notes ?: "",
                 completionRate = goal.completionRate,
                 isArchived = goal.isArchived,
+                aiReasoning = goal.aiReasoning,
                 id = goal.id,
                 createdAt = goal.createdAt
             )
@@ -1676,6 +1684,51 @@ class SharedDatabase(
 
     suspend fun deleteCoachPersonaOverride(coachId: String) {
         this { db -> db.lifePlannerDBQueries.deleteCoachPersonaOverride(coachId) }
+    }
+
+    // ===== Beginner Objective Operations =====
+
+    fun observeAllBeginnerObjectives(): Flow<List<BeginnerObjectiveEntity>> = flow {
+        initDatabase()
+        emitAll(
+            database!!.lifePlannerDBQueries.getAllBeginnerObjectives()
+                .asFlow()
+                .mapToList(Dispatchers.IO)
+        )
+    }
+
+    suspend fun getAllBeginnerObjectives(): List<BeginnerObjectiveEntity> {
+        return this { db -> db.lifePlannerDBQueries.getAllBeginnerObjectives().executeAsList() }
+    }
+
+    suspend fun getBeginnerObjectiveByType(objectiveType: String): BeginnerObjectiveEntity? {
+        return this { db -> db.lifePlannerDBQueries.getBeginnerObjectiveByType(objectiveType).executeAsOneOrNull() }
+    }
+
+    suspend fun getCompletedBeginnerObjectivesCount(): Long {
+        return this { db -> db.lifePlannerDBQueries.getCompletedBeginnerObjectivesCount().executeAsOne() }
+    }
+
+    suspend fun insertBeginnerObjective(
+        id: String,
+        objectiveType: String,
+        isCompleted: Long,
+        completedAt: String?,
+        xpAwarded: Long,
+        createdAt: String
+    ) {
+        this { db ->
+            db.lifePlannerDBQueries.insertBeginnerObjective(
+                id, objectiveType, isCompleted, completedAt, xpAwarded, createdAt,
+                nowTimestamp(), 0L, 0L, null
+            )
+        }
+    }
+
+    suspend fun completeBeginnerObjective(completedAt: String, xpAwarded: Long, objectiveType: String) {
+        this { db ->
+            db.lifePlannerDBQueries.completeBeginnerObjective(completedAt, xpAwarded, objectiveType)
+        }
     }
 
     suspend fun getDatesWithActivity(

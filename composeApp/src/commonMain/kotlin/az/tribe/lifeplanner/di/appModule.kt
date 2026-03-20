@@ -9,6 +9,7 @@ import az.tribe.lifeplanner.data.network.GeminiService
 import az.tribe.lifeplanner.data.network.GeminiServiceImpl
 import az.tribe.lifeplanner.data.repository.AiUsageRepositoryImpl
 import az.tribe.lifeplanner.data.repository.BackupRepositoryImpl
+import az.tribe.lifeplanner.data.repository.BeginnerObjectiveRepositoryImpl
 import az.tribe.lifeplanner.data.repository.ChatRepositoryImpl
 import az.tribe.lifeplanner.data.repository.CoachRepositoryImpl
 import az.tribe.lifeplanner.di.FileSharer
@@ -25,9 +26,11 @@ import az.tribe.lifeplanner.data.repository.JournalRepositoryImpl
 import az.tribe.lifeplanner.data.repository.LifeBalanceRepositoryImpl
 import az.tribe.lifeplanner.data.repository.ReminderRepositoryImpl
 import az.tribe.lifeplanner.data.review.ReviewMessageBuilder
+import az.tribe.lifeplanner.domain.service.SmartReminderManager
 import az.tribe.lifeplanner.data.repository.UserRepositoryImpl
 import az.tribe.lifeplanner.domain.repository.AiUsageRepository
 import az.tribe.lifeplanner.domain.repository.BackupRepository
+import az.tribe.lifeplanner.domain.repository.BeginnerObjectiveRepository
 import az.tribe.lifeplanner.domain.repository.ChatRepository
 import az.tribe.lifeplanner.domain.repository.CoachRepository
 import az.tribe.lifeplanner.domain.repository.GamificationRepository
@@ -59,6 +62,7 @@ import az.tribe.lifeplanner.ui.retrospective.RetrospectiveViewModel
 import az.tribe.lifeplanner.ui.balance.LifeBalanceViewModel
 import az.tribe.lifeplanner.ui.coach.CoachViewModel
 import az.tribe.lifeplanner.ui.reminder.ReminderViewModel
+import az.tribe.lifeplanner.ui.objectives.BeginnerObjectiveViewModel
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
 import az.tribe.lifeplanner.usecases.journal.CreateJournalEntryUseCase
 import az.tribe.lifeplanner.usecases.journal.DeleteJournalEntryUseCase
@@ -123,8 +127,10 @@ val appModule = module {
     single<AuthService> { SupabaseAuthService(get()) }
 
     // Auth token provider (Supabase session → JWT, with auto-refresh)
+    // Uses a Mutex to prevent concurrent refresh attempts from racing.
     single<AuthTokenProvider> {
         val supabase: io.github.jan.supabase.SupabaseClient = get()
+        val refreshMutex = kotlinx.coroutines.sync.Mutex()
         AuthTokenProvider {
             // Try current session first
             val session = supabase.auth.currentSessionOrNull()
@@ -133,25 +139,39 @@ val appModule = module {
                 val now = kotlinx.datetime.Clock.System.now()
                 val timeUntilExpiry = session.expiresAt - now
                 if (timeUntilExpiry.inWholeSeconds <= 30) {
-                    // Token expired or about to — force refresh with retry
-                    var lastException: Exception? = null
-                    for (attempt in 1..3) {
-                        try {
-                            supabase.auth.refreshCurrentSession()
-                            val refreshed = supabase.auth.currentSessionOrNull()?.accessToken
-                            if (refreshed != null) return@AuthTokenProvider refreshed
-                        } catch (e: Exception) {
-                            lastException = e
-                            co.touchlab.kermit.Logger.w("AuthTokenProvider") {
-                                "Token refresh attempt $attempt failed: ${e.message}"
+                    // Serialize refresh attempts — if another call already refreshed, reuse it
+                    refreshMutex.lock()
+                    try {
+                        // Re-check after acquiring lock — another call may have refreshed already
+                        val currentSession = supabase.auth.currentSessionOrNull()
+                        if (currentSession != null) {
+                            val freshExpiry = currentSession.expiresAt - kotlinx.datetime.Clock.System.now()
+                            if (freshExpiry.inWholeSeconds > 30) {
+                                return@AuthTokenProvider currentSession.accessToken
                             }
-                            if (attempt < 3) kotlinx.coroutines.delay(500L * attempt)
                         }
+                        // Still expired — refresh with retry
+                        var lastException: Exception? = null
+                        for (attempt in 1..3) {
+                            try {
+                                supabase.auth.refreshCurrentSession()
+                                val refreshed = supabase.auth.currentSessionOrNull()?.accessToken
+                                if (refreshed != null) return@AuthTokenProvider refreshed
+                            } catch (e: Exception) {
+                                lastException = e
+                                co.touchlab.kermit.Logger.w("AuthTokenProvider") {
+                                    "Token refresh attempt $attempt failed: ${e.message}"
+                                }
+                                if (attempt < 3) kotlinx.coroutines.delay(500L * attempt)
+                            }
+                        }
+                        co.touchlab.kermit.Logger.e("AuthTokenProvider") {
+                            "Token refresh failed after 3 attempts: ${lastException?.message}"
+                        }
+                        throw IllegalStateException("Authentication expired. Please sign in again.")
+                    } finally {
+                        refreshMutex.unlock()
                     }
-                    co.touchlab.kermit.Logger.e("AuthTokenProvider") {
-                        "Token refresh failed after 3 attempts: ${lastException?.message}"
-                    }
-                    throw IllegalStateException("Authentication expired. Please sign in again.")
                 } else {
                     session.accessToken
                 }
@@ -179,9 +199,11 @@ val appModule = module {
     single<ChatRepository> { ChatRepositoryImpl(get(), get<AiProxyService>(), get(), get()) }
     single { ReviewMessageBuilder(get()) }
     single<ReminderRepository> { ReminderRepositoryImpl(get(), get(), get()) }
+    single { SmartReminderManager(get()) }
     single<FocusRepository> { FocusRepositoryImpl(get(), get()) }
     single<AiUsageRepository> { AiUsageRepositoryImpl(get()) }
     single<RetrospectiveRepository> { RetrospectiveRepositoryImpl(get()) }
+    single<BeginnerObjectiveRepository> { BeginnerObjectiveRepositoryImpl(get(), get()) }
 
     // Existing Use Cases
     factory { GetAllGoalsUseCase(get()) }
@@ -260,4 +282,5 @@ val appModule = module {
     viewModelOf(::BackupViewModel)
     viewModelOf(::FocusViewModel)
     viewModelOf(::RetrospectiveViewModel)
+    viewModelOf(::BeginnerObjectiveViewModel)
 }

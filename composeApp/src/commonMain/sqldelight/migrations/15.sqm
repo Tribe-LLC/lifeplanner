@@ -1,0 +1,19 @@
+-- Add missing indexes for sync and query performance
+
+-- sync_updated_at indexes for pull ordering
+CREATE INDEX IF NOT EXISTS idx_goals_sync_updated ON GoalEntity(sync_updated_at);
+CREATE INDEX IF NOT EXISTS idx_milestones_sync_updated ON MilestoneEntity(sync_updated_at);
+CREATE INDEX IF NOT EXISTS idx_habits_sync_updated ON HabitEntity(sync_updated_at);
+CREATE INDEX IF NOT EXISTS idx_journal_sync_updated ON JournalEntryEntity(sync_updated_at);
+
+-- Composite index for habit streak calculations (habitId + date)
+CREATE INDEX IF NOT EXISTS idx_checkins_habit_date ON HabitCheckInEntity(habitId, date);
+
+-- is_deleted filter (frequently used in almost every SELECT)
+CREATE INDEX IF NOT EXISTS idx_goals_deleted ON GoalEntity(is_deleted);
+CREATE INDEX IF NOT EXISTS idx_milestones_deleted ON MilestoneEntity(is_deleted);
+CREATE INDEX IF NOT EXISTS idx_habits_deleted ON HabitEntity(is_deleted);
+CREATE INDEX IF NOT EXISTS idx_journal_deleted ON JournalEntryEntity(is_deleted);
+
+-- Focus session date range queries
+CREATE INDEX IF NOT EXISTS idx_focus_date ON FocusSessionEntity(startedAt, wasCompleted);

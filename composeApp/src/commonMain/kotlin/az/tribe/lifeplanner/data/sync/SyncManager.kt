@@ -208,7 +208,7 @@ class SyncManager private constructor(
                     try {
                         totalPulled += syncer.pullRemoteChanges(userId)
                     } catch (e: Exception) {
-                        Logger.e("SyncManager") { "Pull failed for ${syncer.tableName}: ${e.message}" }
+                        Logger.e("SyncManager", e) { "Pull failed for ${syncer.tableName}" }
                         failedTables.add(syncer.tableName)
                         if (isNetworkException(e)) networkDown = true
                     }
@@ -218,7 +218,7 @@ class SyncManager private constructor(
                     try {
                         totalPushed += syncer.pushLocalChanges(userId)
                     } catch (e: Exception) {
-                        Logger.e("SyncManager") { "Push failed for ${syncer.tableName}: ${e.message}" }
+                        Logger.e("SyncManager", e) { "Push failed for ${syncer.tableName}" }
                         if (syncer.tableName !in failedTables) failedTables.add(syncer.tableName)
                         if (isNetworkException(e)) networkDown = true
                     }
@@ -230,7 +230,7 @@ class SyncManager private constructor(
                     try {
                         totalPushed += syncer.pushLocalChanges(userId)
                     } catch (e: Exception) {
-                        Logger.e("SyncManager") { "Push failed for ${syncer.tableName}: ${e.message}" }
+                        Logger.e("SyncManager", e) { "Push failed for ${syncer.tableName}" }
                         failedTables.add(syncer.tableName)
                         if (isNetworkException(e)) networkDown = true
                     }
@@ -240,7 +240,7 @@ class SyncManager private constructor(
                     try {
                         totalPulled += syncer.pullRemoteChanges(userId)
                     } catch (e: Exception) {
-                        Logger.e("SyncManager") { "Pull failed for ${syncer.tableName}: ${e.message}" }
+                        Logger.e("SyncManager", e) { "Pull failed for ${syncer.tableName}" }
                         if (syncer.tableName !in failedTables) failedTables.add(syncer.tableName)
                         if (isNetworkException(e)) networkDown = true
                     }
@@ -288,7 +288,7 @@ class SyncManager private constructor(
                     errorMessage = null
                 )
             } else {
-                Logger.e("SyncManager") { "Sync failed: ${e.message}" }
+                Logger.e("SyncManager", e) { "Sync failed" }
                 _syncStatus.value = _syncStatus.value.copy(
                     state = SyncState.ERROR,
                     errorMessage = e.message

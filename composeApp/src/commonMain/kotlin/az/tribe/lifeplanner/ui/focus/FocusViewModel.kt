@@ -367,6 +367,29 @@ class FocusViewModel(
     fun completeFreeFlowSession() {
         timerJob?.cancel()
         val elapsed = _elapsedSeconds.value
+
+        // Mindfulness Minutes: need at least 60 seconds for session to count
+        if (elapsed < 60) {
+            // Still save session as incomplete so we don't leave orphaned records
+            viewModelScope.launch {
+                currentSessionId?.let { id ->
+                    val session = focusRepository.getSessionById(id)
+                    if (session != null) {
+                        focusRepository.updateSession(
+                            session.copy(
+                                actualDurationSeconds = elapsed,
+                                wasCompleted = false,
+                                xpEarned = 0,
+                                completedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+                            )
+                        )
+                    }
+                }
+            }
+            _timerState.value = TimerState.CANCELLED
+            return
+        }
+
         val elapsedMinutes = elapsed / 60
         val xp = calculateXpForDuration(elapsedMinutes)
         _lastXpEarned.value = xp
@@ -573,7 +596,37 @@ class FocusViewModel(
 
     override fun onCleared() {
         super.onCleared()
-        timerJob?.cancel()
+        // If timer is still running or paused, save the partial session before cleanup
+        if (_timerState.value == TimerState.RUNNING || _timerState.value == TimerState.PAUSED) {
+            timerJob?.cancel()
+            val elapsed = _elapsedSeconds.value
+            val xp = calculatePartialXp(elapsed)
+            // Use a non-cancellable context so the DB write completes even during ViewModel teardown
+            kotlinx.coroutines.runBlocking {
+                try {
+                    currentSessionId?.let { id ->
+                        val session = focusRepository.getSessionById(id)
+                        if (session != null) {
+                            focusRepository.updateSession(
+                                session.copy(
+                                    actualDurationSeconds = elapsed,
+                                    wasCompleted = false,
+                                    xpEarned = xp,
+                                    completedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+                                )
+                            )
+                        }
+                    }
+                    if (xp > 0) {
+                        gamificationRepository.awardXp(xp.toLong())
+                    }
+                } catch (e: Exception) {
+                    Logger.e("FocusViewModel") { "Failed to save interrupted session: ${e.message}" }
+                }
+            }
+        } else {
+            timerJob?.cancel()
+        }
     }
 }
 

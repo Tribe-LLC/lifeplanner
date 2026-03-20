@@ -7,19 +7,28 @@
 -keepclassmembers class az.tribe.lifeplanner.** { *** Companion; }
 -keepclasseswithmembers class az.tribe.lifeplanner.** { kotlinx.serialization.KSerializer serializer(...); }
 
+# Keep serializable DTOs (sync, network, backup models) — accessed via reflection
+-keepclassmembers class az.tribe.lifeplanner.data.sync.dto.** { *; }
+-keepclassmembers class az.tribe.lifeplanner.data.model.** { *; }
+-keepclassmembers class az.tribe.lifeplanner.domain.model.** { *; }
+
 # ─── Ktor ───
--keep class io.ktor.** { *; }
+# Only keep client engine + serialization plugin classes, not the entire library
+-keep class io.ktor.client.** { *; }
+-keep class io.ktor.serialization.** { *; }
+-keep class io.ktor.http.** { *; }
 -dontwarn io.ktor.**
 -keep class kotlinx.coroutines.** { *; }
 -dontwarn kotlinx.coroutines.**
 
 # ─── Koin ───
--keep class org.koin.** { *; }
+# Keep Koin core + constructor injection
+-keep class org.koin.core.** { *; }
 -dontwarn org.koin.**
--keepclassmembers class * { public <init>(...); }
+-keepclassmembers class az.tribe.lifeplanner.** { public <init>(...); }
 
 # ─── SQLDelight ───
--keep class app.cash.sqldelight.** { *; }
+-keep class app.cash.sqldelight.driver.** { *; }
 -dontwarn app.cash.sqldelight.**
 -keep class az.tribe.lifeplanner.database.** { *; }
 
@@ -34,7 +43,8 @@
 -dontwarn io.github.jan.supabase.**
 
 # ─── Compose ───
--keep class androidx.compose.** { *; }
+# Compose handles its own keep rules via the plugin; only keep runtime
+-keep class androidx.compose.runtime.** { *; }
 -dontwarn androidx.compose.**
 
 # ─── Kermit Logging ───
@@ -43,6 +53,16 @@
 
 # ─── BuildKonfig ───
 -keep class az.tribe.lifeplanner.BuildKonfig { *; }
+
+# ─── Facebook SDK ───
+-keep class com.facebook.** { *; }
+-dontwarn com.facebook.**
+
+# ─── Enums (used in serialization and navigation) ───
+-keepclassmembers enum az.tribe.lifeplanner.** {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
 
 # ─── General ───
 -keepattributes Signature

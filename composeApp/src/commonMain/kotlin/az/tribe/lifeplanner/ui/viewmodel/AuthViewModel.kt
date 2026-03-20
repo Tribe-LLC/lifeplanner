@@ -2,6 +2,7 @@ package az.tribe.lifeplanner.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import az.tribe.lifeplanner.data.analytics.FacebookAnalytics
 import az.tribe.lifeplanner.data.auth.AuthResult
 import az.tribe.lifeplanner.data.auth.AuthService
 import az.tribe.lifeplanner.data.sync.SyncManager
@@ -11,10 +12,13 @@ import co.touchlab.kermit.Logger
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.status.SessionStatus
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.Clock
 
 /**
@@ -40,6 +44,20 @@ class AuthViewModel(
     private val supabaseClient: SupabaseClient
 ) : ViewModel() {
 
+    companion object {
+        /** Global channel for deep link auth errors (e.g. expired magic link). */
+        private val _deepLinkError = MutableSharedFlow<String>(extraBufferCapacity = 1)
+
+        /** Called from platform DeepLinkHandler when the callback URL contains an error. */
+        fun reportDeepLinkError(message: String) {
+            _deepLinkError.tryEmit(message)
+        }
+    }
+
+    /** Serializes all auth state mutations to prevent race conditions between
+     *  checkAuthStatus, observeSessionChanges, and observeDeepLinkErrors. */
+    private val authMutex = Mutex()
+
     private val _authState = MutableStateFlow<AuthState>(AuthState.Loading)
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
@@ -61,6 +79,7 @@ class AuthViewModel(
     init {
         checkAuthStatus()
         observeSessionChanges()
+        observeDeepLinkErrors()
     }
 
     /**
@@ -72,7 +91,7 @@ class AuthViewModel(
             supabaseClient.auth.sessionStatus.collect { status ->
                 Logger.d("AuthViewModel") { "Session status changed: $status" }
                 when (status) {
-                    is SessionStatus.Authenticated -> {
+                    is SessionStatus.Authenticated -> authMutex.withLock {
                         // React to session changes unless already authenticated with matching user
                         val current = _authState.value
                         val supabaseUid = supabaseClient.auth.currentUserOrNull()?.id
@@ -117,6 +136,21 @@ class AuthViewModel(
         }
     }
 
+    /**
+     * Listen for deep link auth errors (e.g. expired magic link) and surface them.
+     */
+    private fun observeDeepLinkErrors() {
+        viewModelScope.launch {
+            _deepLinkError.collect { errorMessage ->
+                authMutex.withLock {
+                    Logger.w("AuthViewModel") { "Deep link auth error: $errorMessage" }
+                    _magicLinkSent.value = false
+                    _authState.value = AuthState.Error(errorMessage)
+                }
+            }
+        }
+    }
+
     fun clearSuccessMessage() {
         _successMessage.value = null
     }
@@ -140,72 +174,75 @@ class AuthViewModel(
                 Logger.d("AuthDebug") { "checkAuthStatus: supabaseUser=${supabaseUser != null}, email='${supabaseUser?.email}', isAnonymous=${supabaseUser?.isAnonymous}" }
                 Logger.d("AuthDebug") { "checkAuthStatus: localUser=${localUser != null}, localEmail='${localUser?.email}', isGuest=${localUser?.isGuest}, uid=${localUser?.firebaseUid}" }
 
-                when {
-                    // Both exist and match — use local user (preserves onboarding data)
-                    supabaseUser != null && localUser != null && localUser.firebaseUid == supabaseUser.uid -> {
-                        // Reconcile local user with authoritative Supabase data
-                        // (e.g. local DB may have stale empty-string email from before the fix)
-                        val reconciledEmail = supabaseUser.email // already cleaned by AuthService
-                        val reconciledGuest = supabaseUser.isAnonymous
-                        val reconciledUser = if (localUser.email != reconciledEmail || localUser.isGuest != reconciledGuest) {
-                            val updated = localUser.copy(email = reconciledEmail, isGuest = reconciledGuest)
-                            userRepository.updateUser(updated)
-                            Logger.d("AuthDebug") { "checkAuthStatus: reconciled local user email='${reconciledEmail}', isGuest=$reconciledGuest" }
-                            updated
-                        } else {
-                            localUser
+                authMutex.withLock {
+                    when {
+                        // Both exist and match — use local user (preserves onboarding data)
+                        supabaseUser != null && localUser != null && localUser.firebaseUid == supabaseUser.uid -> {
+                            val reconciledEmail = supabaseUser.email
+                            val reconciledGuest = supabaseUser.isAnonymous
+                            val reconciledUser = if (localUser.email != reconciledEmail || localUser.isGuest != reconciledGuest) {
+                                val updated = localUser.copy(email = reconciledEmail, isGuest = reconciledGuest)
+                                userRepository.updateUser(updated)
+                                Logger.d("AuthDebug") { "checkAuthStatus: reconciled local user email='${reconciledEmail}', isGuest=$reconciledGuest" }
+                                updated
+                            } else {
+                                localUser
+                            }
+                            _hasCompletedOnboarding.value = reconciledUser.hasCompletedOnboarding
+                            _isLocalOnlyGuest.value = false
+                            val state = if (reconciledGuest) {
+                                AuthState.Guest(reconciledUser)
+                            } else {
+                                AuthState.Authenticated(reconciledUser)
+                            }
+                            Logger.d("AuthDebug") { "checkAuthStatus: matched → ${state::class.simpleName}, email='${reconciledUser.email}'" }
+                            _authState.value = state
                         }
-                        _hasCompletedOnboarding.value = reconciledUser.hasCompletedOnboarding
-                        _isLocalOnlyGuest.value = false
-                        val state = if (reconciledGuest) {
-                            AuthState.Guest(reconciledUser)
-                        } else {
-                            AuthState.Authenticated(reconciledUser)
+                        // Supabase session exists but no matching local user — recreate locally
+                        supabaseUser != null -> {
+                            val recreated = User(
+                                id = supabaseUser.uid,
+                                firebaseUid = supabaseUser.uid,
+                                email = supabaseUser.email,
+                                displayName = supabaseUser.displayName ?: if (supabaseUser.isAnonymous) "Guest User" else "User",
+                                isGuest = supabaseUser.isAnonymous,
+                                hasCompletedOnboarding = false,
+                                createdAt = Clock.System.now()
+                            )
+                            // Atomic: clear + create in sequence under the lock
+                            userRepository.deleteAllUsers()
+                            userRepository.createUser(recreated)
+                            _hasCompletedOnboarding.value = false
+                            _isLocalOnlyGuest.value = false
+                            val state = if (supabaseUser.isAnonymous) {
+                                AuthState.Guest(recreated)
+                            } else {
+                                AuthState.Authenticated(recreated)
+                            }
+                            Logger.d("AuthDebug") { "checkAuthStatus: recreated → ${state::class.simpleName}, email='${recreated.email}'" }
+                            _authState.value = state
                         }
-                        Logger.d("AuthDebug") { "checkAuthStatus: matched → ${state::class.simpleName}, email='${reconciledUser.email}'" }
-                        _authState.value = state
-                    }
-                    // Supabase session exists but no matching local user — recreate locally
-                    supabaseUser != null -> {
-                        val recreated = User(
-                            id = supabaseUser.uid,
-                            firebaseUid = supabaseUser.uid,
-                            email = supabaseUser.email,
-                            displayName = supabaseUser.displayName ?: if (supabaseUser.isAnonymous) "Guest User" else "User",
-                            isGuest = supabaseUser.isAnonymous,
-                            hasCompletedOnboarding = false,
-                            createdAt = Clock.System.now()
-                        )
-                        userRepository.deleteAllUsers()
-                        userRepository.createUser(recreated)
-                        _hasCompletedOnboarding.value = false
-                        _isLocalOnlyGuest.value = false
-                        val state = if (supabaseUser.isAnonymous) {
-                            AuthState.Guest(recreated)
-                        } else {
-                            AuthState.Authenticated(recreated)
+                        // No Supabase session but local user exists — degraded (local-only) mode
+                        localUser != null -> {
+                            _hasCompletedOnboarding.value = localUser.hasCompletedOnboarding
+                            _isLocalOnlyGuest.value = true
+                            _authState.value = if (localUser.isGuest) {
+                                AuthState.Guest(localUser)
+                            } else {
+                                AuthState.Authenticated(localUser)
+                            }
                         }
-                        Logger.d("AuthDebug") { "checkAuthStatus: recreated → ${state::class.simpleName}, email='${recreated.email}'" }
-                        _authState.value = state
-                    }
-                    // No Supabase session but local user exists — degraded (local-only) mode
-                    localUser != null -> {
-                        _hasCompletedOnboarding.value = localUser.hasCompletedOnboarding
-                        _isLocalOnlyGuest.value = true
-                        _authState.value = if (localUser.isGuest) {
-                            AuthState.Guest(localUser)
-                        } else {
-                            AuthState.Authenticated(localUser)
+                        // Neither — unauthenticated
+                        else -> {
+                            _hasCompletedOnboarding.value = false
+                            _authState.value = AuthState.Unauthenticated
                         }
-                    }
-                    // Neither — unauthenticated
-                    else -> {
-                        _hasCompletedOnboarding.value = false
-                        _authState.value = AuthState.Unauthenticated
                     }
                 }
             } catch (e: Exception) {
-                _authState.value = AuthState.Error(e.message ?: "Unknown error")
+                authMutex.withLock {
+                    _authState.value = AuthState.Error(e.message ?: "Unknown error")
+                }
             }
         }
     }
@@ -299,6 +336,7 @@ class AuthViewModel(
                 when (val result = authService.signUpWithEmail(email, password, displayName)) {
                     is AuthResult.Success -> {
                         Logger.d("AuthViewModel") { "Email sign-up successful, UID: ${result.user.uid}" }
+                        FacebookAnalytics.logCompleteRegistration("email")
                         val user = findOrCreateLocalUser(
                             uid = result.user.uid,
                             email = result.user.email,
@@ -586,6 +624,44 @@ class AuthViewModel(
 
     fun clearMagicLinkState() {
         _magicLinkSent.value = false
+    }
+
+    /**
+     * Update the display name for the current user (locally and on Supabase).
+     */
+    fun updateDisplayName(newName: String) {
+        viewModelScope.launch {
+            try {
+                val trimmed = newName.trim()
+                if (trimmed.isBlank() || trimmed.length < 2) return@launch
+
+                // Update on Supabase
+                supabaseClient.auth.updateUser {
+                    data = kotlinx.serialization.json.buildJsonObject {
+                        put("display_name", kotlinx.serialization.json.JsonPrimitive(trimmed))
+                    }
+                }
+
+                // Update locally
+                val currentUser = userRepository.getCurrentUser() ?: return@launch
+                val updated = currentUser.copy(displayName = trimmed)
+                userRepository.updateUser(updated)
+
+                // Refresh auth state
+                val currentState = _authState.value
+                _authState.value = when (currentState) {
+                    is AuthState.Authenticated -> AuthState.Authenticated(updated)
+                    is AuthState.Guest -> AuthState.Guest(updated)
+                    else -> currentState
+                }
+
+                _successMessage.value = "Display name updated"
+                Logger.d("AuthViewModel") { "Display name updated to: $trimmed" }
+            } catch (e: Exception) {
+                Logger.e("AuthViewModel", e) { "Failed to update display name: ${e.message}" }
+                _successMessage.value = "Failed to update name: ${e.message}"
+            }
+        }
     }
 
     /**

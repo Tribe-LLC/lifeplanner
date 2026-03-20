@@ -9,6 +9,7 @@ import com.russhwolf.settings.Settings
 import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import co.touchlab.kermit.Logger
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -40,7 +41,7 @@ class BackupRepositoryImpl(
                     progress = goal.progress.toInt(),
                     targetDate = goal.dueDate,
                     createdAt = goal.createdAt,
-                    updatedAt = goal.createdAt, // Not tracked separately
+                    updatedAt = goal.sync_updated_at ?: goal.createdAt,
                     completedAt = if (goal.status == "COMPLETED") goal.createdAt else null,
                     notes = goal.notes,
                     reminderEnabled = false,
@@ -171,13 +172,14 @@ class BackupRepositoryImpl(
             )
 
             val jsonString = json.encodeToString(backupData)
-            val fileName = "lifeplanner_backup_${timestamp.date}.json"
+            val fileName = "lifeplanner_backup_${timestamp.date}_${timestamp.hour}${timestamp.minute}.json"
 
             // Save last backup date
             saveLastBackupDate(timestamp.toString())
 
             ExportResult.Success(jsonData = jsonString, fileName = fileName)
         } catch (e: Exception) {
+            Logger.e("BackupRepository", e) { "Export failed: ${e.message}" }
             ExportResult.Error("Failed to export data: ${e.message}")
         }
     }
@@ -227,10 +229,10 @@ class BackupRepositoryImpl(
                             createdAt = goalBackup.createdAt,
                             completionRate = 0.0,
                             isArchived = 0L,
+                            aiReasoning = null,
                             sync_updated_at = Clock.System.now().toString(),
                             is_deleted = 0L,
-                            sync_version = 0L,
-                            last_synced_at = null
+                            sync_version = 0L, last_synced_at = null
                         )
                     )
                     goalsImported++
@@ -321,6 +323,7 @@ class BackupRepositoryImpl(
                 journalEntriesImported = journalEntriesImported
             )
         } catch (e: Exception) {
+            Logger.e("BackupRepository", e) { "Import failed: ${e.message}" }
             ImportResult.Error("Failed to import data: ${e.message}")
         }
     }
@@ -328,8 +331,16 @@ class BackupRepositoryImpl(
     override suspend fun validateBackup(jsonData: String): ValidationResult {
         return try {
             val backupData = json.decodeFromString<BackupData>(jsonData)
+            // Validate basic data integrity
+            if (backupData.goals.any { it.id.isBlank() }) {
+                return ValidationResult.Invalid("Backup contains goals with missing IDs")
+            }
+            if (backupData.habits.any { it.id.isBlank() }) {
+                return ValidationResult.Invalid("Backup contains habits with missing IDs")
+            }
             ValidationResult.Valid(backupData)
         } catch (e: Exception) {
+            Logger.e("BackupRepository", e) { "Backup validation failed: ${e.message}" }
             ValidationResult.Invalid("Invalid backup format: ${e.message}")
         }
     }

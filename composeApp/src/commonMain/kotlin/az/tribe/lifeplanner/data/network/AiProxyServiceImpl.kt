@@ -230,9 +230,10 @@ class AiProxyServiceImpl(
 
             // If we got text chunks but no done event, emit done with accumulated text
             if (!receivedAnyEvent && accumulated.isEmpty()) {
+                log.w { "Stream ended with no events received" }
                 emit(AiProxyService.StreamEvent.Error("No streaming data received"))
             } else if (accumulated.isNotEmpty() && !doneEmitted) {
-                // Stream ended without explicit done event
+                log.w { "Stream ended without explicit done event (${accumulated.length} chars accumulated)" }
                 emit(AiProxyService.StreamEvent.Done(accumulated.toString()))
             }
         }

@@ -2,6 +2,7 @@ package az.tribe.lifeplanner.ui.gamification
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import az.tribe.lifeplanner.data.analytics.FacebookAnalytics
 import az.tribe.lifeplanner.domain.enum.BadgeType
 import az.tribe.lifeplanner.domain.enum.ChallengeType
 import az.tribe.lifeplanner.domain.model.Badge
@@ -19,6 +20,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class GamificationViewModel(
     private val gamificationRepository: GamificationRepository,
@@ -49,6 +52,9 @@ class GamificationViewModel(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    /** Prevents concurrent loadAll() calls from racing. */
+    private val loadMutex = Mutex()
+
     init {
         viewModelScope.launch {
             loadAll()
@@ -62,7 +68,7 @@ class GamificationViewModel(
         }
     }
 
-    private suspend fun loadAll() {
+    private suspend fun loadAll() = loadMutex.withLock {
         _isLoading.value = true
         try {
             val previousProgress = _userProgress.value
@@ -77,6 +83,7 @@ class GamificationViewModel(
             val newProgress = _userProgress.value
             if (previousProgress != null && newProgress != null &&
                 newProgress.currentLevel > previousProgress.currentLevel) {
+                FacebookAnalytics.logAchieveLevel(newProgress.currentLevel)
                 _gamificationEvents.emit(
                     GamificationEvent.LevelUp(
                         newLevel = newProgress.currentLevel,
@@ -91,6 +98,7 @@ class GamificationViewModel(
             val earnedTypes = newBadgeTypes - previousBadgeTypes
             if (earnedTypes.isNotEmpty()) {
                 _badges.value.filter { it.type in earnedTypes }.forEach { badge ->
+                    FacebookAnalytics.logUnlockAchievement(badge.type.displayName)
                     _gamificationEvents.emit(GamificationEvent.BadgeEarned(badge))
                 }
             }

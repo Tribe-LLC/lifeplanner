@@ -45,6 +45,7 @@ class GoalTableSyncer(
         createdAt = local.createdAt,
         completionRate = local.completionRate ?: 0.0,
         isArchived = local.isArchived != 0L,
+        aiReasoning = local.aiReasoning,
         updatedAt = local.sync_updated_at ?: Clock.System.now().toString(),
         isDeleted = local.is_deleted != 0L,
         syncVersion = local.sync_version
@@ -64,6 +65,7 @@ class GoalTableSyncer(
             createdAt = remote.createdAt,
             completionRate = remote.completionRate,
             isArchived = if (remote.isArchived) 1L else 0L,
+            aiReasoning = remote.aiReasoning,
             sync_updated_at = remote.updatedAt,
             is_deleted = if (remote.isDeleted) 1L else 0L,
             sync_version = remote.syncVersion,
@@ -85,6 +87,7 @@ class GoalTableSyncer(
             createdAt = entity.createdAt,
             completionRate = entity.completionRate ?: 0.0,
             isArchived = entity.isArchived,
+            aiReasoning = entity.aiReasoning,
             sync_updated_at = entity.sync_updated_at,
             is_deleted = entity.is_deleted,
             sync_version = entity.sync_version,
@@ -131,15 +134,32 @@ class GoalTableSyncer(
         }
 
         Logger.d("SyncEngine") { "Pull $tableName: got ${remoteItems.size} items" }
+        var applied = 0
         remoteItems.forEach { remote ->
-            val local = remoteToLocal(remote)
-            upsertLocal(local)
+            val localEntity = remoteToLocal(remote)
+            // Last-write-wins: only apply remote if it has a newer or equal sync_version
+            val existingLocal = getLocalById(remote.id)
+            if (existingLocal == null || remote.syncVersion >= existingLocal.sync_version) {
+                upsertLocal(localEntity)
+                applied++
+            } else {
+                Logger.d("SyncEngine") { "Skipping $tableName ${remote.id}: local sync_version=${existingLocal.sync_version} > remote=${remote.syncVersion}" }
+            }
         }
 
         setLastPullTimestamp(now)
-        if (remoteItems.isNotEmpty()) {
-            Logger.d("SyncEngine") { "Pulled ${remoteItems.size} items from $tableName" }
+        if (applied > 0) {
+            Logger.d("SyncEngine") { "Applied $applied of ${remoteItems.size} pulled items from $tableName" }
         }
-        return remoteItems.size
+        return applied
+    }
+
+    /** Look up a local goal by ID for conflict comparison. Returns null if not found. */
+    private suspend fun getLocalById(id: String): GoalEntity? {
+        return try {
+            db { it.lifePlannerDBQueries.selectGoalById(id).executeAsOneOrNull() }
+        } catch (e: Exception) {
+            null
+        }
     }
 }

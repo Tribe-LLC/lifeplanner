@@ -12,6 +12,7 @@ CREATE TABLE GoalEntity (
     createdAt TEXT NOT NULL DEFAULT '2025-01-01T00:00:00',
     completionRate REAL NOT NULL DEFAULT 0.0,
     isArchived INTEGER NOT NULL DEFAULT 0,
+    aiReasoning TEXT,
     sync_updated_at TEXT,
     is_deleted INTEGER NOT NULL DEFAULT 0,
     sync_version INTEGER NOT NULL DEFAULT 0,
@@ -21,10 +22,13 @@ CREATE TABLE GoalEntity (
 selectAll:
 SELECT * FROM GoalEntity WHERE is_deleted = 0;
 
+selectGoalById:
+SELECT * FROM GoalEntity WHERE id = ?;
+
 -- Updated insert query with conflict resolution
 insertGoal:
-INSERT OR REPLACE INTO GoalEntity(id, category, title, description, status, timeline, dueDate, progress, notes, createdAt, completionRate, isArchived, sync_updated_at, is_deleted, sync_version, last_synced_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO GoalEntity(id, category, title, description, status, timeline, dueDate, progress, notes, createdAt, completionRate, isArchived, aiReasoning, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectGoalsByTimeline:
 SELECT * FROM GoalEntity
@@ -53,6 +57,7 @@ SET
   createdAt = ?,
   completionRate = ?,
   isArchived = ?,
+  aiReasoning = ?,
   sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
@@ -1306,6 +1311,24 @@ CREATE INDEX IF NOT EXISTS idx_coach_group_sync ON CoachGroupEntity(is_deleted, 
 CREATE INDEX IF NOT EXISTS idx_coach_group_member_sync ON CoachGroupMemberEntity(is_deleted, last_synced_at);
 CREATE INDEX IF NOT EXISTS idx_focus_session_sync ON FocusSessionEntity(is_deleted, last_synced_at);
 
+-- Sync pull ordering indexes
+CREATE INDEX IF NOT EXISTS idx_goals_sync_updated ON GoalEntity(sync_updated_at);
+CREATE INDEX IF NOT EXISTS idx_milestones_sync_updated ON MilestoneEntity(sync_updated_at);
+CREATE INDEX IF NOT EXISTS idx_habits_sync_updated ON HabitEntity(sync_updated_at);
+CREATE INDEX IF NOT EXISTS idx_journal_sync_updated ON JournalEntryEntity(sync_updated_at);
+
+-- Composite index for habit streak calculations
+CREATE INDEX IF NOT EXISTS idx_checkins_habit_date ON HabitCheckInEntity(habitId, date);
+
+-- is_deleted filter (used in nearly every SELECT)
+CREATE INDEX IF NOT EXISTS idx_goals_deleted ON GoalEntity(is_deleted);
+CREATE INDEX IF NOT EXISTS idx_milestones_deleted ON MilestoneEntity(is_deleted);
+CREATE INDEX IF NOT EXISTS idx_habits_deleted ON HabitEntity(is_deleted);
+CREATE INDEX IF NOT EXISTS idx_journal_deleted ON JournalEntryEntity(is_deleted);
+
+-- Focus session date range queries
+CREATE INDEX IF NOT EXISTS idx_focus_date ON FocusSessionEntity(startedAt, wasCompleted);
+
 -- ============== Retrospective Queries ==============
 
 -- Get all habits with their check-in status for a specific date
@@ -1382,6 +1405,9 @@ UPDATE MilestoneEntity SET last_synced_at = ? WHERE id = ?;
 
 softDeleteMilestone:
 UPDATE MilestoneEntity SET is_deleted = 1, sync_updated_at = ? WHERE id = ?;
+
+softDeleteMilestonesByGoalId:
+UPDATE MilestoneEntity SET is_deleted = 1, sync_updated_at = ? WHERE goalId = ? AND is_deleted = 0;
 
 purgeDeletedMilestones:
 DELETE FROM MilestoneEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
@@ -1661,8 +1687,8 @@ DELETE FROM FocusSessionEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NU
 -- ============== Upsert From Sync Queries ==============
 
 upsertGoalFromSync:
-INSERT OR REPLACE INTO GoalEntity(id, category, title, description, status, timeline, dueDate, progress, notes, createdAt, completionRate, isArchived, sync_updated_at, is_deleted, sync_version, last_synced_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO GoalEntity(id, category, title, description, status, timeline, dueDate, progress, notes, createdAt, completionRate, isArchived, aiReasoning, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 upsertMilestoneFromSync:
 INSERT OR REPLACE INTO MilestoneEntity(id, goalId, title, isCompleted, dueDate, createdAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
@@ -1828,3 +1854,55 @@ DELETE FROM CoachPersonaOverrideEntity WHERE is_deleted = 1 AND last_synced_at I
 upsertCoachPersonaOverrideFromSync:
 INSERT OR REPLACE INTO CoachPersonaOverrideEntity(coachId, userPersona, updatedAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
 VALUES (?, ?, ?, ?, ?, ?, ?);
+
+-- ===== Beginner Objectives =====
+CREATE TABLE IF NOT EXISTS BeginnerObjectiveEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    objectiveType TEXT NOT NULL,
+    isCompleted INTEGER NOT NULL DEFAULT 0,
+    completedAt TEXT,
+    xpAwarded INTEGER NOT NULL DEFAULT 0,
+    createdAt TEXT NOT NULL,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
+);
+
+insertBeginnerObjective:
+INSERT OR REPLACE INTO BeginnerObjectiveEntity(id, objectiveType, isCompleted, completedAt, xpAwarded, createdAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getAllBeginnerObjectives:
+SELECT * FROM BeginnerObjectiveEntity WHERE is_deleted = 0;
+
+getBeginnerObjectiveByType:
+SELECT * FROM BeginnerObjectiveEntity WHERE objectiveType = ? AND is_deleted = 0;
+
+getCompletedBeginnerObjectivesCount:
+SELECT COUNT(*) FROM BeginnerObjectiveEntity WHERE isCompleted = 1 AND is_deleted = 0;
+
+completeBeginnerObjective:
+UPDATE BeginnerObjectiveEntity
+SET isCompleted = 1, completedAt = ?, xpAwarded = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE objectiveType = ? AND isCompleted = 0;
+
+deleteAllBeginnerObjectives:
+DELETE FROM BeginnerObjectiveEntity;
+
+-- Beginner Objectives sync queries
+getUnsyncedBeginnerObjectives:
+SELECT * FROM BeginnerObjectiveEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedBeginnerObjectives:
+SELECT * FROM BeginnerObjectiveEntity WHERE is_deleted = 1;
+
+markBeginnerObjectiveSynced:
+UPDATE BeginnerObjectiveEntity SET last_synced_at = ? WHERE id = ?;
+
+purgeDeletedBeginnerObjectives:
+DELETE FROM BeginnerObjectiveEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+upsertBeginnerObjectiveFromSync:
+INSERT OR REPLACE INTO BeginnerObjectiveEntity(id, objectiveType, isCompleted, completedAt, xpAwarded, createdAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
