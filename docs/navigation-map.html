@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Life Planner - Navigation Map</title>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e0e0e0; overflow: hidden; }
+
+  /* ── Toolbar ── */
+  #toolbar {
+    padding: 10px 20px; background: #1a1b26; border-bottom: 1px solid #2a2b3d;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap; z-index: 20; position: relative;
+  }
+  #toolbar h1 { font-size: 18px; color: #7aa2f7; white-space: nowrap; }
+  #toolbar .stats { font-size: 12px; color: #666; white-space: nowrap; }
+  #search-box {
+    padding: 6px 12px; border-radius: 6px; border: 1px solid #3a3b4d; background: #0f1117;
+    color: #e0e0e0; font-size: 13px; width: 220px; outline: none; transition: border 0.2s;
+  }
+  #search-box:focus { border-color: #7aa2f7; }
+  #search-box::placeholder { color: #555; }
+
+  .toolbar-btn {
+    padding: 6px 14px; border-radius: 6px; border: 1px solid #3a3b4d; background: #1a1b26;
+    color: #ccc; font-size: 12px; cursor: pointer; transition: all 0.2s; white-space: nowrap;
+  }
+  .toolbar-btn:hover { background: #2a2b3d; border-color: #7aa2f7; color: #fff; }
+  .toolbar-btn.active { background: #7aa2f7; color: #1a1b26; border-color: #7aa2f7; font-weight: 600; }
+
+  .separator { width: 1px; height: 24px; background: #2a2b3d; }
+  .toolbar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  /* ── Legend ── */
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; cursor: pointer; opacity: 0.8; transition: opacity 0.2s; }
+  .legend-item:hover { opacity: 1; }
+  .legend-item.dimmed { opacity: 0.3; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* ── Network ── */
+  #network { width: 100%; height: calc(100vh - 50px); }
+
+  /* ── Tooltip ── */
+  #tooltip {
+    position: absolute; background: #1a1b26; border: 1px solid #7aa2f7; border-radius: 10px;
+    padding: 14px 18px; font-size: 13px; max-width: 360px; pointer-events: none;
+    display: none; z-index: 30; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    backdrop-filter: blur(8px);
+  }
+  #tooltip h3 { color: #7aa2f7; margin-bottom: 4px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  #tooltip .icon { font-size: 18px; }
+  #tooltip .route { color: #666; font-family: 'SF Mono', Menlo, monospace; font-size: 11px; margin-bottom: 8px; padding: 3px 8px; background: #0f1117; border-radius: 4px; display: inline-block; }
+  #tooltip .file-link { color: #73daca; font-family: 'SF Mono', Menlo, monospace; font-size: 10px; margin-bottom: 8px; display: block; }
+  #tooltip ul { padding-left: 16px; margin: 4px 0; }
+  #tooltip li { margin: 2px 0; font-size: 12px; color: #bbb; }
+  #tooltip .section-label { color: #9ece6a; font-weight: 600; margin-top: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  #tooltip .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; margin-left: 6px; }
+
+  /* ── Side Panel ── */
+  #side-panel {
+    position: absolute; top: 50px; right: 0; width: 340px; height: calc(100vh - 50px);
+    background: #1a1b26; border-left: 1px solid #2a2b3d; z-index: 15;
+    transform: translateX(100%); transition: transform 0.3s ease; overflow-y: auto;
+    padding: 0;
+  }
+  #side-panel.open { transform: translateX(0); }
+  #side-panel .panel-header {
+    padding: 16px 20px; border-bottom: 1px solid #2a2b3d; display: flex;
+    align-items: center; justify-content: space-between; position: sticky; top: 0;
+    background: #1a1b26; z-index: 2;
+  }
+  #side-panel .panel-header h2 { font-size: 16px; color: #7aa2f7; display: flex; align-items: center; gap: 8px; }
+  #side-panel .close-btn { background: none; border: none; color: #666; font-size: 20px; cursor: pointer; }
+  #side-panel .close-btn:hover { color: #fff; }
+  .panel-section { padding: 16px 20px; border-bottom: 1px solid #1f2030; }
+  .panel-section h3 { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; }
+  .panel-section .info-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; }
+  .panel-section .info-label { color: #888; }
+  .panel-section .info-value { color: #e0e0e0; font-family: 'SF Mono', Menlo, monospace; font-size: 12px; }
+  .nav-list { list-style: none; padding: 0; }
+  .nav-list li {
+    padding: 8px 12px; border-radius: 6px; font-size: 13px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px; transition: background 0.15s;
+  }
+  .nav-list li:hover { background: #2a2b3d; }
+  .nav-list .nav-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .nav-list .nav-label { color: #ccc; }
+  .nav-list .nav-trigger { color: #666; font-size: 11px; margin-left: auto; }
+  .open-file-btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 6px;
+    border: 1px solid #3a3b4d; background: #0f1117; color: #73daca; font-size: 12px;
+    cursor: pointer; transition: all 0.2s; font-family: 'SF Mono', Menlo, monospace;
+    margin-top: 4px; width: 100%; justify-content: center;
+  }
+  .open-file-btn:hover { background: #73daca; color: #1a1b26; border-color: #73daca; }
+
+  /* ── Minimap ── */
+  #minimap {
+    position: absolute; bottom: 16px; left: 16px; width: 180px; height: 120px;
+    background: #1a1b26; border: 1px solid #2a2b3d; border-radius: 8px; z-index: 10;
+    overflow: hidden; opacity: 0.8; transition: opacity 0.2s;
+  }
+  #minimap:hover { opacity: 1; }
+  #minimap canvas { width: 100%; height: 100%; }
+
+  /* ── Flow cluster boxes ── */
+  .cluster-box {
+    position: absolute; border: 1px dashed; border-radius: 16px; pointer-events: none;
+    z-index: 0; opacity: 0;
+  }
+
+  /* ── Export modal ── */
+  #export-modal {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center;
+  }
+  #export-modal.show { display: flex; }
+  #export-modal .modal-content {
+    background: #1a1b26; border: 1px solid #2a2b3d; border-radius: 12px; padding: 24px;
+    min-width: 320px; text-align: center;
+  }
+  #export-modal h3 { color: #7aa2f7; margin-bottom: 16px; }
+  #export-modal .export-options { display: flex; gap: 12px; justify-content: center; }
+  #export-modal .export-opt {
+    padding: 16px 24px; border-radius: 8px; border: 1px solid #3a3b4d; background: #0f1117;
+    color: #ccc; cursor: pointer; transition: all 0.2s; text-align: center; min-width: 100px;
+  }
+  #export-modal .export-opt:hover { border-color: #7aa2f7; color: #fff; }
+  #export-modal .export-opt .ext { font-size: 24px; display: block; margin-bottom: 6px; }
+  #export-modal .export-opt .desc { font-size: 11px; color: #888; }
+  #export-modal .cancel { margin-top: 16px; color: #666; cursor: pointer; font-size: 13px; }
+  #export-modal .cancel:hover { color: #fff; }
+
+  /* ── Keyboard hints ── */
+  #kb-hints {
+    position: absolute; bottom: 16px; right: 16px; font-size: 11px; color: #444; z-index: 10;
+    display: flex; gap: 12px;
+  }
+  #kb-hints kbd {
+    background: #1a1b26; border: 1px solid #2a2b3d; padding: 2px 6px; border-radius: 3px;
+    font-family: 'SF Mono', Menlo, monospace; font-size: 10px; color: #666;
+  }
+</style>
+</head>
+<body>
+
+<!-- Toolbar -->
+<div id="toolbar">
+  <h1>Life Planner</h1>
+  <span class="stats">35 screens &middot; 70+ edges</span>
+  <div class="separator"></div>
+  <input id="search-box" type="text" placeholder="Search screens... (Ctrl+K)" autocomplete="off" />
+  <div class="separator"></div>
+  <div class="legend">
+    <div class="legend-item" data-group="auth"><div class="legend-dot" style="background:#f7768e"></div>Auth</div>
+    <div class="legend-item" data-group="main"><div class="legend-dot" style="background:#7aa2f7"></div>Main</div>
+    <div class="legend-item" data-group="goals"><div class="legend-dot" style="background:#9ece6a"></div>Goals</div>
+    <div class="legend-item" data-group="journal"><div class="legend-dot" style="background:#e0af68"></div>Journal</div>
+    <div class="legend-item" data-group="ai"><div class="legend-dot" style="background:#bb9af7"></div>AI/Coach</div>
+    <div class="legend-item" data-group="feature"><div class="legend-dot" style="background:#73daca"></div>Features</div>
+    <div class="legend-item" data-group="settings"><div class="legend-dot" style="background:#ff9e64"></div>Settings</div>
+  </div>
+  <div class="toolbar-right">
+    <button class="toolbar-btn" id="btn-fit" title="Fit to screen (F)">Fit</button>
+    <button class="toolbar-btn" id="btn-physics" title="Toggle physics (P)">Physics: ON</button>
+    <button class="toolbar-btn" id="btn-export" title="Export (E)">Export</button>
+  </div>
+</div>
+
+<!-- Network canvas -->
+<div id="network"></div>
+
+<!-- Tooltip -->
+<div id="tooltip"></div>
+
+<!-- Side detail panel -->
+<div id="side-panel">
+  <div class="panel-header">
+    <h2><span id="panel-icon"></span> <span id="panel-title"></span></h2>
+    <button class="close-btn" id="panel-close">&times;</button>
+  </div>
+  <div id="panel-body"></div>
+</div>
+
+<!-- Export modal -->
+<div id="export-modal">
+  <div class="modal-content">
+    <h3>Export Navigation Map</h3>
+    <div class="export-options">
+      <div class="export-opt" id="export-png"><span class="ext">PNG</span>Image<div class="desc">Raster image</div></div>
+      <div class="export-opt" id="export-svg"><span class="ext">SVG</span>Vector<div class="desc">Scalable graphic</div></div>
+      <div class="export-opt" id="export-json"><span class="ext">JSON</span>Data<div class="desc">Raw graph data</div></div>
+    </div>
+    <div class="cancel" id="export-cancel">Cancel</div>
+  </div>
+</div>
+
+<!-- Keyboard hints -->
+<div id="kb-hints">
+  <span><kbd>Ctrl</kbd>+<kbd>K</kbd> Search</span>
+  <span><kbd>F</kbd> Fit</span>
+  <span><kbd>P</kbd> Physics</span>
+  <span><kbd>E</kbd> Export</span>
+  <span><kbd>Esc</kbd> Reset</span>
+</div>
+
+<script>
+// ─── Data ───────────────────────────────────────────────────────────
+const screenData = {
+  welcome:        { label: "Welcome",          group: "auth",     route: "welcome",                           icon: "door",    file: "ui/WelcomeScreen.kt" },
+  onboarding:     { label: "Onboarding",       group: "auth",     route: "onboarding",                        icon: "rocket",  file: "ui/OnboardingScreen.kt" },
+  sign_in:        { label: "Sign In",          group: "auth",     route: "sign_in",                           icon: "key",     file: "ui/SignInScreen.kt" },
+
+  home:           { label: "Home",             group: "main",     route: "home",                              icon: "house",   file: "ui/HomeScreen.kt" },
+  journal:        { label: "Journal",          group: "journal",  route: "journal",                           icon: "book",    file: "ui/JournalScreen.kt" },
+  profile:        { label: "Profile",          group: "main",     route: "profile",                           icon: "person",  file: "ui/ProfileScreen.kt" },
+
+  goals:          { label: "Goals",            group: "goals",    route: "goals",                             icon: "target",  file: "ui/GoalsScreen.kt" },
+  add_goal:       { label: "Add Goal",         group: "goals",    route: "add_goal",                          icon: "plus",    file: "ui/AddGoalScreen.kt" },
+  edit_goal:      { label: "Edit Goal",        group: "goals",    route: "edit_goal/{goalId}",                icon: "pencil",  file: "ui/EditGoalScreen.kt" },
+  goal_detail:    { label: "Goal Detail",      group: "goals",    route: "goal_detail/{goalId}",              icon: "detail",  file: "ui/GoalDetailScreen.kt" },
+  ai_goal:        { label: "AI Goal Gen",      group: "goals",    route: "ai_goal_generation",                icon: "sparkle", file: "ui/AiGoalGenerationScreen.kt" },
+  templates:      { label: "Templates",        group: "goals",    route: "templates",                         icon: "copy",    file: "ui/TemplatePickerScreen.kt" },
+  add_from_template: { label: "From Template", group: "goals",    route: "add_goal_from_template/{id}",       icon: "plus",    file: "ui/AddGoalFromTemplateScreen.kt" },
+  dep_graph:      { label: "Dep Graph",        group: "goals",    route: "dependency_graph",                  icon: "graph",   file: "ui/DependencyGraphScreen.kt" },
+  dep_graph_goal: { label: "Goal Dep Graph",   group: "goals",    route: "dependency_graph/{goalId}",         icon: "graph",   file: "ui/DependencyGraphScreen.kt" },
+
+  journal_wizard: { label: "Journal Wizard",   group: "journal",  route: "journal_wizard?goalId={goalId}",    icon: "wand",    file: "ui/JournalCreationWizardScreen.kt" },
+  journal_detail: { label: "Journal Detail",   group: "journal",  route: "journal_entry_detail/{entryId}",    icon: "page",    file: "ui/JournalEntryDetailScreen.kt" },
+
+  ai_chat:        { label: "AI Coach List",    group: "ai",       route: "ai_chat",                           icon: "chat",    file: "ui/AIChatScreen.kt" },
+  ai_chat_session:{ label: "Chat Session",     group: "ai",       route: "ai_chat/{sessionId}",               icon: "bubble",  file: "ui/AIChatScreen.kt" },
+  create_coach:   { label: "Create Coach",     group: "ai",       route: "create_coach",                      icon: "plus",    file: "ui/coach/CreateCoachScreen.kt" },
+  edit_coach:     { label: "Edit Coach",       group: "ai",       route: "edit_coach/{coachId}",              icon: "pencil",  file: "ui/coach/CreateCoachScreen.kt" },
+  coach_profile:  { label: "Coach Profile",    group: "ai",       route: "coach_profile/{coachId}",           icon: "person",  file: "ui/coach/CoachProfileScreen.kt" },
+  create_group:   { label: "Create Group",     group: "ai",       route: "create_group",                      icon: "group",   file: "ui/coach/CreateGroupScreen.kt" },
+  edit_group:     { label: "Edit Group",       group: "ai",       route: "edit_group/{groupId}",              icon: "pencil",  file: "ui/coach/CreateGroupScreen.kt" },
+
+  habit_tracker:  { label: "Habit Tracker",    group: "feature",  route: "habit_tracker",                     icon: "check",   file: "ui/HabitTrackerScreen.kt" },
+  analytics:      { label: "Analytics",        group: "feature",  route: "analytics",                         icon: "chart",   file: "ui/AnalyticsDashboard.kt" },
+  achievements:   { label: "Achievements",     group: "feature",  route: "achievements",                      icon: "trophy",  file: "ui/AchievementsScreen.kt" },
+  focus_setup:    { label: "Focus Timer",      group: "feature",  route: "focus_setup?goalId=&milestoneId=",  icon: "clock",   file: "ui/focus/FocusScreen.kt" },
+  life_balance:   { label: "Life Balance",     group: "feature",  route: "life_balance",                      icon: "scale",   file: "ui/LifeBalanceScreen.kt" },
+  retrospective:  { label: "Retrospective",    group: "feature",  route: "retrospective",                     icon: "mirror",  file: "ui/retrospective/RetrospectiveScreen.kt" },
+
+  reminders:      { label: "Reminders",        group: "settings", route: "reminders",                         icon: "bell",    file: "ui/ReminderSettingsScreen.kt" },
+  backup:         { label: "Backup",           group: "settings", route: "backup_settings",                   icon: "cloud",   file: "ui/BackupSettingsScreen.kt" },
+};
+
+const iconMap = {
+  door:"🚪", rocket:"🚀", key:"🔑", house:"🏠", book:"📓", person:"👤", target:"🎯",
+  plus:"➕", pencil:"✏️", detail:"📋", sparkle:"✨", copy:"📄", graph:"🔗", wand:"🪄",
+  page:"📖", chat:"💬", bubble:"🗨️", group:"👥", check:"✅", chart:"📊", trophy:"🏆",
+  clock:"⏱️", scale:"⚖️", mirror:"🔄", bell:"🔔", cloud:"☁️",
+};
+
+const groupColors = {
+  auth:    { bg: "#f7768e", bgDim: "#3d1f28", border: "#f7768e", font: "#1a1b26" },
+  main:    { bg: "#7aa2f7", bgDim: "#1f2a3d", border: "#7aa2f7", font: "#1a1b26" },
+  goals:   { bg: "#9ece6a", bgDim: "#243020", border: "#9ece6a", font: "#1a1b26" },
+  journal: { bg: "#e0af68", bgDim: "#3d3020", border: "#e0af68", font: "#1a1b26" },
+  ai:      { bg: "#bb9af7", bgDim: "#2d2040", border: "#bb9af7", font: "#1a1b26" },
+  feature: { bg: "#73daca", bgDim: "#1a3530", border: "#73daca", font: "#1a1b26" },
+  settings:{ bg: "#ff9e64", bgDim: "#3d2a1a", border: "#ff9e64", font: "#1a1b26" },
+};
+
+const basePath = "composeApp/src/commonMain/kotlin/az/tribe/lifeplanner/";
+
+// ─── Edges ──────────────────────────────────────────────────────────
+const edgeList = [
+  ["welcome","home","onComplete"],["welcome","sign_in","sign in"],
+  ["onboarding","home","onComplete"],["sign_in","home","onSuccess"],
+  ["home","goal_detail","goal click"],["home","add_goal","add goal"],
+  ["home","analytics","analytics"],["home","ai_goal","AI generate"],
+  ["home","habit_tracker","habits"],["home","journal","journal tab"],
+  ["home","goals","goals"],["home","achievements","achievements"],
+  ["home","focus_setup","focus"],["home","profile","profile tab"],
+  ["home","retrospective","retrospective"],["home","ai_chat","AI coach"],
+  ["home","reminders","reminders"],["home","life_balance","life balance"],
+  ["home","templates","templates"],["home","ai_chat_session","continue chat"],
+  ["goals","goal_detail","goal click"],["goals","add_goal","add goal"],
+  ["goals","ai_goal","AI generate"],["goals","templates","templates"],
+  ["goals","add_from_template","template select"],
+  ["goal_detail","edit_goal","edit"],["goal_detail","dep_graph_goal","view deps"],
+  ["goal_detail","goal_detail","dep click"],["goal_detail","journal_detail","journal entry"],
+  ["goal_detail","journal_wizard","reflect"],
+  ["ai_goal","goals","onComplete"],
+  ["profile","achievements","achievements"],["profile","life_balance","life balance"],
+  ["profile","reminders","reminders"],["profile","backup","backup"],
+  ["profile","retrospective","retrospective"],["profile","ai_chat","AI coach"],
+  ["profile","sign_in","sign in"],
+  ["journal","journal_detail","entry click"],["journal","journal_wizard","new entry"],
+  ["journal_detail","goal_detail","linked goal"],
+  ["ai_chat","ai_chat_session","select coach"],["ai_chat","create_coach","create coach"],
+  ["ai_chat","create_group","create group"],["ai_chat","coach_profile","view profile"],
+  ["ai_chat_session","ai_chat_session","switch coach"],
+  ["ai_chat_session","create_coach","create coach"],
+  ["ai_chat_session","create_group","create group"],
+  ["ai_chat_session","coach_profile","view profile"],
+  ["life_balance","ai_chat_session","coach advice"],
+  ["life_balance","habit_tracker","create habit"],
+  ["templates","add_from_template","select template"],
+  ["add_from_template","goals","goal saved"],
+  ["dep_graph","goal_detail","goal click"],
+  ["dep_graph_goal","goal_detail","goal click"],
+];
+
+// ─── Build vis.js data ──────────────────────────────────────────────
+const nodes = new vis.DataSet(
+  Object.entries(screenData).map(([id, s]) => {
+    const gc = groupColors[s.group];
+    return {
+      id, label: `${iconMap[s.icon] || ""} ${s.label}`, group: s.group,
+      color: { background: gc.bg, border: gc.bg, highlight: { background: "#fff", border: gc.bg }, hover: { background: "#fff", border: gc.bg } },
+      font: { color: gc.font, size: 12, face: "system-ui" },
+      shape: id === "home" ? "diamond" : (["welcome","journal","profile","goals"].includes(id) ? "box" : "dot"),
+      size: id === "home" ? 30 : (["welcome","journal","profile","goals"].includes(id) ? 18 : 14),
+      borderWidth: 2, shadow: { enabled: true, color: gc.bg + "40", size: 10 },
+    };
+  })
+);
+
+const edges = new vis.DataSet(
+  edgeList.map(([from, to, label], i) => ({
+    id: i, from, to, label,
+    font: { size: 8, color: "#444", strokeWidth: 0, align: "top" },
+    arrows: { to: { enabled: true, scaleFactor: 0.5, type: "arrow" } },
+    color: { color: "#2a2b3d", highlight: "#7aa2f7", hover: "#7aa2f7", opacity: 0.6 },
+    smooth: { type: from === to ? "curvedCW" : "dynamic", roundness: from === to ? 0.6 : 0.2 },
+    width: 1.5, hoverWidth: 0.5, selectionWidth: 1.5,
+  }))
+);
+
+// Tooltip helpers
+const tooltipData = {};
+Object.keys(screenData).forEach(id => {
+  tooltipData[id] = {
+    outgoing: edgeList.filter(e => e[0] === id && e[1] !== id).map(e => ({ to: e[1], label: e[2] })),
+    incoming: edgeList.filter(e => e[1] === id && e[0] !== id).map(e => ({ from: e[0], label: e[2] })),
+  };
+});
+
+// ─── Network ────────────────────────────────────────────────────────
+const container = document.getElementById("network");
+let physicsEnabled = true;
+
+const network = new vis.Network(container, { nodes, edges }, {
+  physics: {
+    enabled: true,
+    solver: "forceAtlas2Based",
+    forceAtlas2Based: { gravitationalConstant: -100, centralGravity: 0.006, springLength: 140, springConstant: 0.035, damping: 0.5 },
+    stabilization: { iterations: 400, fit: true },
+  },
+  interaction: { hover: true, tooltipDelay: 80, zoomView: true, dragView: true, multiselect: true, navigationButtons: false },
+  layout: { improvedLayout: true },
+  edges: { selectionWidth: 2 },
+});
+
+// ─── Tooltip ────────────────────────────────────────────────────────
+const tooltip = document.getElementById("tooltip");
+
+network.on("hoverNode", (params) => {
+  const id = params.node;
+  const s = screenData[id];
+  const t = tooltipData[id];
+  if (!s) return;
+
+  const gc = groupColors[s.group];
+  let html = `<h3><span class="icon">${iconMap[s.icon] || ""}</span> ${s.label}
+    <span class="badge" style="background:${gc.bg};color:${gc.font}">${s.group}</span></h3>`;
+  html += `<div class="route">${s.route}</div>`;
+  html += `<div class="file-link">${basePath}${s.file}</div>`;
+
+  if (t.outgoing.length) {
+    html += `<div class="section-label">Navigates to (${t.outgoing.length})</div><ul>`;
+    t.outgoing.forEach(e => {
+      const target = screenData[e.to];
+      html += `<li>${iconMap[target?.icon] || ""} ${target?.label || e.to} <span style="color:#555">— ${e.label}</span></li>`;
+    });
+    html += `</ul>`;
+  }
+  if (t.incoming.length) {
+    html += `<div class="section-label">Reached from (${t.incoming.length})</div><ul>`;
+    t.incoming.forEach(e => {
+      const source = screenData[e.from];
+      html += `<li>${iconMap[source?.icon] || ""} ${source?.label || e.from} <span style="color:#555">— ${e.label}</span></li>`;
+    });
+    html += `</ul>`;
+  }
+  tooltip.innerHTML = html;
+  tooltip.style.display = "block";
+});
+network.on("blurNode", () => { tooltip.style.display = "none"; });
+container.addEventListener("mousemove", (e) => {
+  if (tooltip.style.display !== "block") return;
+  const x = Math.min(e.pageX + 16, window.innerWidth - 380);
+  const y = Math.min(e.pageY + 16, window.innerHeight - 300);
+  tooltip.style.left = x + "px";
+  tooltip.style.top = y + "px";
+});
+
+// ─── Click → Side Panel ─────────────────────────────────────────────
+const sidePanel = document.getElementById("side-panel");
+const panelBody = document.getElementById("panel-body");
+const panelTitle = document.getElementById("panel-title");
+const panelIcon = document.getElementById("panel-icon");
+document.getElementById("panel-close").onclick = () => sidePanel.classList.remove("open");
+
+network.on("doubleClick", (params) => {
+  if (!params.nodes.length) return;
+  openPanel(params.nodes[0]);
+});
+
+function openPanel(id) {
+  const s = screenData[id];
+  const t = tooltipData[id];
+  if (!s) return;
+
+  const gc = groupColors[s.group];
+  panelIcon.textContent = iconMap[s.icon] || "";
+  panelTitle.textContent = s.label;
+
+  let html = `
+    <div class="panel-section">
+      <h3>Details</h3>
+      <div class="info-row"><span class="info-label">Route</span><span class="info-value">${s.route}</span></div>
+      <div class="info-row"><span class="info-label">Group</span><span class="info-value" style="color:${gc.bg}">${s.group}</span></div>
+      <div class="info-row"><span class="info-label">Outgoing</span><span class="info-value">${t.outgoing.length}</span></div>
+      <div class="info-row"><span class="info-label">Incoming</span><span class="info-value">${t.incoming.length}</span></div>
+    </div>
+    <div class="panel-section">
+      <h3>Source File</h3>
+      <button class="open-file-btn" onclick="copyPath('${basePath}${s.file}')">
+        📂 ${s.file} <span style="color:#666;font-size:10px">(click to copy)</span>
+      </button>
+    </div>`;
+
+  if (t.outgoing.length) {
+    html += `<div class="panel-section"><h3>Navigates To</h3><ul class="nav-list">`;
+    t.outgoing.forEach(e => {
+      const target = screenData[e.to];
+      const tgc = groupColors[target?.group];
+      html += `<li onclick="focusNode('${e.to}')">
+        <span class="nav-dot" style="background:${tgc?.bg || '#555'}"></span>
+        <span class="nav-label">${iconMap[target?.icon] || ""} ${target?.label || e.to}</span>
+        <span class="nav-trigger">${e.label}</span>
+      </li>`;
+    });
+    html += `</ul></div>`;
+  }
+
+  if (t.incoming.length) {
+    html += `<div class="panel-section"><h3>Reached From</h3><ul class="nav-list">`;
+    t.incoming.forEach(e => {
+      const source = screenData[e.from];
+      const sgc = groupColors[source?.group];
+      html += `<li onclick="focusNode('${e.from}')">
+        <span class="nav-dot" style="background:${sgc?.bg || '#555'}"></span>
+        <span class="nav-label">${iconMap[source?.icon] || ""} ${source?.label || e.from}</span>
+        <span class="nav-trigger">${e.label}</span>
+      </li>`;
+    });
+    html += `</ul></div>`;
+  }
+
+  panelBody.innerHTML = html;
+  sidePanel.classList.add("open");
+}
+
+function focusNode(id) {
+  network.focus(id, { scale: 1.5, animation: { duration: 400, easingFunction: "easeInOutCubic" } });
+  network.selectNodes([id]);
+  highlightConnected(id);
+  openPanel(id);
+}
+
+function copyPath(path) {
+  navigator.clipboard.writeText(path).then(() => {
+    const btn = event.target.closest('.open-file-btn');
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✅ Copied!';
+    setTimeout(() => btn.innerHTML = orig, 1500);
+  });
+}
+
+// ─── Highlight connected ────────────────────────────────────────────
+function highlightConnected(selected) {
+  const connectedEdges = network.getConnectedEdges(selected);
+  const connectedNodes = new Set(network.getConnectedNodes(selected));
+  connectedNodes.add(selected);
+
+  nodes.forEach(n => nodes.update({ id: n.id, opacity: connectedNodes.has(n.id) ? 1 : 0.12 }));
+  edges.forEach(e => {
+    const isC = connectedEdges.includes(e.id);
+    edges.update({ id: e.id, color: { color: isC ? "#7aa2f7" : "#2a2b3d", opacity: isC ? 1 : 0.05 }, width: isC ? 3 : 1 });
+  });
+}
+
+function resetHighlight() {
+  nodes.forEach(n => nodes.update({ id: n.id, opacity: 1 }));
+  edges.forEach(e => edges.update({ id: e.id, color: { color: "#2a2b3d", opacity: 0.6 }, width: 1.5 }));
+}
+
+network.on("click", (params) => {
+  if (params.nodes.length === 0) { resetHighlight(); return; }
+  highlightConnected(params.nodes[0]);
+});
+
+// ─── Search ─────────────────────────────────────────────────────────
+const searchBox = document.getElementById("search-box");
+let searchResults = [];
+let searchIndex = -1;
+
+searchBox.addEventListener("input", () => {
+  const q = searchBox.value.toLowerCase().trim();
+  if (!q) { resetHighlight(); searchResults = []; searchIndex = -1; return; }
+
+  searchResults = Object.entries(screenData)
+    .filter(([id, s]) => s.label.toLowerCase().includes(q) || s.route.toLowerCase().includes(q) || s.group.toLowerCase().includes(q))
+    .map(([id]) => id);
+
+  if (searchResults.length === 0) { resetHighlight(); return; }
+
+  const matchSet = new Set(searchResults);
+  nodes.forEach(n => nodes.update({ id: n.id, opacity: matchSet.has(n.id) ? 1 : 0.1 }));
+  edges.forEach(e => {
+    const ed = edgeList[e.id];
+    const isC = ed && matchSet.has(ed[0]) && matchSet.has(ed[1]);
+    edges.update({ id: e.id, color: { color: isC ? "#7aa2f7" : "#2a2b3d", opacity: isC ? 0.8 : 0.03 }, width: isC ? 2.5 : 1 });
+  });
+
+  // Focus first result
+  if (searchResults.length) {
+    searchIndex = 0;
+    network.focus(searchResults[0], { scale: 1.2, animation: { duration: 300, easingFunction: "easeInOutCubic" } });
+    network.selectNodes([searchResults[0]]);
+  }
+});
+
+searchBox.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && searchResults.length > 1) {
+    searchIndex = (searchIndex + 1) % searchResults.length;
+    const id = searchResults[searchIndex];
+    network.focus(id, { scale: 1.2, animation: { duration: 300, easingFunction: "easeInOutCubic" } });
+    network.selectNodes([id]);
+  }
+  if (e.key === "Escape") { searchBox.value = ""; searchBox.blur(); resetHighlight(); }
+});
+
+// ─── Legend filtering ───────────────────────────────────────────────
+const hiddenGroups = new Set();
+document.querySelectorAll(".legend-item").forEach(el => {
+  el.addEventListener("click", () => {
+    const g = el.dataset.group;
+    if (hiddenGroups.has(g)) { hiddenGroups.delete(g); el.classList.remove("dimmed"); }
+    else { hiddenGroups.add(g); el.classList.add("dimmed"); }
+
+    nodes.forEach(n => {
+      const s = screenData[n.id];
+      nodes.update({ id: n.id, hidden: hiddenGroups.has(s.group) });
+    });
+  });
+});
+
+// ─── Toolbar buttons ────────────────────────────────────────────────
+document.getElementById("btn-fit").onclick = () => network.fit({ animation: { duration: 400, easingFunction: "easeInOutCubic" } });
+
+document.getElementById("btn-physics").onclick = () => {
+  physicsEnabled = !physicsEnabled;
+  network.setOptions({ physics: { enabled: physicsEnabled } });
+  const btn = document.getElementById("btn-physics");
+  btn.textContent = `Physics: ${physicsEnabled ? "ON" : "OFF"}`;
+  btn.classList.toggle("active", physicsEnabled);
+};
+
+// ─── Export ──────────────────────────────────────────────────────────
+const exportModal = document.getElementById("export-modal");
+document.getElementById("btn-export").onclick = () => exportModal.classList.add("show");
+document.getElementById("export-cancel").onclick = () => exportModal.classList.remove("show");
+exportModal.addEventListener("click", (e) => { if (e.target === exportModal) exportModal.classList.remove("show"); });
+
+document.getElementById("export-png").onclick = () => {
+  const canvas = container.querySelector("canvas");
+  if (!canvas) return;
+  const link = document.createElement("a");
+  link.download = "lifeplanner-navigation-map.png";
+  link.href = canvas.toDataURL("image/png");
+  link.click();
+  exportModal.classList.remove("show");
+};
+
+document.getElementById("export-svg").onclick = () => {
+  // Generate SVG from current positions
+  const positions = network.getPositions();
+  const scale = network.getScale();
+  const vp = network.getViewPosition();
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" style="background:#0f1117">
+    <style>text{font-family:system-ui;font-size:12px;fill:#e0e0e0}line{stroke:#2a2b3d;stroke-width:1}</style>`;
+
+  // Center offset
+  const allX = Object.values(positions).map(p => p.x);
+  const allY = Object.values(positions).map(p => p.y);
+  const minX = Math.min(...allX), maxX = Math.max(...allX);
+  const minY = Math.min(...allY), maxY = Math.max(...allY);
+  const sx = 1600 / (maxX - minX || 1), sy = 900 / (maxY - minY || 1);
+  const s = Math.min(sx, sy, 2);
+  const ox = 960, oy = 540;
+  const tx = (x) => (x - (minX+maxX)/2) * s + ox;
+  const ty = (y) => (y - (minY+maxY)/2) * s + oy;
+
+  edgeList.forEach(([from, to]) => {
+    if (!positions[from] || !positions[to]) return;
+    svg += `<line x1="${tx(positions[from].x)}" y1="${ty(positions[from].y)}" x2="${tx(positions[to].x)}" y2="${ty(positions[to].y)}" stroke-opacity="0.4"/>`;
+  });
+
+  Object.entries(positions).forEach(([id, pos]) => {
+    const sc = screenData[id];
+    if (!sc) return;
+    const gc = groupColors[sc.group];
+    const x = tx(pos.x), y = ty(pos.y);
+    svg += `<circle cx="${x}" cy="${y}" r="12" fill="${gc.bg}" stroke="${gc.bg}" stroke-width="2"/>`;
+    svg += `<text x="${x}" y="${y + 24}" text-anchor="middle" fill="${gc.bg}" font-size="10">${sc.label}</text>`;
+  });
+
+  svg += `</svg>`;
+  const blob = new Blob([svg], { type: "image/svg+xml" });
+  const link = document.createElement("a");
+  link.download = "lifeplanner-navigation-map.svg";
+  link.href = URL.createObjectURL(blob);
+  link.click();
+  exportModal.classList.remove("show");
+};
+
+document.getElementById("export-json").onclick = () => {
+  const data = {
+    screens: screenData,
+    edges: edgeList.map(([from, to, label]) => ({ from, to, label })),
+    positions: network.getPositions(),
+    exportedAt: new Date().toISOString(),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const link = document.createElement("a");
+  link.download = "lifeplanner-navigation-map.json";
+  link.href = URL.createObjectURL(blob);
+  link.click();
+  exportModal.classList.remove("show");
+};
+
+// ─── Keyboard shortcuts ─────────────────────────────────────────────
+document.addEventListener("keydown", (e) => {
+  // Don't trigger if typing in search
+  if (document.activeElement === searchBox) return;
+
+  if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+    e.preventDefault();
+    searchBox.focus();
+    searchBox.select();
+  }
+  if (e.key === "f" || e.key === "F") network.fit({ animation: { duration: 400, easingFunction: "easeInOutCubic" } });
+  if (e.key === "p" || e.key === "P") document.getElementById("btn-physics").click();
+  if (e.key === "e" || e.key === "E") exportModal.classList.add("show");
+  if (e.key === "Escape") {
+    resetHighlight();
+    sidePanel.classList.remove("open");
+    exportModal.classList.remove("show");
+    searchBox.value = "";
+  }
+});
+
+// ─── Stabilization done → disable physics for performance ───────────
+network.on("stabilizationIterationsDone", () => {
+  // Keep physics on but reduce intensity after initial layout
+  network.setOptions({
+    physics: {
+      forceAtlas2Based: { gravitationalConstant: -50, centralGravity: 0.003, springConstant: 0.02 },
+    }
+  });
+});
+</script>
+</body>
+</html>
