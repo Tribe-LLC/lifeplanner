@@ -24,11 +24,19 @@ class GoalTableSyncer(
     }
 
     override suspend fun getUnsyncedLocal(): List<GoalEntity> {
-        return db { it.lifePlannerDBQueries.getUnsyncedGoals().executeAsList() }
+        return db { it.lifePlannerDBQueries.getUnsyncedGoals().executeAsList()
+            .filter { g -> g.id != GETTING_STARTED_GOAL_ID }
+        }
     }
 
     override suspend fun getDeletedLocal(): List<GoalEntity> {
-        return db { it.lifePlannerDBQueries.getDeletedGoals().executeAsList() }
+        return db { it.lifePlannerDBQueries.getDeletedGoals().executeAsList()
+            .filter { g -> g.id != GETTING_STARTED_GOAL_ID }
+        }
+    }
+
+    companion object {
+        private const val GETTING_STARTED_GOAL_ID = "getting_started_goal"
     }
 
     override suspend fun localToRemote(local: GoalEntity, userId: String) = GoalSyncDto(
@@ -133,9 +141,11 @@ class GoalTableSyncer(
                 .decodeList<GoalSyncDto>()
         }
 
-        Logger.d("SyncEngine") { "Pull $tableName: got ${remoteItems.size} items" }
+        // Filter out Getting Started goal — local-only system data
+        val filteredItems = remoteItems.filter { it.id != GETTING_STARTED_GOAL_ID }
+        Logger.d("SyncEngine") { "Pull $tableName: got ${remoteItems.size} items (${remoteItems.size - filteredItems.size} getting_started skipped)" }
         var applied = 0
-        remoteItems.forEach { remote ->
+        filteredItems.forEach { remote ->
             val localEntity = remoteToLocal(remote)
             // Last-write-wins: only apply remote if it has a newer or equal sync_version
             val existingLocal = getLocalById(remote.id)

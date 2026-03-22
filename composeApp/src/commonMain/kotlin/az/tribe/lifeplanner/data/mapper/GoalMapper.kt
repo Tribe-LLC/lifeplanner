@@ -95,7 +95,8 @@ fun GeminiResponseDto.toDomain(): List<Goal> {
                     createdAt = Clock.System.now()
                         .toLocalDateTime(TimeZone.currentSystemDefault()),
                     completionRate = 0f,
-                    isArchived = false
+                    isArchived = false,
+                    aiReasoning = goalDto.reasoning
                 )
             }
         } else {
@@ -172,7 +173,8 @@ fun GoalEntity.toDomain(milestones: List<Milestone> = emptyList()): Goal {
         notes = notes ?: "",
         createdAt = parseLocalDateTime(createdAt),
         completionRate = completionRate.toFloat() ?: 0f,
-        isArchived = isArchived == 1L
+        isArchived = isArchived == 1L,
+        aiReasoning = aiReasoning
     )
 }
 
@@ -190,6 +192,7 @@ fun Goal.toEntity(): GoalEntity {
         createdAt = createdAt.toString(),
         completionRate = completionRate.toDouble(),
         isArchived = if (isArchived) 1L else 0L,
+        aiReasoning = aiReasoning,
         sync_updated_at = Clock.System.now().toString(),
         is_deleted = 0L,
         sync_version = 0L,

@@ -8,7 +8,7 @@ import androidx.compose.runtime.remember
 import az.tribe.lifeplanner.domain.enum.AmbientSound
 import platform.AVFAudio.AVAudioPlayer
 import platform.AVFAudio.AVAudioSession
-import platform.AVFAudio.AVAudioSessionCategoryPlayback
+import platform.AVFAudio.AVAudioSessionCategoryAmbient
 import platform.AVFAudio.setActive
 import platform.Foundation.NSBundle
 import platform.Foundation.NSURL
@@ -16,14 +16,6 @@ import platform.Foundation.NSURL
 actual class AmbientSoundPlayer {
     private var player: AVAudioPlayer? = null
     private var currentSound: AmbientSound = AmbientSound.NONE
-
-    init {
-        try {
-            val session = AVAudioSession.sharedInstance()
-            session.setCategory(AVAudioSessionCategoryPlayback, error = null)
-            session.setActive(true, error = null)
-        } catch (_: Exception) { }
-    }
 
     actual fun play(sound: AmbientSound) {
         if (sound == AmbientSound.NONE) {
@@ -35,11 +27,26 @@ actual class AmbientSoundPlayer {
 
         stop()
 
+        // Use Ambient category so other audio (Spotify, podcasts) keeps playing
+        try {
+            val session = AVAudioSession.sharedInstance()
+            session.setCategory(
+                AVAudioSessionCategoryAmbient,
+                error = null
+            )
+            session.setActive(true, error = null)
+        } catch (_: Exception) { }
+
         val fileName = when (sound) {
             AmbientSound.RAIN -> "ambient_rain"
             AmbientSound.FOREST -> "ambient_forest"
             AmbientSound.LOFI -> "ambient_lofi"
             AmbientSound.WHITE_NOISE -> "ambient_white_noise"
+            AmbientSound.OCEAN -> "ambient_ocean"
+            AmbientSound.FIREPLACE -> "ambient_fireplace"
+            AmbientSound.NIGHT -> "ambient_night"
+            AmbientSound.CAFE -> "ambient_cafe"
+            AmbientSound.BIRDS -> "ambient_birds"
             AmbientSound.NONE -> return
         }
 
@@ -47,7 +54,7 @@ actual class AmbientSoundPlayer {
         val url = NSURL.fileURLWithPath(path)
         val audioPlayer = AVAudioPlayer(contentsOfURL = url, error = null) ?: return
         audioPlayer.numberOfLoops = -1 // Infinite loop
-        audioPlayer.volume = 0.5f
+        audioPlayer.volume = 0.3f
         audioPlayer.prepareToPlay()
         audioPlayer.play()
         player = audioPlayer
@@ -58,6 +65,10 @@ actual class AmbientSoundPlayer {
         player?.stop()
         player = null
         currentSound = AmbientSound.NONE
+        // Deactivate audio session so other apps can reclaim audio
+        try {
+            AVAudioSession.sharedInstance().setActive(false, error = null)
+        } catch (_: Exception) { }
     }
 
     actual fun release() {

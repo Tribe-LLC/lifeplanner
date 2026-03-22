@@ -103,6 +103,12 @@ fun LifeBalanceScreen(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // Mark CHECK_LIFE_BALANCE objective as completed on visit
+    val objectiveViewModel: az.tribe.lifeplanner.ui.objectives.BeginnerObjectiveViewModel = koinViewModel()
+    LaunchedEffect(Unit) {
+        objectiveViewModel.markObjectiveCompleted(az.tribe.lifeplanner.domain.model.ObjectiveType.CHECK_LIFE_BALANCE)
+    }
+
     // Show snackbar when goal is created
     LaunchedEffect(uiState.goalCreatedFeedback) {
         uiState.goalCreatedFeedback?.let { feedback ->

@@ -77,11 +77,9 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import az.tribe.lifeplanner.ui.components.VideoBackground
-import az.tribe.lifeplanner.ui.components.VideoCache
 import az.tribe.lifeplanner.ui.viewmodel.AuthState
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
-import io.ktor.client.HttpClient
+import az.tribe.lifeplanner.data.analytics.Analytics
 import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 import kotlin.random.Random
@@ -91,21 +89,10 @@ fun WelcomeScreen(
     onComplete: () -> Unit = {}
 ) {
     val authViewModel: AuthViewModel = koinInject()
-    val httpClient: HttpClient = koinInject()
     val authState by authViewModel.authState.collectAsState()
 
-    val remoteUrls = remember {
-        val baseUrl = "${BuildKonfig.SUPABASE_URL}/storage/v1/object/public/assets/videos"
-        listOf(
-            "$baseUrl/welcome_video.mp4",
-            "$baseUrl/welcome_video2.mp4"
-        )
-    }
-
-    // Resolve remote URLs to local cached files (downloads if needed)
-    var resolvedUrls by remember { mutableStateOf<List<String>>(emptyList()) }
     LaunchedEffect(Unit) {
-        resolvedUrls = VideoCache.resolveUrls(remoteUrls, httpClient)
+        Analytics.onboardingStarted()
     }
 
     var hasNavigated by remember { mutableStateOf(false) }
@@ -133,28 +120,46 @@ fun WelcomeScreen(
         animationDone = true
     }
 
-    Box(modifier = Modifier.fillMaxSize().alpha(fadeOut.value)) {
-        // Video background — plays both videos in queue, loops forever
-        if (resolvedUrls.isNotEmpty()) {
-            VideoBackground(
-                urls = resolvedUrls,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black))
-        }
+    // Animated gradient shift for a living background feel
+    val infiniteTransition = rememberInfiniteTransition(label = "welcomeBg")
+    val gradientShift by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(8000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "gradientShift"
+    )
 
-        // Dark gradient overlay for readability
+    Box(modifier = Modifier.fillMaxSize().alpha(fadeOut.value)) {
+        // Animated gradient background — no audio, no ExoPlayer
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color.Black.copy(alpha = 0.3f),
-                            Color.Black.copy(alpha = 0.1f),
-                            Color.Black.copy(alpha = 0.6f),
-                            Color.Black.copy(alpha = 0.85f)
+                            Color(0xFF0D0D2B),
+                            Color(0xFF1A1A4E).copy(alpha = 0.6f + gradientShift * 0.4f),
+                            Color(0xFF2D1B69).copy(alpha = 0.5f + (1f - gradientShift) * 0.3f),
+                            Color(0xFF0D0D2B)
+                        )
+                    )
+                )
+        )
+
+        // Subtle overlay for readability
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.2f),
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.4f),
+                            Color.Black.copy(alpha = 0.7f)
                         ),
                         startY = 0f,
                         endY = Float.POSITIVE_INFINITY
@@ -575,6 +580,11 @@ internal fun AuthBottomSheet(
                 // --- EMAIL VERIFICATION: OTP + deep link auto-detect ---
                 val pendingEmail = (authState as AuthState.EmailVerificationPending).email
                 var verifyCode by remember { mutableStateOf("") }
+
+                // Start polling for verification done on another device (keyed on email to avoid duplicate loops)
+                LaunchedEffect(pendingEmail) {
+                    authViewModel.startVerificationPolling()
+                }
 
                 // Auto-submit when 6 digits entered
                 LaunchedEffect(verifyCode) {

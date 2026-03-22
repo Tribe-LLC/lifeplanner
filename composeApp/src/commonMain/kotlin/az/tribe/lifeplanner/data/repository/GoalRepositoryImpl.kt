@@ -55,6 +55,13 @@ class GoalRepositoryImpl(
         return goalEntities.toDomainGoals(milestonesMap)
     }
 
+    override suspend fun getGoalById(id: String): Goal? {
+        val entity = localGoalStore.getGoalById(id) ?: return null
+        val milestones = localGoalStore.getMilestonesForGoals(listOf(id))
+            .mapValues { (_, m) -> m.toDomainMilestones() }
+        return listOf(entity).toDomainGoals(milestones).firstOrNull()
+    }
+
     override suspend fun insertGoal(goal: Goal) {
         localGoalStore.insertGoal(goal.toEntity())
 

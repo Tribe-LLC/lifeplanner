@@ -2,6 +2,7 @@ package az.tribe.lifeplanner.ui.gamification
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import az.tribe.lifeplanner.data.analytics.Analytics
 import az.tribe.lifeplanner.data.analytics.FacebookAnalytics
 import az.tribe.lifeplanner.domain.enum.BadgeType
 import az.tribe.lifeplanner.domain.enum.ChallengeType
@@ -84,6 +85,7 @@ class GamificationViewModel(
             if (previousProgress != null && newProgress != null &&
                 newProgress.currentLevel > previousProgress.currentLevel) {
                 FacebookAnalytics.logAchieveLevel(newProgress.currentLevel)
+                Analytics.levelUp(newProgress.currentLevel, newProgress.totalXp.toLong())
                 _gamificationEvents.emit(
                     GamificationEvent.LevelUp(
                         newLevel = newProgress.currentLevel,
@@ -99,6 +101,7 @@ class GamificationViewModel(
             if (earnedTypes.isNotEmpty()) {
                 _badges.value.filter { it.type in earnedTypes }.forEach { badge ->
                     FacebookAnalytics.logUnlockAchievement(badge.type.displayName)
+                    Analytics.badgeEarned(badge.type.name)
                     _gamificationEvents.emit(GamificationEvent.BadgeEarned(badge))
                 }
             }
@@ -116,7 +119,7 @@ class GamificationViewModel(
     }
 
     /**
-     * Reset all cached state (called on sign-out to clear stale data).
+     * Reset all cached state and reload from DB (called on sign-out/sign-in to clear stale data).
      */
     fun resetState() {
         _userProgress.value = null
@@ -125,6 +128,8 @@ class GamificationViewModel(
         _activeChallenges.value = emptyList()
         _completedChallenges.value = emptyList()
         _availableChallenges.value = emptyList()
+        // Re-read from DB to pick up the cleared state
+        viewModelScope.launch { loadAll() }
     }
 
     private suspend fun loadUserProgress() {

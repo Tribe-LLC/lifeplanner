@@ -2,6 +2,7 @@ package az.tribe.lifeplanner.ui.balance
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import az.tribe.lifeplanner.data.analytics.Analytics
 import co.touchlab.kermit.Logger
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.model.BalanceInsight
@@ -55,6 +56,7 @@ class LifeBalanceViewModel(
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
                 val report = repository.calculateCurrentBalance()
+                Analytics.lifeBalanceChecked(report.overallScore.toFloat())
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     report = report

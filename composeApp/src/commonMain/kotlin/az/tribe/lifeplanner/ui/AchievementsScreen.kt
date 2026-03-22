@@ -476,6 +476,7 @@ private fun getBadgeHint(badgeType: BadgeType): String {
         BadgeType.FOCUS_HOUR -> "Complete a 60-minute focus session"
         BadgeType.FOCUS_10 -> "Complete 10 focus sessions"
         BadgeType.FOCUS_50 -> "Complete 50 focus sessions"
+        BadgeType.GETTING_STARTED -> "Complete all Getting Started objectives"
     }
 }
 

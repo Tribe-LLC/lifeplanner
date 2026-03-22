@@ -31,4 +31,10 @@ interface GamificationRepository {
 
     // Daily streak — calls server RPC, returns (new_streak, xp_awarded)
     suspend fun updateDailyStreakRemote(): Pair<Int, Int>
+
+    // Award XP locally (optimistic update, sync reconciles)
+    suspend fun awardXp(amount: Long)
+
+    // Award a badge locally
+    suspend fun awardBadge(type: BadgeType)
 }

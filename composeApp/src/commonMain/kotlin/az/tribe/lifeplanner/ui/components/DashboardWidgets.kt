@@ -24,10 +24,12 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EmojiEvents
+import androidx.compose.material.icons.rounded.MarkEmailRead
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.Loop
 import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Star
@@ -75,91 +77,6 @@ sealed class NextAction {
     data class ContinueGoal(val goal: Goal) : NextAction()
     object AllCaughtUp : NextAction()
 }
-
-// ============== COMPACT WELCOME HEADER ==============
-
-@Composable
-fun CompactWelcomeHeader(
-    userName: String?,
-    streak: Int,
-    level: Int,
-    levelTitle: String
-) {
-    val greeting = remember {
-        val hour = Clock.System.now()
-            .toLocalDateTime(TimeZone.currentSystemDefault()).hour
-        when (hour) {
-            in 5..11 -> "Good morning"
-            in 12..16 -> "Good afternoon"
-            in 17..20 -> "Good evening"
-            else -> "Good night"
-        }
-    }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(LifePlannerDesign.CornerRadius.large))
-            .background(LifePlannerGradients.primary)
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                "$greeting${userName?.let { ", $it" } ?: ""}!",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-        }
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Level badge
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = Color.White.copy(alpha = 0.2f)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Lv.$level",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
-            }
-
-            // Streak badge
-            if (streak > 0) {
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = Color.White.copy(alpha = 0.2f)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "\uD83D\uDD25 $streak",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ============== NEXT ACTION CARD ==============
 
 @Composable
 fun NextActionCard(
@@ -307,197 +224,6 @@ private data class ActionCardData(
     val gradientColors: List<Color>
 )
 
-// ============== MERGED PROGRESS ROW ==============
-
-@Composable
-fun MergedProgressRow(
-    streak: Int,
-    habitsCompleted: Int,
-    totalHabits: Int,
-    goalsDueToday: Int,
-    totalProgress: Int
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        MiniStatCard(
-            emoji = "\uD83D\uDD25",
-            value = "$streak",
-            label = "streak",
-            modifier = Modifier.weight(1f)
-        )
-        MiniStatCard(
-            emoji = "\u2713",
-            value = "$habitsCompleted/$totalHabits",
-            label = "habits",
-            modifier = Modifier.weight(1f)
-        )
-        MiniStatCard(
-            emoji = "\uD83D\uDCCC",
-            value = "$goalsDueToday",
-            label = "due today",
-            modifier = Modifier.weight(1f)
-        )
-        MiniStatCard(
-            emoji = "\uD83D\uDCC8",
-            value = "$totalProgress%",
-            label = "overall",
-            modifier = Modifier.weight(1f)
-        )
-    }
-}
-
-@Composable
-private fun MiniStatCard(
-    emoji: String,
-    value: String,
-    label: String,
-    modifier: Modifier = Modifier
-) {
-    GlassCard(
-        modifier = modifier,
-        cornerRadius = LifePlannerDesign.CornerRadius.medium
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 10.dp, horizontal = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    emoji,
-                    style = MaterialTheme.typography.labelMedium
-                )
-                Text(
-                    value,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-            Text(
-                label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-fun DailyMotivationCard() {
-    val quotes = listOf(
-        "The journey of a thousand miles begins with a single step." to "Lao Tzu",
-        "Your future is created by what you do today." to "Robert Kiyosaki",
-        "Small steps lead to big changes." to "Unknown",
-        "Success is the sum of small efforts repeated day in and day out." to "Robert Collier",
-        "The only way to do great work is to love what you do." to "Steve Jobs",
-        "Progress, not perfection." to "Unknown",
-        "Every accomplishment starts with the decision to try." to "John F. Kennedy",
-        "Your limitation—it's only your imagination." to "Unknown"
-    )
-
-    val todayDate = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
-    val todayQuote = remember(todayDate) {
-        quotes[todayDate.dayOfYear % quotes.size]
-    }
-
-    // Modern gradient border card for daily inspiration
-    GradientBorderCard(
-        modifier = Modifier.fillMaxWidth(),
-        gradientColors = listOf(
-            MaterialTheme.colorScheme.tertiary,
-            MaterialTheme.colorScheme.secondary
-        ),
-        borderWidth = 1.5.dp,
-        cornerRadius = LifePlannerDesign.CornerRadius.large,
-        backgroundColor = MaterialTheme.colorScheme.surface
-    ) {
-        Column(
-            modifier = Modifier.padding(LifePlannerDesign.Padding.large)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Rounded.AutoAwesome,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.tertiary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    "Daily Inspiration",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-            Spacer(Modifier.height(16.dp))
-            Text(
-                "\"${todayQuote.first}\"",
-                style = MaterialTheme.typography.bodyLarge,
-                fontStyle = FontStyle.Italic,
-                color = MaterialTheme.colorScheme.onSurface,
-                lineHeight = 24.sp
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "— ${todayQuote.second}",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-fun QuickActionsRow(
-    onAddGoalClick: () -> Unit,
-    onAiSuggestClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        QuickActionCard(
-            icon = Icons.Rounded.Add,
-            label = "Add Goal",
-            color = MaterialTheme.colorScheme.primary,
-            onClick = onAddGoalClick,
-            modifier = Modifier.weight(1f),
-            useGradient = true,
-            gradientColors = listOf(
-                Color(0xFF667EEA),
-                Color(0xFF764BA2)
-            )
-        )
-        QuickActionCard(
-            icon = Icons.Rounded.AutoAwesome,
-            label = "AI Suggest",
-            color = MaterialTheme.colorScheme.secondary,
-            onClick = onAiSuggestClick,
-            modifier = Modifier.weight(1f),
-            useGradient = true,
-            gradientColors = listOf(
-                Color(0xFFF093FB),
-                Color(0xFFF5576C)
-            )
-        )
-    }
-}
 
 @Composable
 fun QuickActionCard(
@@ -1662,148 +1388,223 @@ fun InlineGreetingRow(
     }
 }
 
+/**
+ * Contextual smart actions — shows up to 4 actions that change based on user state.
+ * Prioritizes what matters most right now.
+ */
 @Composable
 fun QuickActionsPillRow(
     onAddGoal: () -> Unit,
     onAiSuggest: () -> Unit,
     onNewHabit: () -> Unit,
+    onHabitCheckIn: () -> Unit = onNewHabit,
     onJournal: () -> Unit,
-    onFocus: () -> Unit = {}
+    onFocus: () -> Unit = {},
+    onCoach: () -> Unit = {},
+    isCoachLocked: Boolean = true,
+    // Contextual data
+    hasGoals: Boolean = false,
+    hasHabits: Boolean = false,
+    pendingHabits: Int = 0,
+    streak: Int = 0,
+    goalsDueToday: Int = 0
 ) {
+    data class SmartAction(
+        val icon: ImageVector,
+        val label: String,
+        val subtitle: String,
+        val gradientColors: List<Color>,
+        val onClick: () -> Unit,
+        val isLocked: Boolean = false,
+        val priority: Int = 0 // lower = higher priority
+    )
+
+    val actions = remember(hasGoals, hasHabits, pendingHabits, streak, goalsDueToday, isCoachLocked) {
+        buildList {
+            // Highest priority: urgent/contextual items
+            if (goalsDueToday > 0) {
+                add(SmartAction(
+                    icon = Icons.Rounded.Schedule,
+                    label = "Due Today",
+                    subtitle = "$goalsDueToday goal${if (goalsDueToday > 1) "s" else ""} due",
+                    gradientColors = listOf(Color(0xFFFF5252), Color(0xFFFF1744)),
+                    onClick = onAddGoal,
+                    priority = 0
+                ))
+            }
+
+            if (pendingHabits > 0) {
+                add(SmartAction(
+                    icon = Icons.Rounded.Check,
+                    label = "Check In",
+                    subtitle = "$pendingHabits habit${if (pendingHabits > 1) "s" else ""} left",
+                    gradientColors = listOf(Color(0xFF11998E), Color(0xFF38EF7D)),
+                    onClick = onHabitCheckIn,
+                    priority = 1
+                ))
+            }
+
+            if (streak > 0) {
+                add(SmartAction(
+                    icon = Icons.Rounded.LocalFireDepartment,
+                    label = "Keep Streak",
+                    subtitle = "$streak day${if (streak > 1) "s" else ""} strong",
+                    gradientColors = listOf(Color(0xFFFF6B35), Color(0xFFFFA726)),
+                    onClick = onHabitCheckIn,
+                    priority = 2
+                ))
+            }
+
+            // Standard actions — always available
+            if (!hasGoals) {
+                add(SmartAction(
+                    icon = Icons.Rounded.Flag,
+                    label = "First Goal",
+                    subtitle = "Start planning",
+                    gradientColors = listOf(Color(0xFF667EEA), Color(0xFF764BA2)),
+                    onClick = onAddGoal,
+                    priority = 3
+                ))
+            } else {
+                add(SmartAction(
+                    icon = Icons.Rounded.Add,
+                    label = "New Goal",
+                    subtitle = "Add a goal",
+                    gradientColors = listOf(Color(0xFF667EEA), Color(0xFF764BA2)),
+                    onClick = onAddGoal,
+                    priority = 5
+                ))
+            }
+
+            if (!hasHabits) {
+                add(SmartAction(
+                    icon = Icons.Rounded.Loop,
+                    label = "First Habit",
+                    subtitle = "Build consistency",
+                    gradientColors = listOf(Color(0xFF11998E), Color(0xFF38EF7D)),
+                    onClick = onNewHabit,
+                    priority = 4
+                ))
+            }
+
+            add(SmartAction(
+                icon = Icons.Rounded.Edit,
+                label = "Journal",
+                subtitle = "Reflect today",
+                gradientColors = listOf(Color(0xFF4ECDC4), Color(0xFF44A08D)),
+                onClick = onJournal,
+                priority = 6
+            ))
+
+            add(SmartAction(
+                icon = Icons.Rounded.Timer,
+                label = "Focus",
+                subtitle = "Deep work",
+                gradientColors = listOf(Color(0xFFFF6B35), Color(0xFFFFA726)),
+                onClick = onFocus,
+                priority = 7
+            ))
+
+            add(SmartAction(
+                icon = Icons.Rounded.AutoAwesome,
+                label = "AI Goals",
+                subtitle = "Get suggestions",
+                gradientColors = listOf(Color(0xFFF093FB), Color(0xFFF5576C)),
+                onClick = onAiSuggest,
+                priority = 8
+            ))
+
+            add(SmartAction(
+                icon = Icons.Rounded.Psychology,
+                label = "Coach",
+                subtitle = if (isCoachLocked) "Lv.3 to unlock" else "Get guidance",
+                gradientColors = if (isCoachLocked) listOf(Color(0xFF9E9E9E), Color(0xFFBDBDBD))
+                else listOf(Color(0xFF7C4DFF), Color(0xFF00BFA5)),
+                onClick = onCoach,
+                isLocked = isCoachLocked,
+                priority = 9
+            ))
+        }
+            .sortedBy { it.priority }
+            .distinctBy { it.label } // avoid duplicates (e.g. habits shown as both "Check In" and "First Habit")
+            .take(4)
+    }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        QuickActionPill(
-            icon = Icons.Rounded.Add,
-            label = "Goal",
-            gradientColors = listOf(Color(0xFF667EEA), Color(0xFF764BA2)),
-            onClick = onAddGoal,
-            modifier = Modifier.weight(1f)
-        )
-        QuickActionPill(
-            icon = Icons.Rounded.AutoAwesome,
-            label = "AI",
-            gradientColors = listOf(Color(0xFFF093FB), Color(0xFFF5576C)),
-            onClick = onAiSuggest,
-            modifier = Modifier.weight(1f)
-        )
-        QuickActionPill(
-            icon = Icons.Rounded.Loop,
-            label = "Habit",
-            gradientColors = listOf(Color(0xFF11998E), Color(0xFF38EF7D)),
-            onClick = onNewHabit,
-            modifier = Modifier.weight(1f)
-        )
-        QuickActionPill(
-            icon = Icons.Rounded.Timer,
-            label = "Focus",
-            gradientColors = listOf(Color(0xFFFF6B35), Color(0xFFFFA726)),
-            onClick = onFocus,
-            modifier = Modifier.weight(1f)
-        )
+        actions.forEach { action ->
+            SmartActionCard(
+                icon = action.icon,
+                label = action.label,
+                subtitle = action.subtitle,
+                gradientColors = action.gradientColors,
+                onClick = action.onClick,
+                isLocked = action.isLocked,
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
 
 @Composable
-private fun QuickActionPill(
+private fun SmartActionCard(
     icon: ImageVector,
     label: String,
+    subtitle: String,
     gradientColors: List<Color>,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isLocked: Boolean = false
 ) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(50),
-        color = Color.Transparent,
-        onClick = onClick
+    GlassCard(
+        modifier = modifier.clickable(onClick = onClick),
+        cornerRadius = 14.dp
     ) {
-        Row(
+        Column(
             modifier = Modifier
-                .background(
-                    brush = Brush.horizontalGradient(gradientColors),
-                    shape = RoundedCornerShape(50)
-                )
-                .padding(horizontal = 10.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+                .fillMaxWidth()
+                .padding(vertical = 10.dp, horizontal = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(16.dp)
-            )
-            Spacer(Modifier.width(4.dp))
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Brush.linearGradient(gradientColors)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            Spacer(Modifier.height(6.dp))
+
             Text(
                 label,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.SemiBold,
-                color = Color.White
+                color = if (isLocked) MaterialTheme.colorScheme.onSurfaceVariant
+                else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1
             )
-        }
-    }
-}
 
-@Composable
-fun InlineStatsRow(
-    streak: Int,
-    habitsCompleted: Int,
-    totalHabits: Int,
-    goalsDueToday: Int,
-    totalProgress: Int
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(LifePlannerDesign.CornerRadius.medium))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .padding(vertical = 10.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        InlineStat(emoji = "\uD83D\uDD25", value = "$streak", label = "streak")
-        StatDivider()
-        InlineStat(emoji = "\u2713", value = "$habitsCompleted/$totalHabits", label = "habits")
-        StatDivider()
-        InlineStat(emoji = "\uD83D\uDCCC", value = "$goalsDueToday", label = "due today")
-        StatDivider()
-        InlineStat(emoji = "\uD83D\uDCC8", value = "$totalProgress%", label = "overall")
-    }
-}
-
-@Composable
-private fun InlineStat(emoji: String, value: String, label: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(emoji, style = MaterialTheme.typography.labelSmall)
             Text(
-                value,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+                subtitle,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.sp
+                ),
+                color = if (isLocked) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                else gradientColors.first().copy(alpha = 0.8f),
+                maxLines = 1
             )
         }
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
-}
-
-@Composable
-private fun StatDivider() {
-    Box(
-        modifier = Modifier
-            .width(1.dp)
-            .height(28.dp)
-            .background(MaterialTheme.colorScheme.outlineVariant)
-    )
 }
 
 @Composable
@@ -1894,6 +1695,181 @@ fun CompactGoalTile(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Dashboard card showing newly earned badges with a tap to view on Achievements screen.
+ */
+@Composable
+fun NewBadgesCard(
+    badges: List<az.tribe.lifeplanner.domain.model.Badge>,
+    onClick: () -> Unit
+) {
+    val gradient = Brush.horizontalGradient(
+        listOf(Color(0xFFFFA726), Color(0xFFFF7043))
+    )
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = Color.Transparent,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .background(gradient, RoundedCornerShape(16.dp))
+                .padding(16.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            // Badge trophy icon
+            Box(
+                contentAlignment = androidx.compose.ui.Alignment.Center,
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(Color.White.copy(alpha = 0.2f), CircleShape)
+            ) {
+                Icon(
+                    Icons.Rounded.EmojiEvents,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (badges.size == 1) "New Badge Earned!" else "${badges.size} New Badges!",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    color = Color.White
+                )
+                Text(
+                    text = badges.joinToString(", ") { it.type.displayName },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.9f),
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                Icons.Rounded.ChevronRight,
+                contentDescription = "View badges",
+                tint = Color.White,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    }
+}
+
+/**
+ * Persistent reminder banner shown on HomeScreen after user dismisses the soft update prompt.
+ */
+@Composable
+fun UpdateReminderBanner(
+    onUpdateClick: () -> Unit
+) {
+    Surface(
+        onClick = onUpdateClick,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Rounded.SystemUpdate,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = "A new version is available",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "Update",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+/**
+ * Banner shown when email is linked but not yet verified.
+ * Shows email, spinner, and resend option.
+ */
+@Composable
+fun VerifyEmailBanner(
+    email: String,
+    onResend: () -> Unit
+) {
+    val gradient = Brush.horizontalGradient(
+        listOf(Color(0xFF6366F1), Color(0xFF8B5CF6))
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(gradient, RoundedCornerShape(16.dp))
+            .padding(16.dp)
+    ) {
+        Column {
+            Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Rounded.MarkEmailRead,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Verify your email",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        email,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.8f)
+                    )
+                }
+                androidx.compose.material3.CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = Color.White.copy(alpha = 0.7f)
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                Text(
+                    "Check your inbox and tap the link",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.weight(1f)
+                )
+                androidx.compose.material3.TextButton(
+                    onClick = onResend,
+                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("Resend", style = MaterialTheme.typography.labelMedium)
+                }
             }
         }
     }

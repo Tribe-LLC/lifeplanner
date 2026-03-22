@@ -1,7 +1,7 @@
 package az.tribe.lifeplanner.domain.enum
 
 enum class FocusTheme(val displayName: String, val icon: String) {
-    DEFAULT("Default", "🎯"),
+    DEFAULT("None", "⊘"),
     RAIN("Rain", "🌧️"),
     FOREST("Forest", "🌲"),
     FIREPLACE("Fireplace", "🔥"),

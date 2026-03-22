@@ -3,6 +3,7 @@ package az.tribe.lifeplanner
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -29,14 +30,20 @@ class MainActivity : ComponentActivity() {
 
     private val supabaseClient: SupabaseClient by inject()
 
+    private var pendingPromoRoute: String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
+        // Prevent video background from stealing audio focus (e.g. pausing Spotify)
+        volumeControlStream = AudioManager.STREAM_NOTIFICATION
+
         NotifierManager.onCreateOrOnNewIntent(intent)
         handleAuthDeeplink(intent)
+        handlePromoDeeplink(intent)
 
         // Request POST_NOTIFICATIONS permission on Android 13+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -70,7 +77,7 @@ class MainActivity : ComponentActivity() {
             }
             val mainViewModel = koinInject<GoalViewModel>()
 
-            App(viewModel = mainViewModel)
+            App(viewModel = mainViewModel, promoRoute = pendingPromoRoute)
         }
     }
 
@@ -78,6 +85,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         NotifierManager.onCreateOrOnNewIntent(intent)
         handleAuthDeeplink(intent)
+        handlePromoDeeplink(intent)
     }
 
     /**
@@ -86,16 +94,48 @@ class MainActivity : ComponentActivity() {
      * Supabase's handleDeeplinks only recognizes the custom scheme,
      * so rewrite HTTPS URLs to the custom scheme before passing them.
      */
+    private fun handlePromoDeeplink(intent: Intent) {
+        val uri = intent.data ?: return
+        if (uri.scheme == "lifeplanner" && uri.host == "promo") {
+            val path = uri.pathSegments.firstOrNull() ?: return
+            Logger.d("MainActivity") { "Promo deep link: $uri, path=$path" }
+            when (path) {
+                "chat" -> pendingPromoRoute = "ai_chat"
+            }
+        }
+    }
+
     private fun handleAuthDeeplink(intent: Intent) {
-        val uri = intent.data
+        val uri = intent.data ?: return // No deep link — skip entirely
         Logger.d("MainActivity") { "handleAuthDeeplink: $uri" }
-        if (uri != null && uri.scheme == "https" && uri.fragment?.contains("access_token") == true) {
-            val customUri = Uri.parse("lifeplanner://auth#${uri.fragment}")
-            Logger.d("MainActivity") { "Rewriting to custom scheme: $customUri" }
-            val rewrittenIntent = Intent(intent).setData(customUri)
-            supabaseClient.handleDeeplinks(rewrittenIntent)
-        } else {
-            supabaseClient.handleDeeplinks(intent)
+
+        // Check for error in the callback fragment (e.g. expired magic link)
+        val fragment = uri.fragment
+        if (fragment != null && fragment.contains("error=")) {
+            val params = fragment.split("&").associate {
+                val parts = it.split("=", limit = 2)
+                parts[0] to (parts.getOrNull(1)?.replace("+", " ") ?: "")
+            }
+            val errorDesc = params["error_description"] ?: params["error"] ?: "Authentication failed"
+            Logger.w("MainActivity") { "Auth callback error: $errorDesc" }
+            az.tribe.lifeplanner.ui.viewmodel.AuthViewModel.reportDeepLinkError(errorDesc)
+            return
+        }
+
+        // Only pass to Supabase if it looks like an auth callback
+        if (fragment?.contains("access_token") != true) return
+
+        try {
+            if (uri.scheme == "https") {
+                val customUri = Uri.parse("lifeplanner://auth#$fragment")
+                Logger.d("MainActivity") { "Rewriting to custom scheme: $customUri" }
+                val rewrittenIntent = Intent(intent).setData(customUri)
+                supabaseClient.handleDeeplinks(rewrittenIntent)
+            } else {
+                supabaseClient.handleDeeplinks(intent)
+            }
+        } catch (e: Exception) {
+            Logger.e("MainActivity", e) { "Failed to handle auth deeplink: ${e.message}" }
         }
     }
 }

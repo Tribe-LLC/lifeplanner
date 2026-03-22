@@ -129,6 +129,14 @@ class SyncManager private constructor(
         syncRequests.tryEmit(Unit)
     }
 
+    /**
+     * Launch a full sync on the SyncManager's own scope (fire-and-forget).
+     * Use this when the caller's coroutine may be cancelled (e.g. after login navigation).
+     */
+    fun launchFullSync(resetRetry: Boolean = false) {
+        scope.launch { performFullSync(resetRetry) }
+    }
+
     private fun cancelRetry() {
         retryJob?.cancel()
         retryJob = null
@@ -332,7 +340,8 @@ class SyncManager private constructor(
                 "sync_pull_challenges", "sync_pull_goal_dependencies", "sync_pull_chat_sessions",
                 "sync_pull_chat_messages", "sync_pull_review_reports", "sync_pull_reminders",
                 "sync_pull_custom_coaches", "sync_pull_coach_groups", "sync_pull_coach_group_members",
-                "sync_pull_focus_sessions", "sync_pull_reviews", "sync_pull_coach_persona_overrides"
+                "sync_pull_focus_sessions", "sync_pull_reviews", "sync_pull_coach_persona_overrides",
+                "sync_pull_beginner_objectives"
             ).forEach { settings.remove(it) }
         } catch (e: Exception) {
             Logger.w("SyncManager") { "Failed to clear sync timestamps: ${e.message}" }

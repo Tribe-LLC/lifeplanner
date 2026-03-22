@@ -18,6 +18,7 @@ import az.tribe.lifeplanner.usecases.ToggleMilestoneCompletionUseCase
 import az.tribe.lifeplanner.usecases.UpdateGoalProgressUseCase
 import az.tribe.lifeplanner.usecases.UpdateGoalStatusUseCase
 import kotlinx.coroutines.flow.firstOrNull
+import az.tribe.lifeplanner.data.analytics.Analytics
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -185,14 +186,7 @@ class FocusViewModel(
     }
 
     private fun autoSuggestMood() {
-        val hour = Clock.System.now()
-            .toLocalDateTime(TimeZone.currentSystemDefault()).hour
-        _selectedMood.value = when (hour) {
-            in 5..11 -> Mood.HAPPY
-            in 12..17 -> Mood.NEUTRAL
-            in 18..21 -> Mood.HAPPY
-            else -> Mood.NEUTRAL
-        }
+        _selectedMood.value = Mood.HAPPY
     }
 
     fun setMood(mood: Mood) {
@@ -211,6 +205,18 @@ class FocusViewModel(
         _selectedMilestone.value = milestone
         _selectedGoal.value = goal
         loadMilestoneFocusMinutes(milestone.id)
+    }
+
+    /** Free flow: pick a goal without selecting a specific milestone */
+    fun selectGoalOnly(goal: Goal?) {
+        if (_selectedGoal.value?.id == goal?.id) {
+            // Deselect
+            _selectedGoal.value = null
+            _selectedMilestone.value = null
+        } else {
+            _selectedGoal.value = goal
+            _selectedMilestone.value = null
+        }
     }
 
     fun setDuration(minutes: Int) {
@@ -307,6 +313,13 @@ class FocusViewModel(
 
         _timerState.value = TimerState.RUNNING
         startTickLoop(totalSeconds)
+
+        Analytics.focusSessionStarted(
+            mode = if (freeFlow) "free_flow" else "timed",
+            theme = _selectedFocusTheme.value.name,
+            hasMilestone = milestoneId.isNotEmpty(),
+            durationMinutes = duration
+        )
     }
 
     fun pauseTimer() {
@@ -349,6 +362,7 @@ class FocusViewModel(
             }
         }
         _timerState.value = TimerState.CANCELLED
+        Analytics.focusSessionCancelled(elapsed / 60)
 
         // Show milestone prompt if focused >= 5 min
         if (elapsed >= 300 && _selectedMilestone.value != null) {
@@ -414,6 +428,8 @@ class FocusViewModel(
             loadTodayStats()
             loadAllTimeStats()
         }
+
+        Analytics.focusSessionCompleted("free_flow", elapsedMinutes, xp)
 
         if (_selectedMilestone.value != null) {
             _showMilestonePrompt.value = true
@@ -507,6 +523,8 @@ class FocusViewModel(
             loadTodayStats()
             loadAllTimeStats()
         }
+
+        Analytics.focusSessionCompleted("timed", duration, xp)
 
         // Show milestone completion prompt
         if (_selectedMilestone.value != null) {

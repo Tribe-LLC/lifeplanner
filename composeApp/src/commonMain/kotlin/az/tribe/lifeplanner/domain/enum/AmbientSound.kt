@@ -5,7 +5,12 @@ enum class AmbientSound(val displayName: String, val icon: String) {
     RAIN("Rain", "🌧️"),
     FOREST("Forest", "🌲"),
     LOFI("Lo-Fi", "🎵"),
-    WHITE_NOISE("White Noise", "〰️");
+    WHITE_NOISE("White Noise", "〰️"),
+    OCEAN("Ocean", "🌊"),
+    FIREPLACE("Fireplace", "🔥"),
+    NIGHT("Night Sky", "🌙"),
+    CAFE("Café", "☕"),
+    BIRDS("Birds", "🐦");
 
     companion object {
         fun fromString(value: String): AmbientSound {

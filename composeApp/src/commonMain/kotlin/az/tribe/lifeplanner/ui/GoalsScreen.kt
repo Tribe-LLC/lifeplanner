@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -145,7 +147,7 @@ fun GoalsScreen(
         floatingActionButton = {
             // Single FAB that opens the Add Goal bottom sheet
             // Wrapped in Box with bottom padding to stay above bottom nav
-            Box(modifier = Modifier.padding(bottom = 96.dp)) {
+            Box(modifier = Modifier) {
                 FloatingActionButton(
                     onClick = { showAddGoalSheet = true },
                     containerColor = dynamicColor,

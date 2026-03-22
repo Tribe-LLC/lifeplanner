@@ -2,6 +2,7 @@ package az.tribe.lifeplanner.ui.reminder
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import az.tribe.lifeplanner.data.analytics.Analytics
 import az.tribe.lifeplanner.domain.model.DayOfWeek
 import az.tribe.lifeplanner.domain.model.Reminder
 import az.tribe.lifeplanner.domain.model.ReminderFrequency
@@ -101,6 +102,7 @@ class ReminderViewModel(
                     createdAt = now
                 )
                 reminderRepository.createReminder(reminder)
+                Analytics.reminderSet(type.name)
                 loadReminders()
                 _uiState.value = _uiState.value.copy(showAddDialog = false)
             } catch (e: Exception) {

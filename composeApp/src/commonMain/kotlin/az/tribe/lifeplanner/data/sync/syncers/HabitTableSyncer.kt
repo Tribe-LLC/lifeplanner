@@ -42,7 +42,7 @@ class HabitTableSyncer(
         longestStreak = local.longestStreak,
         totalCompletions = local.totalCompletions,
         lastCompletedDate = local.lastCompletedDate,
-        linkedGoalId = local.linkedGoalId,
+        linkedGoalId = local.linkedGoalId?.takeIf { it != "getting_started_goal" },
         correlationScore = local.correlationScore,
         isActive = local.isActive != 0L,
         createdAt = local.createdAt,

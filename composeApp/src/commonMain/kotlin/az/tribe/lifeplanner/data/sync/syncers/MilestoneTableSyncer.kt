@@ -10,6 +10,8 @@ import io.github.jan.supabase.postgrest.postgrest
 import co.touchlab.kermit.Logger
 import kotlinx.datetime.Clock
 
+private const val GETTING_STARTED_GOAL_ID = "getting_started_goal"
+
 class MilestoneTableSyncer(
     supabase: SupabaseClient,
     private val db: SharedDatabase
@@ -24,16 +26,19 @@ class MilestoneTableSyncer(
 
     override suspend fun getUnsyncedLocal(): List<MilestoneEntity> {
         // Single DB access: fetch milestones and validate goal FKs in one block
+        // Skip "Getting Started" goal milestones — local-only system data
         return db { d ->
             val milestones = d.lifePlannerDBQueries.getUnsyncedMilestones().executeAsList()
             if (milestones.isEmpty()) return@db emptyList()
             val goalIds = d.lifePlannerDBQueries.selectAll().executeAsList().map { it.id }.toSet()
-            milestones.filter { it.goalId in goalIds }
+            milestones.filter { it.goalId in goalIds && it.goalId != GETTING_STARTED_GOAL_ID }
         }
     }
 
     override suspend fun getDeletedLocal(): List<MilestoneEntity> =
-        db { it.lifePlannerDBQueries.getDeletedMilestones().executeAsList() }
+        db { it.lifePlannerDBQueries.getDeletedMilestones().executeAsList()
+            .filter { m -> m.goalId != GETTING_STARTED_GOAL_ID }
+        }
 
     override suspend fun localToRemote(local: MilestoneEntity, userId: String) = MilestoneSyncDto(
         id = local.id,
@@ -112,9 +117,11 @@ class MilestoneTableSyncer(
                 .select { filter { eq("user_id", userId) } }
                 .decodeList<MilestoneSyncDto>()
         }
-        remoteItems.forEach { upsertLocal(remoteToLocal(it)) }
+        // Skip Getting Started goal milestones — local-only system data
+        val filtered = remoteItems.filter { it.goalId != GETTING_STARTED_GOAL_ID }
+        filtered.forEach { upsertLocal(remoteToLocal(it)) }
         setLastPullTimestamp(now)
-        if (remoteItems.isNotEmpty()) Logger.d("SyncEngine") { "Pulled ${remoteItems.size} items from $tableName" }
-        return remoteItems.size
+        if (filtered.isNotEmpty()) Logger.d("SyncEngine") { "Pulled ${filtered.size} items from $tableName (skipped ${remoteItems.size - filtered.size} getting_started)" }
+        return filtered.size
     }
 }

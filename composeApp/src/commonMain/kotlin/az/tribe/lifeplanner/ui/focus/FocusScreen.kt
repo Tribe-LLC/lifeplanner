@@ -1,12 +1,17 @@
 package az.tribe.lifeplanner.ui.focus
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,9 +63,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -75,11 +82,13 @@ import az.tribe.lifeplanner.ui.components.AmbientSoundPlayer
 import az.tribe.lifeplanner.ui.components.CelebrationOverlay
 import az.tribe.lifeplanner.ui.components.CelebrationType
 import az.tribe.lifeplanner.ui.components.GlassCard
+import az.tribe.lifeplanner.ui.components.KeepScreenOn
 import az.tribe.lifeplanner.ui.components.rememberAmbientSoundPlayer
 import az.tribe.lifeplanner.ui.components.rememberCelebrationSoundPlayer
 import az.tribe.lifeplanner.ui.components.rememberHapticManager
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
 import az.tribe.lifeplanner.ui.theme.gradientColors
+import kotlinx.coroutines.delay
 import org.koin.compose.viewmodel.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -127,6 +136,9 @@ fun FocusScreen(
     }
 
     val isActive = timerState == TimerState.RUNNING || timerState == TimerState.PAUSED
+
+    // Keep screen on during active focus session
+    KeepScreenOn(isActive)
 
     Scaffold(
         topBar = {
@@ -242,137 +254,89 @@ private fun FocusSetupContent(
         milestoneItems.groupBy { it.goal }
     }
 
-    // Expandable customize section for free flow
+    // Expandable sections
     var showCustomize by remember { mutableStateOf(false) }
+    var showAllMilestones by remember { mutableStateOf(false) }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            horizontal = LifePlannerDesign.Padding.screenHorizontal,
-            vertical = 8.dp
-        ),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        // Timer mode toggle — Timed vs Free Flow
-        item {
-            TimerModeToggle(
-                isFreeFlow = isFreeFlow,
-                onModeChange = { focusViewModel.setTimerMode(it) }
-            )
-        }
+    // Pre-computed data for both modes
+    val freeFlowGoals = remember(milestoneItems) {
+        milestoneItems.map { it.goal }.distinctBy { it.id }
+    }
+    val suggestedMilestones = remember(milestoneItems) {
+        milestoneItems.sortedBy { it.goal.dueDate }.take(3)
+    }
+    val suggestedIds = remember(suggestedMilestones) {
+        suggestedMilestones.map { it.milestone.id }.toSet()
+    }
+    val remainingMilestones = remember(milestoneItems, suggestedIds) {
+        milestoneItems.filter { it.milestone.id !in suggestedIds }
+    }
+    val selectedGoalMilestones = remember(selectedGoal, milestoneItems) {
+        selectedGoal?.let { goal ->
+            milestoneItems.filter { it.goal.id == goal.id }
+        } ?: emptyList()
+    }
 
-        if (isFreeFlow) {
-            // ── FREE FLOW: Quick-start hero ──
-
-            // Big start button right away
-            item {
-                Button(
-                    onClick = onStartFocus,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(64.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFFF6B35)
-                    )
-                ) {
-                    Icon(
-                        Icons.Rounded.AllInclusive,
-                        null,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        "Start Focusing",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            // Compact stats inline
-            if (todaySeconds > 0 || allTimeSeconds > 0) {
+    if (isFreeFlow) {
+        // ── FREE FLOW: Compact setup with sticky start button ──
+        Column(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(
+                    horizontal = LifePlannerDesign.Padding.screenHorizontal,
+                    vertical = 8.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Timer mode toggle
                 item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (todaySeconds > 0) {
-                            Text(
-                                "${formatDuration(todaySeconds)} today",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = Color(0xFFFF6B35),
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                        if (todaySeconds > 0 && allTimeSeconds > 0) {
-                            Text(
-                                "  •  ",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        if (allTimeSeconds > 0) {
-                            Text(
-                                "${formatDuration(allTimeSeconds)} all time",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                    TimerModeToggle(
+                        isFreeFlow = true,
+                        onModeChange = { focusViewModel.setTimerMode(it) }
+                    )
                 }
-            }
 
-            // Expandable customize section
-            item {
-                Surface(
-                    onClick = { showCustomize = !showCustomize },
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
+                // Compact stats inline
+                if (todaySeconds > 0 || allTimeSeconds > 0) {
+                    item {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                selectedMood?.emoji ?: "😊",
-                                fontSize = 18.sp
-                            )
-                            Text(
-                                selectedAmbientSound.icon,
-                                fontSize = 18.sp
-                            )
-                            Text(
-                                selectedFocusTheme.icon,
-                                fontSize = 18.sp
-                            )
+                            if (todaySeconds > 0) {
+                                Text(
+                                    "${formatDuration(todaySeconds)} today",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Color(0xFFFF6B35),
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            if (todaySeconds > 0 && allTimeSeconds > 0) {
+                                Text(
+                                    "  •  ",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (allTimeSeconds > 0) {
+                                Text(
+                                    "${formatDuration(allTimeSeconds)} all time",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
-                        Text(
-                            if (showCustomize) "Hide options" else "Customize",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.SemiBold
-                        )
                     }
                 }
-            }
 
-            if (showCustomize) {
                 // Mood picker
                 item {
                     Text(
                         "How are you feeling?",
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 item {
@@ -380,7 +344,7 @@ private fun FocusSetupContent(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        Mood.entries.forEach { mood ->
+                        Mood.entries.sortedBy { it.score }.forEach { mood ->
                             MoodChip(
                                 mood = mood,
                                 isSelected = selectedMood == mood,
@@ -390,12 +354,13 @@ private fun FocusSetupContent(
                     }
                 }
 
-                // Ambient sound
+                // Sound picker
                 item {
                     Text(
                         "Ambient Sound",
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 item {
@@ -413,74 +378,177 @@ private fun FocusSetupContent(
                     }
                 }
 
-                // Visual theme
+                // Theme picker
                 item {
                     Text(
                         "Visual Theme",
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 item {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
                         FocusTheme.entries.forEach { theme ->
-                            PickerChip(
-                                label = "${theme.icon} ${theme.displayName}",
-                                isSelected = selectedFocusTheme == theme,
-                                onClick = { focusViewModel.setFocusTheme(theme) }
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Optional milestone picker
-            if (milestoneItems.isNotEmpty()) {
-                item {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            "Focus on a milestone",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = MaterialTheme.colorScheme.surfaceVariant
-                        ) {
-                            Text(
-                                "optional",
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-
-                groupedMilestones.forEach { (goal, items) ->
-                    item(key = "goal_header_${goal.id}") {
-                        GoalSectionHeader(goal = goal)
-                    }
-                    items(items, key = { it.milestone.id }) { item ->
-                        MilestonePickerItem(
-                            milestoneItem = item,
-                            isSelected = selectedMilestone?.id == item.milestone.id,
-                            onClick = {
-                                focusViewModel.selectMilestoneWithGoal(item.milestone, item.goal)
+                            val isSelected = selectedFocusTheme == theme
+                            Surface(
+                                onClick = { focusViewModel.setFocusTheme(theme) },
+                                shape = CircleShape,
+                                color = if (isSelected) Color(0xFFFF6B35).copy(alpha = 0.15f) else Color.Transparent,
+                                modifier = if (isSelected) Modifier.border(2.dp, Color(0xFFFF6B35), CircleShape) else Modifier
+                            ) {
+                                Text(
+                                    theme.icon,
+                                    modifier = Modifier.padding(12.dp),
+                                    fontSize = 24.sp
+                                )
                             }
+                        }
+                    }
+                }
+
+                // Theme preview
+                if (selectedFocusTheme != FocusTheme.DEFAULT) {
+                    item {
+                        ThemePreviewCard(
+                            theme = selectedFocusTheme,
+                            mood = selectedMood
                         )
                     }
                 }
 
-                item { Spacer(Modifier.height(32.dp)) }
+                // Goal quick-pick chips
+                if (freeFlowGoals.isNotEmpty()) {
+                    item {
+                        Text(
+                            "Working on",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    item {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            freeFlowGoals.forEach { goal ->
+                                val isSelected = selectedGoal?.id == goal.id
+                                val categoryColors = goal.category.gradientColors()
+                                Surface(
+                                    onClick = { focusViewModel.selectGoalOnly(goal) },
+                                    shape = RoundedCornerShape(50),
+                                    color = if (isSelected) categoryColors.first().copy(alpha = 0.15f)
+                                        else MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = if (isSelected) Modifier.border(
+                                        1.5.dp,
+                                        Brush.horizontalGradient(categoryColors),
+                                        RoundedCornerShape(50)
+                                    ) else Modifier
+                                ) {
+                                    Text(
+                                        goal.title,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) categoryColors.first()
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // If a goal is selected, show its milestones inline
+                    if (selectedGoalMilestones.isNotEmpty()) {
+                        item {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    "Pick a milestone",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = MaterialTheme.colorScheme.surfaceVariant
+                                ) {
+                                    Text(
+                                        "optional",
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                        items(selectedGoalMilestones, key = { it.milestone.id }) { item ->
+                            MilestonePickerItem(
+                                milestoneItem = item,
+                                isSelected = selectedMilestone?.id == item.milestone.id,
+                                onClick = {
+                                    focusViewModel.selectMilestoneWithGoal(item.milestone, item.goal)
+                                }
+                            )
+                        }
+                    }
+                }
+
+                item { Spacer(Modifier.height(8.dp)) }
             }
-        } else {
+
+            // Sticky start button at bottom
+            Button(
+                onClick = onStartFocus,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = LifePlannerDesign.Padding.screenHorizontal,
+                        vertical = 12.dp
+                    )
+                    .height(56.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFFF6B35)
+                )
+            ) {
+                Icon(
+                    Icons.Rounded.AllInclusive,
+                    null,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "Start Focusing",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    } else {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            horizontal = LifePlannerDesign.Padding.screenHorizontal,
+            vertical = 8.dp
+        ),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Timer mode toggle — Timed vs Free Flow
+        item {
+            TimerModeToggle(
+                isFreeFlow = false,
+                onModeChange = { focusViewModel.setTimerMode(it) }
+            )
+        }
             // ── TIMED MODE: Full setup (unchanged) ──
 
             // Stats card
@@ -537,7 +605,7 @@ private fun FocusSetupContent(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Mood.entries.forEach { mood ->
+                    Mood.entries.sortedBy { it.score }.forEach { mood ->
                         MoodChip(
                             mood = mood,
                             isSelected = selectedMood == mood,
@@ -570,7 +638,7 @@ private fun FocusSetupContent(
                 }
             }
 
-            // Focus theme picker
+            // Focus theme picker — icon-only circles
             item {
                 Text(
                     "Visual Theme",
@@ -579,21 +647,39 @@ private fun FocusSetupContent(
                 )
             }
             item {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     FocusTheme.entries.forEach { theme ->
-                        PickerChip(
-                            label = "${theme.icon} ${theme.displayName}",
-                            isSelected = selectedFocusTheme == theme,
-                            onClick = { focusViewModel.setFocusTheme(theme) }
-                        )
+                        val isSelected = selectedFocusTheme == theme
+                        Surface(
+                            onClick = { focusViewModel.setFocusTheme(theme) },
+                            shape = CircleShape,
+                            color = if (isSelected) Color(0xFFFF6B35).copy(alpha = 0.15f) else Color.Transparent,
+                            modifier = if (isSelected) Modifier.border(2.dp, Color(0xFFFF6B35), CircleShape) else Modifier
+                        ) {
+                            Text(
+                                theme.icon,
+                                modifier = Modifier.padding(12.dp),
+                                fontSize = 24.sp
+                            )
+                        }
                     }
                 }
             }
 
-            // Pick a Milestone header
+            // Theme preview
+            if (selectedFocusTheme != FocusTheme.DEFAULT) {
+                item {
+                    ThemePreviewCard(
+                        theme = selectedFocusTheme,
+                        mood = selectedMood
+                    )
+                }
+            }
+
+            // Pick a Milestone
             item {
                 Text(
                     "What will you focus on?",
@@ -625,12 +711,16 @@ private fun FocusSetupContent(
                     }
                 }
             } else {
-                // Milestones grouped by goal
-                groupedMilestones.forEach { (goal, items) ->
-                    item(key = "goal_header_${goal.id}") {
-                        GoalSectionHeader(goal = goal)
+                if (suggestedMilestones.isNotEmpty()) {
+                    item {
+                        Text(
+                            "Suggested",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFFF6B35)
+                        )
                     }
-                    items(items, key = { it.milestone.id }) { item ->
+                    items(suggestedMilestones, key = { "suggested_${it.milestone.id}" }) { item ->
                         MilestonePickerItem(
                             milestoneItem = item,
                             isSelected = selectedMilestone?.id == item.milestone.id,
@@ -638,6 +728,58 @@ private fun FocusSetupContent(
                                 focusViewModel.selectMilestoneWithGoal(item.milestone, item.goal)
                             }
                         )
+                    }
+                }
+
+                // All milestones — collapsible
+                if (remainingMilestones.isNotEmpty()) {
+                    item {
+                        Surface(
+                            onClick = { showAllMilestones = !showAllMilestones },
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    "All milestones",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    if (showAllMilestones) "Hide" else "${remainingMilestones.size} more",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+
+                    if (showAllMilestones) {
+                        groupedMilestones.forEach { (goal, items) ->
+                            val filtered = items.filter { it.milestone.id !in suggestedIds }
+                            if (filtered.isNotEmpty()) {
+                                item(key = "goal_header_${goal.id}") {
+                                    GoalSectionHeader(goal = goal)
+                                }
+                                items(filtered, key = { it.milestone.id }) { item ->
+                                    MilestonePickerItem(
+                                        milestoneItem = item,
+                                        isSelected = selectedMilestone?.id == item.milestone.id,
+                                        onClick = {
+                                            focusViewModel.selectMilestoneWithGoal(item.milestone, item.goal)
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -757,6 +899,39 @@ private fun MoodChip(
             modifier = Modifier.padding(12.dp),
             fontSize = 24.sp
         )
+    }
+}
+
+@Composable
+private fun ThemePreviewCard(
+    theme: FocusTheme,
+    mood: Mood?
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(120.dp)
+            .clip(RoundedCornerShape(16.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        FocusAnimatedBackground(
+            theme = theme,
+            mood = mood,
+            modifier = Modifier.fillMaxSize()
+        )
+        // Label overlay
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = Color.Black.copy(alpha = 0.3f)
+        ) {
+            Text(
+                "${theme.icon} ${theme.displayName}",
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White
+            )
+        }
     }
 }
 
@@ -993,10 +1168,33 @@ private fun FocusActiveContent(
     val selectedMilestone by focusViewModel.selectedMilestone.collectAsState()
     val elapsedSeconds by focusViewModel.elapsedSeconds.collectAsState()
     val isFreeFlow by focusViewModel.isFreeFlow.collectAsState()
+    val selectedFocusTheme by focusViewModel.selectedFocusTheme.collectAsState()
 
     val isRunning = timerState == TimerState.RUNNING
     val gradientColors = selectedGoal?.category?.gradientColors()
         ?: listOf(Color(0xFFFF6B35), Color(0xFFFFA726))
+
+    // Zen mode: auto-hide controls after 5 seconds, show on tap
+    var showControls by remember { mutableStateOf(true) }
+    var tapCounter by remember { mutableStateOf(0) }
+
+    // Auto-hide controls after 5 seconds when running
+    LaunchedEffect(tapCounter, isRunning) {
+        if (isRunning) {
+            showControls = true
+            delay(5000)
+            showControls = false
+        } else {
+            // Always show when paused
+            showControls = true
+        }
+    }
+
+    val controlsAlpha by animateFloatAsState(
+        targetValue = if (showControls) 1f else 0f,
+        animationSpec = tween(400),
+        label = "controlsAlpha"
+    )
 
     // Motivational messages that rotate
     val motivationalTexts = remember {
@@ -1013,128 +1211,143 @@ private fun FocusActiveContent(
     }
     val messageIndex = (elapsedSeconds / 300) % motivationalTexts.size // Changes every 5 min
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = LifePlannerDesign.Padding.screenHorizontal),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .pointerInput(Unit) {
+                detectTapGestures {
+                    tapCounter++
+                }
+            },
+        contentAlignment = Alignment.Center
     ) {
-        Spacer(Modifier.height(24.dp))
+        // Progress Ring — always centered
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            FocusProgressRing(
+                progress = progress,
+                remainingSeconds = remainingSeconds,
+                isRunning = isRunning,
+                elapsedSeconds = elapsedSeconds,
+                isFreeFlow = isFreeFlow,
+                gradientColors = gradientColors,
+                theme = selectedFocusTheme,
+                size = 240.dp
+            )
 
-        // Goal + Milestone info (compact)
-        selectedGoal?.let { goal ->
+            Spacer(Modifier.height(20.dp))
+
+            // Motivational text — fades with controls
             Text(
-                goal.title,
-                style = MaterialTheme.typography.titleSmall,
-                color = Color.White.copy(alpha = 0.8f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                motivationalTexts[messageIndex],
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.7f * controlsAlpha),
+                textAlign = TextAlign.Center
             )
         }
-        selectedMilestone?.let { milestone ->
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = Color.White.copy(alpha = 0.12f)
-            ) {
+
+        // Goal + Milestone info — pinned to top, fades with controls
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 24.dp)
+                .alpha(controlsAlpha),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            selectedGoal?.let { goal ->
                 Text(
-                    milestone.title,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White.copy(alpha = 0.9f),
+                    goal.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Color.White.copy(alpha = 0.8f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
+            selectedMilestone?.let { milestone ->
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color.White.copy(alpha = 0.12f)
+                ) {
+                    Text(
+                        milestone.title,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White.copy(alpha = 0.9f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
 
-        Spacer(Modifier.weight(1f))
-
-        // Progress Ring
-        FocusProgressRing(
-            progress = progress,
-            remainingSeconds = remainingSeconds,
-            isRunning = isRunning,
-            elapsedSeconds = elapsedSeconds,
-            isFreeFlow = isFreeFlow,
-            gradientColors = gradientColors,
-            size = 240.dp
-        )
-
-        Spacer(Modifier.height(24.dp))
-
-        // Motivational text
-        Text(
-            motivationalTexts[messageIndex],
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.White.copy(alpha = 0.7f),
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(Modifier.weight(1f))
-
-        // Controls
+        // Controls — pinned to bottom, fade in/out
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(bottom = 48.dp, start = LifePlannerDesign.Padding.screenHorizontal, end = LifePlannerDesign.Padding.screenHorizontal)
+                .alpha(controlsAlpha),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Cancel button (small)
-            FilledTonalButton(
-                onClick = { focusViewModel.cancelTimer() },
-                shape = CircleShape,
-                modifier = Modifier.size(48.dp),
-                contentPadding = PaddingValues(0.dp)
-            ) {
-                Icon(Icons.Rounded.Close, "Cancel", modifier = Modifier.size(20.dp))
-            }
-
-            // Pause/Resume button (large)
-            Button(
-                onClick = {
-                    if (isRunning) focusViewModel.pauseTimer()
-                    else focusViewModel.resumeTimer()
-                },
-                shape = CircleShape,
-                modifier = Modifier.size(72.dp),
-                contentPadding = PaddingValues(0.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = gradientColors.first()
-                )
-            ) {
-                Icon(
-                    if (isRunning) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    if (isRunning) "Pause" else "Resume",
-                    modifier = Modifier.size(32.dp)
-                )
-            }
-
-            // Third button: Done (free flow) or +5 (timed)
-            if (isFreeFlow) {
+                // Cancel button (small)
                 FilledTonalButton(
-                    onClick = { focusViewModel.completeFreeFlowSession() },
+                    onClick = { focusViewModel.cancelTimer() },
                     shape = CircleShape,
                     modifier = Modifier.size(48.dp),
                     contentPadding = PaddingValues(0.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = Color(0xFF4CAF50)
-                    )
+                    enabled = showControls
                 ) {
-                    Icon(Icons.Rounded.Check, "Done", tint = Color.White, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Rounded.Close, "Cancel", modifier = Modifier.size(20.dp))
                 }
-            } else {
-                FilledTonalButton(
-                    onClick = { focusViewModel.addFiveMinutes() },
+
+                // Pause/Resume button (large)
+                Button(
+                    onClick = {
+                        if (isRunning) focusViewModel.pauseTimer()
+                        else focusViewModel.resumeTimer()
+                    },
                     shape = CircleShape,
-                    modifier = Modifier.size(48.dp),
-                    contentPadding = PaddingValues(0.dp)
+                    modifier = Modifier.size(72.dp),
+                    contentPadding = PaddingValues(0.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = gradientColors.first()
+                    ),
+                    enabled = showControls
                 ) {
-                    Text("+5", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    Icon(
+                        if (isRunning) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                        if (isRunning) "Pause" else "Resume",
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+
+                // Third button: Done (free flow) or +5 (timed)
+                if (isFreeFlow) {
+                    FilledTonalButton(
+                        onClick = { focusViewModel.completeFreeFlowSession() },
+                        shape = CircleShape,
+                        modifier = Modifier.size(48.dp),
+                        contentPadding = PaddingValues(0.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = Color(0xFF4CAF50)
+                        ),
+                        enabled = showControls
+                    ) {
+                        Icon(Icons.Rounded.Check, "Done", tint = Color.White, modifier = Modifier.size(20.dp))
+                    }
+                } else {
+                    FilledTonalButton(
+                        onClick = { focusViewModel.addFiveMinutes() },
+                        shape = CircleShape,
+                        modifier = Modifier.size(48.dp),
+                        contentPadding = PaddingValues(0.dp),
+                        enabled = showControls
+                    ) {
+                        Text("+5", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
-        }
-
-        Spacer(Modifier.height(48.dp))
     }
 }
 

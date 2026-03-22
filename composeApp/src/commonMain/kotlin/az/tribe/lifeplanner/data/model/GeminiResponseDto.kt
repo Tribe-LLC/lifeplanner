@@ -40,7 +40,8 @@ data class GoalDto(
     val category: GoalCategory,
     val timeline: GoalTimeline,
     val dueDate: String? = null, // Will be parsed to LocalDate, optional from AI
-    val milestones: List<MilestoneDto> = emptyList()
+    val milestones: List<MilestoneDto> = emptyList(),
+    val reasoning: String? = null // AI explanation for why this goal was suggested
 )
 
 @Serializable

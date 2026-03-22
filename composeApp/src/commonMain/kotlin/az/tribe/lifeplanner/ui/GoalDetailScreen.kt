@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
@@ -61,6 +62,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import az.tribe.lifeplanner.data.analytics.Analytics
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.model.JournalEntry
 import az.tribe.lifeplanner.domain.model.Milestone
@@ -131,7 +133,10 @@ fun GoalDetailScreen(
 
     // Load dependencies and journal entries for current goal when goal changes
     LaunchedEffect(goalId) {
-        goal?.let { dependencyViewModel.selectGoal(it) }
+        goal?.let {
+            dependencyViewModel.selectGoal(it)
+            Analytics.goalViewed(goalId, it.category.name)
+        }
         // Load journal entries linked to this goal
         coroutineScope.launch {
             journalEntries = journalRepository.getEntriesByGoalId(goalId)
@@ -264,6 +269,13 @@ fun GoalDetailScreen(
                     notes = goal.notes,
                     onNotesClick = { showNotesDialog = true }
                 )
+            }
+
+            // AI Reasoning Card — only shown for AI-generated goals
+            if (!goal.aiReasoning.isNullOrBlank()) {
+                item {
+                    AiReasoningCard(reasoning = goal.aiReasoning!!)
+                }
             }
 
             // Milestones Card
@@ -459,6 +471,67 @@ private fun ModernNotesCard(
                     MaterialTheme.colorScheme.onSurface
                 },
                 maxLines = 5,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun AiReasoningCard(reasoning: String) {
+    var expanded by remember { mutableStateOf(false) }
+
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .clickable { expanded = !expanded }
+    ) {
+        Column(
+            modifier = Modifier.padding(LifePlannerDesign.Padding.standard),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.AutoAwesome,
+                        contentDescription = null,
+                        tint = Color(0xFF7C4DFF),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = "Why this goal?",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color(0xFF7C4DFF).copy(alpha = 0.1f)
+                ) {
+                    Text(
+                        "AI",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF7C4DFF),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
+            Text(
+                text = reasoning,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = if (expanded) Int.MAX_VALUE else 3,
                 overflow = TextOverflow.Ellipsis
             )
         }

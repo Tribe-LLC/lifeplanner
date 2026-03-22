@@ -127,6 +127,7 @@ import az.tribe.lifeplanner.data.review.ReviewMessageBuilder
 import az.tribe.lifeplanner.domain.model.ReviewType
 import az.tribe.lifeplanner.ui.balance.InsightMessageHolder
 import az.tribe.lifeplanner.ui.chat.ChatViewModel
+import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
 import kotlinx.coroutines.launch
 import az.tribe.lifeplanner.ui.components.CoachListContentExtended
 import az.tribe.lifeplanner.ui.components.CoachSuggestionButtons
@@ -134,6 +135,7 @@ import az.tribe.lifeplanner.ui.components.OfflineBanner
 import az.tribe.lifeplanner.util.NetworkConnectivityObserver
 import kotlinx.datetime.LocalDateTime
 import org.koin.compose.koinInject
+import org.koin.compose.viewmodel.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -146,6 +148,25 @@ fun AIChatScreen(
     onNavigateToCreateGroup: () -> Unit = {},
     onNavigateToCoachProfile: (String) -> Unit = {}
 ) {
+    // Level gate: require level 3 to access Coach AI
+    val gamificationViewModel: GamificationViewModel = koinViewModel()
+    val userProgress by gamificationViewModel.userProgress.collectAsState()
+    val requiredLevel = 3
+    val xpForLevel3 = 450 // 150 (L1→L2) + 300 (L2→L3)
+    val isUnlocked = (userProgress?.currentLevel ?: 1) >= requiredLevel
+
+    if (!isUnlocked) {
+        CoachLockedScreen(
+            currentLevel = userProgress?.currentLevel ?: 1,
+            currentXp = userProgress?.totalXp ?: 0,
+            xpNeeded = xpForLevel3 - (userProgress?.totalXp ?: 0),
+            requiredLevel = requiredLevel,
+            totalXpRequired = xpForLevel3,
+            onBack = onNavigateBack
+        )
+        return
+    }
+
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val connectivityObserver: NetworkConnectivityObserver = koinInject()
@@ -153,6 +174,7 @@ fun AIChatScreen(
     val isOffline = !isConnected
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     val scope = rememberCoroutineScope()
+    val objectiveViewModel: az.tribe.lifeplanner.ui.objectives.BeginnerObjectiveViewModel = koinViewModel()
 
     LaunchedEffect(Unit) {
         viewModel.loadSessions()
@@ -337,7 +359,10 @@ fun AIChatScreen(
                     isStreaming = uiState.isStreaming,
                     streamingText = uiState.streamingText,
                     isExecutingAction = uiState.executingAction,
-                    onSendMessage = { viewModel.sendMessage(it) },
+                    onSendMessage = {
+                        viewModel.sendMessage(it)
+                        objectiveViewModel.markObjectiveCompleted(az.tribe.lifeplanner.domain.model.ObjectiveType.CHAT_WITH_COACH)
+                    },
                     onExecuteSuggestion = { viewModel.executeCoachSuggestion(it) },
                     executedSuggestionIds = uiState.executedSuggestionIds,
                     isCouncilMode = uiState.isCouncilMode,
@@ -1779,5 +1804,157 @@ private fun androidx.compose.ui.text.AnnotatedString.Builder.appendInlineMarkdow
     // Append remaining text
     if (lastIndex < text.length) {
         append(text.substring(lastIndex))
+    }
+}
+
+/**
+ * Locked screen shown when user hasn't reached level 2 yet.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CoachLockedScreen(
+    currentLevel: Int,
+    currentXp: Int,
+    xpNeeded: Int,
+    requiredLevel: Int = 3,
+    totalXpRequired: Int = 450,
+    onBack: () -> Unit
+) {
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
+        topBar = {
+            TopAppBar(
+                title = { Text("Personal Coach") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(horizontal = 32.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Lock icon
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                Color(0xFF7C4DFF).copy(alpha = 0.15f),
+                                Color(0xFF00BFA5).copy(alpha = 0.15f)
+                            )
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.Psychology,
+                    contentDescription = null,
+                    tint = Color(0xFF7C4DFF),
+                    modifier = Modifier.size(40.dp)
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            Text(
+                "Coach AI Unlocks at Level $requiredLevel",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                "Complete a few objectives to earn XP and unlock your personal AI coach.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(24.dp))
+
+            // Progress indicator
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            "Level $currentLevel",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "Level $requiredLevel",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    // XP progress bar
+                    val progress = (currentXp.toFloat() / totalXpRequired.toFloat()).coerceIn(0f, 1f)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(progress)
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(Color(0xFF7C4DFF), Color(0xFF00BFA5))
+                                    )
+                                )
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Text(
+                        "$currentXp / $totalXpRequired XP",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            Text(
+                "${xpNeeded.coerceAtLeast(0)} XP to go",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFFFF6B35)
+            )
+        }
     }
 }

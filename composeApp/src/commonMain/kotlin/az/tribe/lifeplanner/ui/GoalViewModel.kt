@@ -2,6 +2,8 @@ package az.tribe.lifeplanner.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import az.tribe.lifeplanner.data.analytics.Analytics
+import az.tribe.lifeplanner.data.analytics.FacebookAnalytics
 import az.tribe.lifeplanner.data.mapper.createNewMilestone
 import az.tribe.lifeplanner.data.model.GoalTypeQuestions
 import az.tribe.lifeplanner.data.model.QuestionAnswer
@@ -15,14 +17,15 @@ import az.tribe.lifeplanner.domain.enum.GoalFilter
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.repository.GeminiRepository
 import az.tribe.lifeplanner.domain.repository.GoalRepository
+import az.tribe.lifeplanner.domain.service.SmartReminderManager
 import az.tribe.lifeplanner.usecases.*
 import co.touchlab.kermit.Logger
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.remoteconfig.FirebaseRemoteConfig
-import dev.gitlive.firebase.remoteconfig.remoteConfig
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
@@ -30,7 +33,6 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
-import kotlin.time.Duration
 
 class GoalViewModel(
     // Reactive data source
@@ -63,8 +65,13 @@ class GoalViewModel(
 
     private val generateAiQuestionnaireUseCase: GenerateAiQuestionnaireUseCase,
     private val generateAiGoalsUseCase: GenerateAiGoalsUseCase,
-    private val geminiRepository: GeminiRepository
+    private val geminiRepository: GeminiRepository,
+    private val smartReminderManager: SmartReminderManager
 ) : ViewModel() {
+
+    // Smart reminder events (one-shot, collected by UI for snackbar)
+    private val _reminderEvent = MutableSharedFlow<String>()
+    val reminderEvent: SharedFlow<String> = _reminderEvent.asSharedFlow()
 
     // State Management
     private val _searchQuery = MutableStateFlow("")
@@ -111,9 +118,6 @@ class GoalViewModel(
     private val _goalHistory = MutableStateFlow<List<GoalChange>>(emptyList())
     val goalHistory: StateFlow<List<GoalChange>> = _goalHistory.asStateFlow()
 
-    private val _isForceUpdateEnabled = MutableStateFlow<Boolean?>(null)
-    val isForceUpdateEnabled: StateFlow<Boolean?> = _isForceUpdateEnabled
-
     private val _userPrompt = MutableStateFlow("")
     val userPrompt: StateFlow<String> = _userPrompt.asStateFlow()
 
@@ -144,12 +148,14 @@ class GoalViewModel(
     }
 
     init {
-        checkConfig()
     }
 
     // Search and Filter Functions (reactive: combine auto-re-evaluates)
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query
+        if (query.length >= 3) {
+            FacebookAnalytics.logSearch(query, "goal")
+        }
     }
 
     fun updateFilter(filter: GoalFilter) {
@@ -161,6 +167,11 @@ class GoalViewModel(
         viewModelScope.launch {
             try {
                 createGoalUseCase(goal)
+                Analytics.goalCreated(goal.category.name, "manual")
+                val result = smartReminderManager.syncRemindersForGoal(goal)
+                if (result.hasChanges) {
+                    _reminderEvent.emit("${result.total} smart reminder${if (result.total > 1) "s" else ""} set for \"${goal.title}\"")
+                }
                 _error.value = null
             } catch (e: Exception) {
                 _error.value = "Failed to create goal: ${e.message}"
@@ -172,6 +183,10 @@ class GoalViewModel(
         viewModelScope.launch {
             try {
                 updateGoalUseCase(goal)
+                val result = smartReminderManager.syncRemindersForGoal(goal)
+                if (result.created > 0) {
+                    _reminderEvent.emit("Reminders updated for \"${goal.title}\"")
+                }
                 _error.value = null
             } catch (e: Exception) {
                 _error.value = "Failed to update goal: ${e.message}"
@@ -182,7 +197,12 @@ class GoalViewModel(
     fun deleteGoal(id: String) {
         viewModelScope.launch {
             try {
+                val oldGoal = getGoalByIdUseCase(id)
+                smartReminderManager.cleanupRemindersForDeletedGoal(id)
                 deleteGoalUseCase(id)
+                if (oldGoal != null) {
+                    Analytics.goalAbandoned(id, oldGoal.category.name, oldGoal.progress?.toInt() ?: 0)
+                }
                 _error.value = null
             } catch (e: Exception) {
                 _error.value = "Failed to delete goal: ${e.message}"
@@ -196,6 +216,7 @@ class GoalViewModel(
             try {
                 val oldGoal = getGoalByIdUseCase(id)
                 updateGoalProgressUseCase(id, newProgress)
+                Analytics.goalProgressUpdated(id, newProgress)
 
                 // Log the change
                 if (oldGoal != null) {
@@ -229,7 +250,34 @@ class GoalViewModel(
                             oldValue = oldGoal.status.name,
                             newValue = newStatus.name
                         )
+
+                        // Auto-complete milestones when goal is completed
+                        if (newStatus == GoalStatus.COMPLETED && oldGoal.milestones.isNotEmpty()) {
+                            oldGoal.milestones.filter { !it.isCompleted }.forEach { milestone ->
+                                toggleMilestoneCompletionUseCase(milestone.id, true)
+                            }
+                            val updatedGoal = getGoalByIdUseCase(id)
+                            updatedGoal?.let { recalculateAndUpdateProgress(it) }
+                        }
+
+                        // Uncheck milestones when reverting from completed
+                        if (oldGoal.status == GoalStatus.COMPLETED && newStatus != GoalStatus.COMPLETED && oldGoal.milestones.isNotEmpty()) {
+                            oldGoal.milestones.filter { it.isCompleted }.forEach { milestone ->
+                                toggleMilestoneCompletionUseCase(milestone.id, false)
+                            }
+                            val updatedGoal = getGoalByIdUseCase(id)
+                            updatedGoal?.let { recalculateAndUpdateProgress(it) }
+                        }
                     }
+                    // Sync smart reminders based on new status
+                    if (newStatus == GoalStatus.COMPLETED) {
+                        Analytics.goalCompleted(id, oldGoal?.category?.name ?: "", 0)
+                        smartReminderManager.cleanupRemindersForCompletedGoal(id)
+                    } else if (oldGoal?.status == GoalStatus.COMPLETED) {
+                        val refreshed = getGoalByIdUseCase(id)
+                        refreshed?.let { smartReminderManager.reactivateRemindersForGoal(it) }
+                    }
+
                     _error.value = null
                 } else {
                     _error.value = result.exceptionOrNull()?.message ?: "Failed to update status"
@@ -283,7 +331,10 @@ class GoalViewModel(
 
                     // Recalculate progress with new milestone
                     val updatedGoal = getGoalByIdUseCase(goalId)
-                    updatedGoal?.let { recalculateAndUpdateProgress(it) }
+                    updatedGoal?.let {
+                        recalculateAndUpdateProgress(it)
+                        smartReminderManager.syncRemindersForGoal(it)
+                    }
 
                     _error.value = null
                 } else {
@@ -306,6 +357,9 @@ class GoalViewModel(
                     val result = toggleMilestoneCompletionUseCase(milestoneId, willBeCompleted)
 
                     if (result.isSuccess) {
+                        if (willBeCompleted) {
+                            Analytics.milestoneCompleted(goalId, milestoneId)
+                        }
                         logGoalChangeUseCase(
                             goalId = goalId,
                             field = "milestone_completed",
@@ -404,20 +458,6 @@ class GoalViewModel(
         return goals.value.find { it.id == id }
     }
 
-    fun checkConfig() {
-        viewModelScope.launch {
-            try {
-                val remoteConfig: FirebaseRemoteConfig = Firebase.remoteConfig
-                remoteConfig.fetch(Duration.ZERO)
-                remoteConfig.fetchAndActivate()
-
-                _isForceUpdateEnabled.value =
-                    Firebase.remoteConfig.getValue("isForceUpdateEnabled").asBoolean()
-            } catch (e: Exception) {
-                Logger.e("GoalViewModel", e) { "Failed to check config: ${e.message}" }
-            }
-        }
-    }
 
     // NEW: Enhanced AI goal generation methods
 
@@ -535,10 +575,12 @@ class GoalViewModel(
                 _questionnaireStep.value = QuestionnaireStep.GENERATING
 
                 Logger.d("GoalViewModel") { "AI Goal Generation: Starting direct generation with prompt: $prompt" }
+                Analytics.aiGoalGenerationStarted()
 
                 geminiRepository.generateGoalsDirect(prompt)
                     .onSuccess { goals ->
                         Logger.d("GoalViewModel") { "AI Goal Generation: Received ${goals.size} goals" }
+                        Analytics.aiGoalGenerationCompleted(goals.size)
                         if (goals.isEmpty()) {
                             _error.value = "AI returned no goals. Please try again."
                             _questionnaireStep.value = QuestionnaireStep.INPUT
@@ -572,6 +614,8 @@ class GoalViewModel(
         viewModelScope.launch {
             try {
                 createGoalUseCase(goal)
+                Analytics.goalCreated(goal.category.name, "ai_generated", hasAiGenerated = true)
+                smartReminderManager.syncRemindersForGoal(goal)
                 _error.value = null
             } catch (e: Exception) {
                 _error.value = "Failed to add goal: ${e.message}"
@@ -588,6 +632,7 @@ class GoalViewModel(
                 val goals = _generatedGoalsFromAI.value
                 goals.forEach { goal ->
                     createGoalUseCase(goal)
+                    smartReminderManager.syncRemindersForGoal(goal)
                 }
                 _error.value = null
             } catch (e: Exception) {

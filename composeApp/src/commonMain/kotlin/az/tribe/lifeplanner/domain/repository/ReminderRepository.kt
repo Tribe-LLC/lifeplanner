@@ -31,6 +31,7 @@ interface ReminderRepository {
     suspend fun updateUserActivityPattern(pattern: UserActivityPattern)
     suspend fun calculateOptimalTime(reminderType: az.tribe.lifeplanner.domain.model.ReminderType): LocalTime
     suspend fun recordUserActivity(activityTime: LocalDateTime)
+    suspend fun findAvailableTimeSlot(preferredTime: LocalTime, excludeReminderId: String? = null): LocalTime
 
     // Scheduled Notifications
     suspend fun scheduleNotification(notification: ScheduledNotification)

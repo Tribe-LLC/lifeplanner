@@ -19,6 +19,7 @@ data class GoalSyncDto(
     @SerialName("created_at") val createdAt: String,
     @SerialName("completion_rate") val completionRate: Double = 0.0,
     @SerialName("is_archived") val isArchived: Boolean = false,
+    @SerialName("ai_reasoning") val aiReasoning: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null,
     @SerialName("is_deleted") val isDeleted: Boolean = false,
     @SerialName("sync_version") val syncVersion: Long = 0
@@ -330,6 +331,20 @@ data class CoachPersonaOverrideSyncDto(
     @SerialName("user_id") val userId: String,
     @SerialName("user_persona") val userPersona: String = "",
     @SerialName("updated_at") val updatedAt: String,
+    @SerialName("is_deleted") val isDeleted: Boolean = false,
+    @SerialName("sync_version") val syncVersion: Long = 0
+)
+
+@Serializable
+data class BeginnerObjectiveSyncDto(
+    val id: String,
+    @SerialName("user_id") val userId: String,
+    @SerialName("objective_type") val objectiveType: String,
+    @SerialName("is_completed") val isCompleted: Boolean = false,
+    @SerialName("completed_at") val completedAt: String? = null,
+    @SerialName("xp_awarded") val xpAwarded: Long = 0,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("updated_at") val updatedAt: String? = null,
     @SerialName("is_deleted") val isDeleted: Boolean = false,
     @SerialName("sync_version") val syncVersion: Long = 0
 )

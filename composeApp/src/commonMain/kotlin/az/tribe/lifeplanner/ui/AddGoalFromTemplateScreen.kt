@@ -157,7 +157,7 @@ fun AddGoalFromTemplateScreen(
                         progress = 0,
                         milestones = milestones.mapIndexed { idx, m ->
                             Milestone(
-                                id = idx.toString(),
+                                id = Uuid.random().toString(),
                                 title = m.title.text.trim(),
                                 dueDate = try {
                                     LocalDate.parse(m.dueDate.text)

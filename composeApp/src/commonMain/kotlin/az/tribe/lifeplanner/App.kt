@@ -1,5 +1,10 @@
 package az.tribe.lifeplanner
 
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,6 +38,7 @@ import androidx.navigation.navArgument
 import az.tribe.lifeplanner.ui.AchievementsScreen
 import az.tribe.lifeplanner.ui.AddGoalFromTemplateScreen
 import az.tribe.lifeplanner.ui.AddGoalScreen
+import az.tribe.lifeplanner.ui.AddHabitScreen
 import az.tribe.lifeplanner.ui.SmartGoalGeneratorScreen
 import az.tribe.lifeplanner.ui.EditGoalScreen
 import az.tribe.lifeplanner.ui.AIChatScreen
@@ -57,6 +63,7 @@ import az.tribe.lifeplanner.ui.retrospective.RetrospectiveScreen
 import az.tribe.lifeplanner.ui.OnboardingScreen
 import az.tribe.lifeplanner.ui.SignInScreen
 import az.tribe.lifeplanner.ui.WelcomeScreen
+import az.tribe.lifeplanner.ui.onboarding.OnboardingReminderScreen
 import az.tribe.lifeplanner.ui.coach.CoachProfileScreen
 import az.tribe.lifeplanner.ui.coach.CoachViewModel
 import az.tribe.lifeplanner.ui.coach.CreateCoachScreen
@@ -66,6 +73,14 @@ import az.tribe.lifeplanner.ui.components.CelebrationOverlay
 import az.tribe.lifeplanner.ui.components.CelebrationType
 import az.tribe.lifeplanner.ui.gamification.GamificationEvent
 import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
+import az.tribe.lifeplanner.BuildKonfig
+import az.tribe.lifeplanner.data.analytics.Analytics
+import az.tribe.lifeplanner.data.analytics.FacebookAnalytics
+import az.tribe.lifeplanner.domain.service.ForceUpdateChecker
+import az.tribe.lifeplanner.domain.service.UpdateMode
+import az.tribe.lifeplanner.domain.service.UpdateState
+import az.tribe.lifeplanner.ui.ForceUpdateScreen
+import az.tribe.lifeplanner.util.InAppUpdateEffect
 import az.tribe.lifeplanner.ui.navigation.Screen
 import co.touchlab.kermit.Logger
 import org.koin.compose.viewmodel.koinViewModel
@@ -93,7 +108,8 @@ import org.koin.compose.koinInject
 @Preview
 fun App(
     viewModel: GoalViewModel = koinInject(),
-    authViewModel: AuthViewModel = koinInject()
+    authViewModel: AuthViewModel = koinInject(),
+    promoRoute: String? = null
 ) {
     LifePlannerTheme {
         var myPushNotificationToken by remember { mutableStateOf("") }
@@ -194,7 +210,38 @@ fun App(
             }
         }
 
-        val isForceUpdateEnabled = viewModel.isForceUpdateEnabled.collectAsState().value ?: false
+        // Force update check via PostHog feature flag
+        var updateState by remember { mutableStateOf<UpdateState>(UpdateState.UpToDate) }
+        var softUpdateDismissed by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) {
+            updateState = ForceUpdateChecker.check()
+        }
+
+        // Block app if force update required
+        when (val state = updateState) {
+            is UpdateState.UpdateRequired -> {
+                if (state.mode == UpdateMode.FORCE || !softUpdateDismissed) {
+                    Analytics.forceUpdateShown(
+                        state.mode.name.lowercase(),
+                        BuildKonfig.APP_VERSION,
+                        state.minVersion
+                    )
+                    ForceUpdateScreen(
+                        mode = state.mode,
+                        storeUrl = state.storeUrl,
+                        onDismiss = {
+                            Analytics.softUpdateDismissed(BuildKonfig.APP_VERSION)
+                            softUpdateDismissed = true
+                        }
+                    )
+                    return@LifePlannerTheme
+                }
+            }
+            else -> {}
+        }
+
+        // Trigger Play Store in-app update when update is available
+        InAppUpdateEffect(enabled = updateState is UpdateState.UpdateRequired)
 
         // Global celebration overlay state
         val gamificationViewModel: GamificationViewModel = koinViewModel()
@@ -229,9 +276,27 @@ fun App(
             }
         }
 
+        // Celebrate when all Getting Started objectives are completed
+        val objectiveViewModel: az.tribe.lifeplanner.ui.objectives.BeginnerObjectiveViewModel = koinViewModel()
+        LaunchedEffect(Unit) {
+            objectiveViewModel.celebrationEvent.collect {
+                globalCelebrationType = CelebrationType.BADGE_UNLOCKED
+                globalCelebrationMessage = "Explorer Badge Earned!\nAll objectives complete!"
+                showGlobalCelebration = true
+            }
+        }
+
         val navController = rememberNavController()
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentRoute = navBackStackEntry?.destination?.route
+
+        // Track app opened once per composition
+        LaunchedEffect(Unit) { Analytics.appOpened() }
+
+        // PostHog screen tracking — fires on every route change
+        LaunchedEffect(currentRoute) {
+            currentRoute?.let { Analytics.screenViewed(it) }
+        }
 
         // Determine start destination based on auth state
         val startDestination = when (authState) {
@@ -245,11 +310,12 @@ fun App(
             when {
                 // Authenticated or Guest → ensure on Home
                 authState is AuthState.Authenticated || authState is AuthState.Guest -> {
-                    if (authState is AuthState.Authenticated) {
-                        syncManager.performFullSync(resetRetry = true)
-                    }
+                    // Sync is now triggered from AuthViewModel after login completes,
+                    // so we don't trigger it here to avoid racing with DB operations.
                     val current = navController.currentDestination?.route
-                    if (current == Screen.Welcome.route || current == "sign_in") {
+                    // Only auto-navigate from sign_in; WelcomeScreen handles its own
+                    // splash timing and calls onComplete() when ready
+                    if (current == "sign_in") {
                         navController.navigate(Screen.Home.route) {
                             popUpTo(0) { inclusive = true }
                         }
@@ -265,6 +331,24 @@ fun App(
                         }
                     }
                 }
+                // Verification pending (recovered from app relaunch) → go to sign_in
+                authState is AuthState.EmailVerificationPending -> {
+                    val current = navController.currentDestination?.route
+                    if (current != "sign_in" && current != Screen.Welcome.route) {
+                        navController.navigate("sign_in") {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Handle marketing deep link (e.g. lifeplanner://promo/chat)
+        LaunchedEffect(promoRoute, authState) {
+            if (promoRoute != null && (authState is AuthState.Authenticated || authState is AuthState.Guest)) {
+                navController.navigate(promoRoute) {
+                    launchSingleTop = true
+                }
             }
         }
 
@@ -274,6 +358,15 @@ fun App(
             Screen.Journal.route,
             Screen.Profile.route
         )
+
+        // Tab index for directional slide transitions between bottom nav tabs
+        val tabIndex = mapOf(
+            Screen.Home.route to 0,
+            Screen.Journal.route to 1,
+            Screen.Profile.route to 2
+        )
+        // Slide offset = 25% of width for a subtle directional hint
+        val slideOffset: (Int) -> Int = { fullWidth -> fullWidth / 4 }
 
         val showBottomNav = currentRoute in mainRoutes
 
@@ -294,10 +387,41 @@ fun App(
             modifier = Modifier.fillMaxSize()
         ) {
             // Home Screen (Dashboard)
-            composable(Screen.Home.route) {
-                if (isForceUpdateEnabled) {
-                    Text(text = "Firebase Remote Config\n\nisForceUpdateEnabled: $isForceUpdateEnabled")
-                } else {
+            composable(
+                Screen.Home.route,
+                enterTransition = {
+                    val fromIndex = tabIndex[initialState.destination.route]
+                    val toIndex = tabIndex[targetState.destination.route]
+                    if (fromIndex != null && toIndex != null) {
+                        slideInHorizontally(tween(300)) { w -> if (fromIndex > toIndex) -slideOffset(w) else slideOffset(w) } +
+                            fadeIn(tween(300))
+                    } else fadeIn(tween(300))
+                },
+                exitTransition = {
+                    val fromIndex = tabIndex[initialState.destination.route]
+                    val toIndex = tabIndex[targetState.destination.route]
+                    if (fromIndex != null && toIndex != null) {
+                        slideOutHorizontally(tween(300)) { w -> if (fromIndex < toIndex) -slideOffset(w) else slideOffset(w) } +
+                            fadeOut(tween(300))
+                    } else fadeOut(tween(300))
+                },
+                popEnterTransition = {
+                    val fromIndex = tabIndex[initialState.destination.route]
+                    val toIndex = tabIndex[targetState.destination.route]
+                    if (fromIndex != null && toIndex != null) {
+                        slideInHorizontally(tween(300)) { w -> if (fromIndex > toIndex) -slideOffset(w) else slideOffset(w) } +
+                            fadeIn(tween(300))
+                    } else fadeIn(tween(300))
+                },
+                popExitTransition = {
+                    val fromIndex = tabIndex[initialState.destination.route]
+                    val toIndex = tabIndex[targetState.destination.route]
+                    if (fromIndex != null && toIndex != null) {
+                        slideOutHorizontally(tween(300)) { w -> if (fromIndex < toIndex) -slideOffset(w) else slideOffset(w) } +
+                            fadeOut(tween(300))
+                    } else fadeOut(tween(300))
+                }
+            ) {
                     HomeScreen(
                         viewModel = viewModel,
                         onGoalClick = { goal ->
@@ -319,9 +443,18 @@ fun App(
                                 launchSingleTop = true
                             }
                         },
+                        onNavigateToAddHabit = {
+                            navController.navigate(Screen.AddHabit.route) {
+                                launchSingleTop = true
+                            }
+                        },
                         onNavigateToJournal = {
                             navController.navigate(Screen.Journal.route) {
+                                popUpTo(navController.graph.startDestinationRoute!!) {
+                                    saveState = true
+                                }
                                 launchSingleTop = true
+                                restoreState = true
                             }
                         },
                         onNavigateToGoals = {
@@ -358,6 +491,21 @@ fun App(
                                 launchSingleTop = true
                             }
                         },
+                        onNavigateToReminders = {
+                            navController.navigate(Screen.Reminders.route) {
+                                launchSingleTop = true
+                            }
+                        },
+                        onNavigateToLifeBalance = {
+                            navController.navigate(Screen.LifeBalance.route) {
+                                launchSingleTop = true
+                            }
+                        },
+                        onNavigateToTemplates = {
+                            navController.navigate(Screen.Templates.route) {
+                                launchSingleTop = true
+                            }
+                        },
                         onContinueChat = { coachId ->
                             navController.navigate("ai_chat/$coachId") {
                                 launchSingleTop = true
@@ -367,9 +515,10 @@ fun App(
                             navController.navigate("focus_setup?goalId=$goalId&milestoneId=$milestoneId") {
                                 launchSingleTop = true
                             }
-                        }
+                        },
+                        showUpdateReminder = softUpdateDismissed && updateState is UpdateState.UpdateRequired,
+                        onUpdateClick = { softUpdateDismissed = false } // Re-show update screen
                     )
-                }
             }
 
             // Goals Screen (Goal List)
@@ -387,16 +536,6 @@ fun App(
                             launchSingleTop = true
                         }
                     },
-                    onTemplatesClick = {
-                        navController.navigate(Screen.Templates.route) {
-                            launchSingleTop = true
-                        }
-                    },
-                    onTemplateSelected = { templateId ->
-                        navController.navigate("add_goal_from_template/$templateId") {
-                            launchSingleTop = true
-                        }
-                    },
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -404,12 +543,66 @@ fun App(
             // Habits Screen
             composable(Screen.HabitTracker.route) {
                 HabitTrackerScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToAddHabit = {
+                        navController.navigate(Screen.AddHabit.route) {
+                            launchSingleTop = true
+                        }
+                    },
+                    onNavigateToFocus = {
+                        navController.navigate(Screen.FocusSetup.route) {
+                            launchSingleTop = true
+                        }
+                    }
                 )
             }
 
-            // Journal Screen (via bottom nav)
-            composable(Screen.Journal.route) {
+            composable(Screen.AddHabit.route) {
+                AddHabitScreen(
+                    onHabitSaved = { navController.popBackStack() },
+                    onBackClick = { navController.popBackStack() }
+                )
+            }
+
+            // Journal Screen (via bottom nav or direct navigation)
+            composable(
+                Screen.Journal.route,
+                enterTransition = {
+                    val fromIndex = tabIndex[initialState.destination.route]
+                    val toIndex = tabIndex[targetState.destination.route]
+                    if (fromIndex != null && toIndex != null) {
+                        slideInHorizontally(tween(300)) { w -> if (fromIndex > toIndex) -slideOffset(w) else slideOffset(w) } +
+                            fadeIn(tween(300))
+                    } else fadeIn(tween(300))
+                },
+                exitTransition = {
+                    val fromIndex = tabIndex[initialState.destination.route]
+                    val toIndex = tabIndex[targetState.destination.route]
+                    if (fromIndex != null && toIndex != null) {
+                        slideOutHorizontally(tween(300)) { w -> if (fromIndex < toIndex) -slideOffset(w) else slideOffset(w) } +
+                            fadeOut(tween(300))
+                    } else fadeOut(tween(300))
+                },
+                popEnterTransition = {
+                    val fromIndex = tabIndex[initialState.destination.route]
+                    val toIndex = tabIndex[targetState.destination.route]
+                    if (fromIndex != null && toIndex != null) {
+                        slideInHorizontally(tween(300)) { w -> if (fromIndex > toIndex) -slideOffset(w) else slideOffset(w) } +
+                            fadeIn(tween(300))
+                    } else fadeIn(tween(300))
+                },
+                popExitTransition = {
+                    val fromIndex = tabIndex[initialState.destination.route]
+                    val toIndex = tabIndex[targetState.destination.route]
+                    if (fromIndex != null && toIndex != null) {
+                        slideOutHorizontally(tween(300)) { w -> if (fromIndex < toIndex) -slideOffset(w) else slideOffset(w) } +
+                            fadeOut(tween(300))
+                    } else fadeOut(tween(300))
+                }
+            ) {
+                // Show back button when navigated from within the app (not bottom nav tab switch)
+                val previousRoute = navController.previousBackStackEntry?.destination?.route
+                val isBottomNavEntry = previousRoute == null || previousRoute == Screen.Home.route
                 JournalScreen(
                     onNavigateBack = { navController.popBackStack() },
                     onEntryClick = { entryId ->
@@ -422,7 +615,7 @@ fun App(
                             launchSingleTop = true
                         }
                     },
-                    isFromBottomNav = true
+                    isFromBottomNav = isBottomNavEntry
                 )
             }
 
@@ -459,8 +652,42 @@ fun App(
                 )
             }
 
-            // Profile Screen (NEW)
-            composable(Screen.Profile.route) {
+            // Profile Screen
+            composable(
+                Screen.Profile.route,
+                enterTransition = {
+                    val fromIndex = tabIndex[initialState.destination.route]
+                    val toIndex = tabIndex[targetState.destination.route]
+                    if (fromIndex != null && toIndex != null) {
+                        slideInHorizontally(tween(300)) { w -> if (fromIndex > toIndex) -slideOffset(w) else slideOffset(w) } +
+                            fadeIn(tween(300))
+                    } else fadeIn(tween(300))
+                },
+                exitTransition = {
+                    val fromIndex = tabIndex[initialState.destination.route]
+                    val toIndex = tabIndex[targetState.destination.route]
+                    if (fromIndex != null && toIndex != null) {
+                        slideOutHorizontally(tween(300)) { w -> if (fromIndex < toIndex) -slideOffset(w) else slideOffset(w) } +
+                            fadeOut(tween(300))
+                    } else fadeOut(tween(300))
+                },
+                popEnterTransition = {
+                    val fromIndex = tabIndex[initialState.destination.route]
+                    val toIndex = tabIndex[targetState.destination.route]
+                    if (fromIndex != null && toIndex != null) {
+                        slideInHorizontally(tween(300)) { w -> if (fromIndex > toIndex) -slideOffset(w) else slideOffset(w) } +
+                            fadeIn(tween(300))
+                    } else fadeIn(tween(300))
+                },
+                popExitTransition = {
+                    val fromIndex = tabIndex[initialState.destination.route]
+                    val toIndex = tabIndex[targetState.destination.route]
+                    if (fromIndex != null && toIndex != null) {
+                        slideOutHorizontally(tween(300)) { w -> if (fromIndex < toIndex) -slideOffset(w) else slideOffset(w) } +
+                            fadeOut(tween(300))
+                    } else fadeOut(tween(300))
+                }
+            ) {
                 ProfileScreen(
                     onNavigateToAchievements = {
                         navController.navigate(Screen.Achievements.route) {
@@ -506,6 +733,7 @@ fun App(
                 arguments = listOf(navArgument("goalId") { type = NavType.StringType })
             ) { backStackEntry ->
                 val goalId = backStackEntry.arguments?.read { getStringOrNull("goalId") } ?: return@composable
+                LaunchedEffect(goalId) { FacebookAnalytics.logViewContent(goalId, "goal") }
                 GoalDetailScreen(
                     goalId = goalId,
                     viewModel = viewModel,
@@ -547,8 +775,24 @@ fun App(
             composable(Screen.Welcome.route) {
                 WelcomeScreen(
                     onComplete = {
-                        navController.navigate(Screen.Home.route) {
+                        navController.navigate(Screen.OnboardingReminders.route) {
                             popUpTo(Screen.Welcome.route) { inclusive = true }
+                        }
+                    }
+                )
+            }
+
+            // Onboarding Reminder Setup (shown once after welcome)
+            composable(Screen.OnboardingReminders.route) {
+                OnboardingReminderScreen(
+                    onComplete = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.OnboardingReminders.route) { inclusive = true }
+                        }
+                    },
+                    onSkip = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.OnboardingReminders.route) { inclusive = true }
                         }
                     }
                 )
@@ -558,6 +802,7 @@ fun App(
             composable(Screen.Onboarding.route) {
                 OnboardingScreen(
                     onOnboardingComplete = {
+                        FacebookAnalytics.logCompleteTutorial()
                         navController.navigate(Screen.Home.route) {
                             popUpTo(Screen.Onboarding.route) { inclusive = true }
                         }

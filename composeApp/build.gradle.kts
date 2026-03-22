@@ -76,6 +76,13 @@ kotlin {
             implementation(libs.androidx.glance.appwidget)
             implementation(libs.androidx.glance.material3)
 
+            // Facebook SDK (marketing & ads)
+            implementation(libs.facebook.android.sdk)
+
+            // PostHog (product analytics)
+            implementation(libs.posthog.android)
+            implementation(libs.play.app.update)
+            implementation(libs.play.app.update.ktx)
         }
         commonMain.dependencies {
             implementation(compose.runtime)
@@ -152,7 +159,7 @@ sqldelight {
         create("LifePlannerDB") {
             packageName.set("az.tribe.lifeplanner.database")
             schemaOutputDirectory = file("src/commonMain/sqldelight/databases")
-            version = 11 // v2.0: Add is_deleted indexes for sync
+            version = 14 // v2.1: Add CoachPersonaOverride, sync indexes, BeginnerObjectives
             generateAsync.set(true)
         }
     }
@@ -179,6 +186,7 @@ android {
             }
         }
     }
+
     namespace = "az.tribe.lifeplanner"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
@@ -189,8 +197,8 @@ android {
         applicationId = "az.tribe.lifeplanner"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 7
-        versionName = "2.1"
+        versionCode = 8
+        versionName = "2.2"
 
     }
     packaging {
@@ -253,6 +261,21 @@ buildkonfig {
             FieldSpec.Type.STRING,
             "SUPABASE_ANON_KEY",
             localProperties["SUPABASE_ANON_KEY"]?.toString() ?: "",
+        )
+        buildConfigField(
+            FieldSpec.Type.STRING,
+            "POSTHOG_API_KEY",
+            localProperties["POSTHOG_API_KEY"]?.toString() ?: "",
+        )
+        buildConfigField(
+            FieldSpec.Type.STRING,
+            "POSTHOG_HOST",
+            localProperties["POSTHOG_HOST"]?.toString() ?: "https://us.i.posthog.com",
+        )
+        buildConfigField(
+            FieldSpec.Type.STRING,
+            "APP_VERSION",
+            "2.2",
         )
     }
 

@@ -36,12 +36,30 @@
 	<array>
 		<string>az.tribe.lifeplanner.dailyBackup</string>
 	</array>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>This helps us deliver personalized content and improve your experience.</string>
+	<key>FacebookAppID</key>
+	<string>4516330652024411</string>
+	<key>FacebookClientToken</key>
+	<string>2ffddcf7a4d75907179ec27fa229dbcc</string>
+	<key>FacebookAutoInitEnabled</key>
+	<true/>
+	<key>FacebookAutoLogAppEventsEnabled</key>
+	<true/>
+	<key>FacebookAdvertiserIDCollectionEnabled</key>
+	<true/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>lifeplanner</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>fb4516330652024411</string>
 			</array>
 		</dict>
 	</array>

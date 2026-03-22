@@ -59,40 +59,16 @@ private fun Color.warmShift(amount: Float): Color {
 }
 
 // ============================================
-// DEFAULT — Mood-based animated gradient
+// DEFAULT — Plain background color, no effects
 // ============================================
 
 @Composable
 private fun DefaultGradientBackground(mood: Mood?, modifier: Modifier) {
-    val transition = rememberInfiniteTransition(label = "defaultBg")
-    val shift by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(8000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "gradientShift"
-    )
     val moodShift = moodColorShift(mood)
 
     Canvas(modifier = modifier.fillMaxSize()) {
-        val topColor = Color(0xFF1A1A2E).warmShift(moodShift)
-        val midColor = Color(0xFF16213E).warmShift(moodShift * 0.5f)
-        val bottomColor = Color(0xFF0F3460).warmShift(moodShift * 0.3f)
-
-        val adjustedMid = Color(
-            red = midColor.red + shift * 0.05f,
-            green = midColor.green,
-            blue = midColor.blue + (1f - shift) * 0.05f,
-            alpha = 1f
-        )
-
-        drawRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(topColor, adjustedMid, bottomColor)
-            )
-        )
+        val bgColor = Color(0xFF1A1A2E).warmShift(moodShift)
+        drawRect(color = bgColor)
     }
 }
 

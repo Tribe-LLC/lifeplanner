@@ -69,6 +69,7 @@ fun SwipeableHabitCard(
     onCheckIn: () -> Unit,
     onDelete: () -> Unit,
     onEdit: () -> Unit = {},
+    onFocusClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -169,7 +170,11 @@ fun SwipeableHabitCard(
                     }
                 )
         ) {
-            HabitCard(habitWithStatus = habitWithStatus)
+            HabitCard(
+                habitWithStatus = habitWithStatus,
+                onCheckIn = onCheckIn,
+                onFocusClick = onFocusClick
+            )
         }
     }
 
@@ -320,30 +325,24 @@ private fun HabitSwipeBackgroundNew(
 @Composable
 fun HabitCard(
     habitWithStatus: HabitWithStatus,
+    onCheckIn: (() -> Unit)? = null,
+    onFocusClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val habit = habitWithStatus.habit
     val isCompletedToday = habitWithStatus.isCompletedToday
-    val categoryColor = habit.category.backgroundColor()
-
-    val backgroundColor by animateColorAsState(
-        targetValue = if (isCompletedToday)
-            MaterialTheme.colorScheme.surface
-        else
-            MaterialTheme.colorScheme.surface,
-        animationSpec = tween(300),
-        label = "backgroundColor"
-    )
 
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(LifePlannerDesign.CornerRadius.medium),
-        colors = CardDefaults.cardColors(containerColor = backgroundColor),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
         elevation = CardDefaults.cardElevation(
             defaultElevation = if (isCompletedToday) LifePlannerDesign.Elevation.none else LifePlannerDesign.Elevation.low
         )
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(
@@ -358,24 +357,22 @@ fun HabitCard(
                         )
                     } else Modifier
                 )
-                .padding(LifePlannerDesign.Padding.standard),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(LifePlannerDesign.Padding.standard)
         ) {
-            // Category icon (replaces checkbox)
-            CategoryIconBadge(
-                category = habit.category,
-                isCompleted = isCompletedToday
-            )
-
-            // Habit info
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+            // Top row: icon + title + check circle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                CategoryIconBadge(
+                    category = habit.category,
+                    isCompleted = isCompletedToday
+                )
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Text(
                         text = habit.title,
@@ -388,58 +385,75 @@ fun HabitCard(
                         else
                             MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
+                        overflow = TextOverflow.Ellipsis
                     )
+
+                    if (habit.description.isNotBlank() && !isCompletedToday) {
+                        Text(
+                            text = habit.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                // Focus timer shortcut
+                if (onFocusClick != null) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
+                            .clickable(onClick = onFocusClick)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Timer,
+                            contentDescription = "Focus",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                CheckInCircle(
+                    isCompleted = isCompletedToday,
+                    onClick = onCheckIn
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Bottom row: weekly dots + stats
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Weekly completion dots
+                if (habitWithStatus.weeklyCompletions.isNotEmpty()) {
+                    WeeklyDots(
+                        completions = habitWithStatus.weeklyCompletions,
+                        categoryColor = habit.category.backgroundColor()
+                    )
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // Stats: streak + completions
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (habit.currentStreak > 0) {
+                        StreakBadge(streak = habit.currentStreak)
+                    }
 
                     FrequencyChip(frequency = habit.frequency)
                 }
-
-                if (habit.description.isNotBlank() && !isCompletedToday) {
-                    Text(
-                        text = habit.description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                // Stats row
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Current streak
-                    if (habit.currentStreak > 0) {
-                        StreakBadge(
-                            streak = habit.currentStreak,
-                            isActive = true
-                        )
-                    }
-
-                    // Total completions
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.CheckCircle,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text(
-                            text = "${habit.totalCompletions}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        )
-                    }
-                }
             }
-
-            // Status tag at the end
-            CompletionStatusTag(isCompleted = isCompletedToday)
         }
     }
 }
@@ -486,46 +500,138 @@ private fun CategoryIconBadge(
 }
 
 /**
- * Small status tag shown at the trailing end of the card.
+ * Tappable circle for check-in — empty ring when pending, filled green check when done.
  */
 @Composable
-private fun CompletionStatusTag(isCompleted: Boolean) {
-    val bgColor by animateColorAsState(
-        targetValue = if (isCompleted)
-            Color(0xFF4CAF50).copy(alpha = 0.12f)
-        else
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-        animationSpec = tween(300),
-        label = "tagBg"
+private fun CheckInCircle(
+    isCompleted: Boolean,
+    onClick: (() -> Unit)? = null
+) {
+    val checkScale by animateFloatAsState(
+        targetValue = if (isCompleted) 1f else 0f,
+        animationSpec = if (isCompleted) keyframes {
+            durationMillis = 300
+            0f at 0
+            1.2f at 150
+            1f at 300
+        } else tween(150),
+        label = "checkScale"
     )
 
-    val textColor by animateColorAsState(
-        targetValue = if (isCompleted)
-            Color(0xFF4CAF50)
-        else
-            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-        animationSpec = tween(300),
-        label = "tagText"
+    val borderColor by animateColorAsState(
+        targetValue = if (isCompleted) Color(0xFF4CAF50) else MaterialTheme.colorScheme.outlineVariant,
+        animationSpec = tween(200),
+        label = "borderColor"
     )
 
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = bgColor
+    val fillColor by animateColorAsState(
+        targetValue = if (isCompleted) Color(0xFF4CAF50) else Color.Transparent,
+        animationSpec = tween(200),
+        label = "fillColor"
+    )
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .then(
+                if (onClick != null) Modifier.clickable(onClick = onClick)
+                else Modifier
+            )
     ) {
-        Text(
-            text = if (isCompleted) "Done" else "To do",
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = if (isCompleted) FontWeight.SemiBold else FontWeight.Normal,
-            color = textColor,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-        )
+        // Circle: empty ring when not done, filled green when done
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(fillColor)
+                .then(
+                    if (!isCompleted) Modifier.background(
+                        color = Color.Transparent,
+                        shape = CircleShape
+                    ) else Modifier
+                )
+        ) {
+            // Border ring for uncompleted state
+            if (!isCompleted) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(borderColor, CircleShape)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .padding(2.dp)
+                            .fillMaxSize()
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surface)
+                    )
+                }
+            }
+
+            // Checkmark icon — only visible when completed
+            if (isCompleted) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = "Completed",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .size(16.dp)
+                        .scale(checkScale)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Mini weekly completion dots — 7 dots for Mon through Sun.
+ * Completed days are filled with the category color, future/incomplete days are hollow.
+ */
+@Composable
+private fun WeeklyDots(
+    completions: List<Boolean>,
+    categoryColor: Color
+) {
+    val dayLabels = listOf("M", "T", "W", "T", "F", "S", "S")
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        completions.forEachIndexed { index, completed ->
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (completed) categoryColor
+                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        )
+                )
+                if (index < dayLabels.size) {
+                    Text(
+                        text = dayLabels[index],
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        fontSize = MaterialTheme.typography.labelSmall.fontSize * 0.75f
+                    )
+                }
+            }
+        }
     }
 }
 
 @Composable
 private fun StreakBadge(
-    streak: Int,
-    isActive: Boolean
+    streak: Int
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -534,15 +640,15 @@ private fun StreakBadge(
         Icon(
             imageVector = Icons.Rounded.LocalFireDepartment,
             contentDescription = null,
-            tint = if (isActive) Color(0xFFFF6B35) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-            modifier = Modifier.size(16.dp)
+            tint = Color(0xFFFF6B35),
+            modifier = Modifier.size(14.dp)
         )
         Text(
-            text = "$streak day${if (streak != 1) "s" else ""}",
+            text = "${streak}d",
             style = MaterialTheme.typography.labelSmall.copy(
-                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
+                fontWeight = FontWeight.SemiBold
             ),
-            color = if (isActive) Color(0xFFFF6B35) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            color = Color(0xFFFF6B35)
         )
     }
 }
@@ -563,15 +669,6 @@ private fun FrequencyChip(frequency: HabitFrequency) {
     }
 }
 
-@Composable
-private fun CategoryIndicator(category: GoalCategory) {
-    Box(
-        modifier = Modifier
-            .size(8.dp)
-            .clip(CircleShape)
-            .background(category.backgroundColor())
-    )
-}
 
 fun GoalCategory.getIcon(): ImageVector {
     return when (this) {

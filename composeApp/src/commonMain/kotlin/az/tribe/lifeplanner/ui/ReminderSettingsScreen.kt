@@ -28,8 +28,15 @@ import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.Alarm
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CalendarToday
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.FitnessCenter
+import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.SelfImprovement
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.ViewWeek
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -70,6 +77,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.domain.model.DayOfWeek
 import az.tribe.lifeplanner.domain.model.Reminder
@@ -79,8 +87,45 @@ import az.tribe.lifeplanner.domain.model.ReminderType
 import az.tribe.lifeplanner.ui.reminder.ReminderViewModel
 import az.tribe.lifeplanner.ui.theme.modernColors
 import com.mmk.kmpnotifier.notification.NotifierManager
+import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import org.koin.compose.viewmodel.koinViewModel
+
+// ── Grouped Reminder Section ────────────────────────────────────────
+private data class ReminderSection(
+    val title: String,
+    val icon: ImageVector,
+    val color: Color,
+    val reminders: List<Reminder>
+)
+
+private fun groupReminders(reminders: List<Reminder>): List<ReminderSection> {
+    val goalReminders = reminders.filter {
+        it.type == ReminderType.GOAL_DUE || it.type == ReminderType.GOAL_CHECK_IN || it.type == ReminderType.MILESTONE_DUE
+    }
+    val habitReminders = reminders.filter { it.type == ReminderType.HABIT_REMINDER }
+    val wellnessReminders = reminders.filter {
+        it.type == ReminderType.DAILY_REFLECTION || it.type == ReminderType.WEEKLY_REVIEW || it.type == ReminderType.MOTIVATION
+    }
+    val customReminders = reminders.filter { it.type == ReminderType.CUSTOM }
+
+    return listOfNotNull(
+        if (goalReminders.isNotEmpty()) ReminderSection(
+            "Goals & Milestones", Icons.Rounded.Flag, Color(0xFF4A6FFF), goalReminders
+        ) else null,
+        if (habitReminders.isNotEmpty()) ReminderSection(
+            "Habits", Icons.Rounded.FitnessCenter, Color(0xFF28C76F), habitReminders
+        ) else null,
+        if (wellnessReminders.isNotEmpty()) ReminderSection(
+            "Daily Wellness", Icons.Rounded.SelfImprovement, Color(0xFF7A5AF8), wellnessReminders
+        ) else null,
+        if (customReminders.isNotEmpty()) ReminderSection(
+            "Custom", Icons.Default.Notifications, Color(0xFF9E9FA3), customReminders
+        ) else null
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,10 +135,19 @@ fun ReminderSettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // Request notification permission on screen open
+    // Mark SET_REMINDER objective as completed on visit
+    val objectiveViewModel: az.tribe.lifeplanner.ui.objectives.BeginnerObjectiveViewModel = koinViewModel()
+    LaunchedEffect(Unit) {
+        objectiveViewModel.markObjectiveCompleted(az.tribe.lifeplanner.domain.model.ObjectiveType.SET_REMINDER)
+    }
+
     LaunchedEffect(Unit) {
         NotifierManager.getPermissionUtil().askNotificationPermission()
     }
+
+    val sections = remember(uiState.reminders) { groupReminders(uiState.reminders) }
+    val activeCount = uiState.reminders.count { it.isEnabled }
+    val autoCount = uiState.reminders.count { it.id.startsWith("auto-") }
 
     Scaffold(
         containerColor = MaterialTheme.modernColors.background,
@@ -112,7 +166,7 @@ fun ReminderSettingsScreen(
                             )
                         )
                         Text(
-                            "${uiState.reminders.count { it.isEnabled }} active reminders",
+                            "$activeCount active \u2022 $autoCount auto-managed",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.modernColors.textSecondary
                         )
@@ -153,7 +207,7 @@ fun ReminderSettingsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(vertical = 8.dp)
         ) {
             // Global Toggle
@@ -164,90 +218,49 @@ fun ReminderSettingsScreen(
                 )
             }
 
-            // Test Notification Button
-            item {
-                OutlinedCard(
-                    onClick = {
-                        NotifierManager.getLocalNotifier().notify {
-                            id = 999
-                            title = "Life Planner"
-                            body = "Notifications are working!"
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Notifications,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "Send Test Notification",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                "Tap to verify notifications work on this device",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Smart Timing Info Card
-            if (uiState.settings.smartTimingEnabled) {
+            // Summary Card
+            if (uiState.reminders.isNotEmpty()) {
                 item {
-                    SmartTimingCard()
+                    Spacer(Modifier.height(4.dp))
+                    SummaryCard(reminders = uiState.reminders)
                 }
             }
 
-            // Reminders Section Header
+            // Test Notification
             item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Your Reminders",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.modernColors.textPrimary
-                    )
-                    Text(
-                        "${uiState.reminders.size} total",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.modernColors.textSecondary
-                    )
-                }
+                TestNotificationCard()
             }
 
-            // Reminders List
+            // Smart Timing
+            if (uiState.settings.smartTimingEnabled) {
+                item { SmartTimingCard() }
+            }
+
+            // Grouped Sections
             if (uiState.reminders.isEmpty()) {
                 item {
+                    Spacer(Modifier.height(8.dp))
                     EmptyRemindersCard(onAddClick = { viewModel.showAddDialog() })
                 }
             } else {
-                items(uiState.reminders, key = { it.id }) { reminder ->
-                    ReminderCard(
-                        reminder = reminder,
-                        onToggle = { viewModel.toggleReminder(reminder) },
-                        onClick = { viewModel.selectReminder(reminder) },
-                        onDelete = { viewModel.deleteReminder(reminder.id) }
-                    )
+                sections.forEach { section ->
+                    item {
+                        Spacer(Modifier.height(8.dp))
+                        SectionHeader(
+                            title = section.title,
+                            icon = section.icon,
+                            color = section.color,
+                            count = section.reminders.size
+                        )
+                    }
+                    items(section.reminders, key = { it.id }) { reminder ->
+                        ReminderCard(
+                            reminder = reminder,
+                            onToggle = { viewModel.toggleReminder(reminder) },
+                            onClick = { viewModel.selectReminder(reminder) },
+                            onDelete = { viewModel.deleteReminder(reminder.id) }
+                        )
+                    }
                 }
             }
 
@@ -257,7 +270,7 @@ fun ReminderSettingsScreen(
 
     // Add Reminder Dialog
     if (uiState.showAddDialog) {
-        AddReminderDialog(
+        AddReminderSheet(
             onDismiss = { viewModel.hideAddDialog() },
             onConfirm = { title, message, type, frequency, time, days, smartTiming ->
                 viewModel.createReminder(
@@ -273,9 +286,9 @@ fun ReminderSettingsScreen(
         )
     }
 
-    // Edit Reminder Dialog
+    // Edit Reminder Sheet
     if (uiState.showEditDialog && uiState.selectedReminder != null) {
-        EditReminderDialog(
+        EditReminderSheet(
             reminder = uiState.selectedReminder!!,
             onDismiss = { viewModel.hideEditDialog() },
             onSave = { updated -> viewModel.updateReminder(updated) },
@@ -298,6 +311,110 @@ fun ReminderSettingsScreen(
         )
     }
 }
+
+// ── Summary Card ────────────────────────────────────────────────────
+
+@Composable
+private fun SummaryCard(reminders: List<Reminder>) {
+    val goalCount = reminders.count {
+        it.type == ReminderType.GOAL_DUE || it.type == ReminderType.MILESTONE_DUE || it.type == ReminderType.GOAL_CHECK_IN
+    }
+    val habitCount = reminders.count { it.type == ReminderType.HABIT_REMINDER }
+    val wellnessCount = reminders.count {
+        it.type == ReminderType.DAILY_REFLECTION || it.type == ReminderType.WEEKLY_REVIEW || it.type == ReminderType.MOTIVATION
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            SummaryChip(
+                count = goalCount,
+                label = "Goals",
+                color = Color(0xFF4A6FFF)
+            )
+            SummaryChip(
+                count = habitCount,
+                label = "Habits",
+                color = Color(0xFF28C76F)
+            )
+            SummaryChip(
+                count = wellnessCount,
+                label = "Wellness",
+                color = Color(0xFF7A5AF8)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SummaryChip(count: Int, label: String, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(color.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "$count",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = color
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.modernColors.textSecondary
+        )
+    }
+}
+
+// ── Section Header ──────────────────────────────────────────────────
+
+@Composable
+private fun SectionHeader(title: String, icon: ImageVector, color: Color, count: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(18.dp)
+        )
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.modernColors.textPrimary,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = "$count",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.modernColors.textSecondary
+        )
+    }
+}
+
+// ── Global Toggle ───────────────────────────────────────────────────
 
 @Composable
 private fun GlobalReminderToggle(
@@ -356,16 +473,58 @@ private fun GlobalReminderToggle(
             Switch(
                 checked = isEnabled,
                 onCheckedChange = { enabled ->
-                    if (enabled) {
-                        // Request notification permission when user enables reminders
-                        NotifierManager.getPermissionUtil().askNotificationPermission()
-                    }
+                    if (enabled) NotifierManager.getPermissionUtil().askNotificationPermission()
                     onToggle(enabled)
                 }
             )
         }
     }
 }
+
+// ── Test Notification ───────────────────────────────────────────────
+
+@Composable
+private fun TestNotificationCard() {
+    OutlinedCard(
+        onClick = {
+            NotifierManager.getLocalNotifier().notify {
+                id = 999
+                title = "Life Planner"
+                body = "Notifications are working!"
+            }
+        },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Notifications,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Send Test Notification",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    "Tap to verify notifications work on this device",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+// ── Smart Timing Card ───────────────────────────────────────────────
 
 @Composable
 private fun SmartTimingCard() {
@@ -406,6 +565,8 @@ private fun SmartTimingCard() {
     }
 }
 
+// ── Empty State ─────────────────────────────────────────────────────
+
 @Composable
 private fun EmptyRemindersCard(onAddClick: () -> Unit) {
     Card(
@@ -435,14 +596,18 @@ private fun EmptyRemindersCard(onAddClick: () -> Unit) {
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.modernColors.textPrimary
             )
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
-                "Tap to create your first reminder",
+                "Create a goal or habit and we'll set up\nsmart reminders automatically",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.modernColors.textSecondary
+                color = MaterialTheme.modernColors.textSecondary,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
         }
     }
 }
+
+// ── Reminder Card ───────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -537,9 +702,7 @@ private fun ReminderCard(
                         showDeleteDialog = false
                         onDelete()
                     },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    )
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) { Text("Delete") }
             },
             dismissButton = {
@@ -556,6 +719,7 @@ private fun ReminderCardContent(
     onClick: () -> Unit
 ) {
     val typeColor = getReminderTypeColor(reminder.type)
+    val isAuto = reminder.id.startsWith("auto-")
 
     Card(
         modifier = Modifier
@@ -569,7 +733,7 @@ private fun ReminderCardContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Type indicator
@@ -592,41 +756,89 @@ private fun ReminderCardContent(
 
             // Content
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = reminder.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (reminder.isEnabled)
-                        MaterialTheme.modernColors.textPrimary
-                    else
-                        MaterialTheme.modernColors.textSecondary
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = reminder.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (reminder.isEnabled)
+                            MaterialTheme.modernColors.textPrimary
+                        else
+                            MaterialTheme.modernColors.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (isAuto) {
+                        Spacer(Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "AUTO",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.tertiary,
+                                letterSpacing = androidx.compose.ui.unit.TextUnit.Unspecified
+                            )
+                        }
+                    }
+                    if (reminder.isSmartTiming) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Rounded.AutoAwesome,
+                            contentDescription = "Smart timing",
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.tertiary
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(2.dp))
+
+                // Message preview
+                if (reminder.message.isNotBlank()) {
+                    Text(
+                        text = reminder.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.modernColors.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Spacer(Modifier.height(4.dp))
+
+                // Time & frequency row
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    Icon(
+                        Icons.Rounded.AccessTime,
+                        contentDescription = null,
+                        modifier = Modifier.size(12.dp),
+                        tint = MaterialTheme.modernColors.textSecondary
+                    )
                     Text(
                         text = formatTime12h(reminder.scheduledTime),
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
                         color = MaterialTheme.modernColors.textSecondary
                     )
                     Text(
                         text = "\u2022",
-                        color = MaterialTheme.modernColors.textSecondary
+                        color = MaterialTheme.modernColors.textSecondary,
+                        style = MaterialTheme.typography.labelSmall
                     )
                     Text(
-                        text = reminder.frequency.name.lowercase().replaceFirstChar { it.uppercase() },
-                        style = MaterialTheme.typography.bodySmall,
+                        text = formatFrequency(reminder),
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.modernColors.textSecondary
                     )
-                    if (reminder.isSmartTiming) {
-                        Icon(
-                            imageVector = Icons.Rounded.AutoAwesome,
-                            contentDescription = "Smart timing",
-                            modifier = Modifier.size(12.dp),
-                            tint = MaterialTheme.colorScheme.tertiary
-                        )
-                    }
                 }
             }
 
@@ -634,9 +846,24 @@ private fun ReminderCardContent(
             Switch(
                 checked = reminder.isEnabled,
                 onCheckedChange = { onToggle() },
-                modifier = Modifier.padding(start = 8.dp)
+                modifier = Modifier.padding(start = 4.dp)
             )
         }
+    }
+}
+
+private fun formatFrequency(reminder: Reminder): String {
+    return when (reminder.frequency) {
+        ReminderFrequency.ONCE -> "Once"
+        ReminderFrequency.DAILY -> "Every day"
+        ReminderFrequency.WEEKDAYS -> "Weekdays"
+        ReminderFrequency.WEEKENDS -> "Weekends"
+        ReminderFrequency.WEEKLY -> {
+            val days = reminder.scheduledDays.joinToString(", ") { it.name.take(3).lowercase().replaceFirstChar { c -> c.uppercase() } }
+            if (days.isNotBlank()) days else "Weekly"
+        }
+        ReminderFrequency.MONTHLY -> "Monthly"
+        ReminderFrequency.SMART -> "Smart"
     }
 }
 
@@ -652,27 +879,24 @@ private fun formatTime12h(time: LocalTime): String {
     return "${h12.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} $amPm"
 }
 
+// ── Add Reminder Sheet ──────────────────────────────────────────────
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddReminderDialog(
+private fun AddReminderSheet(
     onDismiss: () -> Unit,
     onConfirm: (String, String, ReminderType, ReminderFrequency, LocalTime, List<DayOfWeek>, Boolean) -> Unit
 ) {
     val focusManager = LocalFocusManager.current
     var title by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
-    var selectedType by remember { mutableStateOf(ReminderType.GOAL_CHECK_IN) }
+    var selectedType by remember { mutableStateOf(ReminderType.CUSTOM) }
     var selectedFrequency by remember { mutableStateOf(ReminderFrequency.DAILY) }
     var selectedDays by remember { mutableStateOf<List<DayOfWeek>>(emptyList()) }
     var smartTiming by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
-    val timePickerState = rememberTimePickerState(
-        initialHour = 9,
-        initialMinute = 0,
-        is24Hour = false
-    )
+    val timePickerState = rememberTimePickerState(initialHour = 9, initialMinute = 0, is24Hour = false)
 
-    // Time picker bottom sheet / dialog
     if (showTimePicker) {
         TimePickerDialog(
             state = timePickerState,
@@ -681,191 +905,225 @@ private fun AddReminderDialog(
         )
     }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Add Reminder") },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp)
+                .navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                "New Reminder",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+
+            // Type selector
+            Text(
+                "Type",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Title") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+                val types = listOf(
+                    ReminderType.CUSTOM to "Custom",
+                    ReminderType.GOAL_CHECK_IN to "Goal",
+                    ReminderType.DAILY_REFLECTION to "Reflection",
+                    ReminderType.MOTIVATION to "Motivation"
                 )
-
-                OutlinedTextField(
-                    value = message,
-                    onValueChange = { message = it },
-                    label = { Text("Message") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
-                )
-
-                // Time picker button
-                val displayHour = timePickerState.hour
-                val displayMinute = timePickerState.minute
-                val amPm = if (displayHour < 12) "AM" else "PM"
-                val displayHour12 = when {
-                    displayHour == 0 -> 12
-                    displayHour > 12 -> displayHour - 12
-                    else -> displayHour
-                }
-                val timeText = "${displayHour12.toString().padStart(2, '0')}:${displayMinute.toString().padStart(2, '0')} $amPm"
-
-                OutlinedCard(
-                    onClick = { showTimePicker = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                "Time",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                timeText,
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        Icon(
-                            imageVector = Icons.Rounded.AccessTime,
-                            contentDescription = "Pick time",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-
-                // Frequency selector
-                Text(
-                    "Repeat",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    val frequencies = listOf(
-                        ReminderFrequency.ONCE to "Once",
-                        ReminderFrequency.DAILY to "Daily",
-                        ReminderFrequency.WEEKDAYS to "Weekdays",
-                        ReminderFrequency.WEEKLY to "Weekly"
+                types.forEach { (type, label) ->
+                    FilterChip(
+                        selected = selectedType == type,
+                        onClick = { selectedType = type },
+                        label = { Text(label, style = MaterialTheme.typography.labelSmall) }
                     )
-                    frequencies.forEachIndexed { index, (freq, label) ->
-                        SegmentedButton(
-                            selected = selectedFrequency == freq,
-                            onClick = { selectedFrequency = freq },
-                            shape = SegmentedButtonDefaults.itemShape(
-                                index = index,
-                                count = frequencies.size
-                            )
-                        ) {
-                            Text(label, style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
                 }
+            }
 
-                // Day selector for weekly frequency
-                AnimatedVisibility(visible = selectedFrequency == ReminderFrequency.WEEKLY) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            "Days",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            DayOfWeek.entries.forEach { day ->
-                                val isSelected = day in selectedDays
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = {
-                                        selectedDays = if (isSelected) {
-                                            selectedDays - day
-                                        } else {
-                                            selectedDays + day
-                                        }
-                                    },
-                                    label = {
-                                        Text(
-                                            day.name.take(2),
-                                            style = MaterialTheme.typography.labelSmall
-                                        )
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
-                    }
-                }
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                label = { Text("Title") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+            )
 
-                // Smart timing toggle
+            OutlinedTextField(
+                value = message,
+                onValueChange = { message = it },
+                label = { Text("Message (optional)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+            )
+
+            // Time picker
+            val displayHour = timePickerState.hour
+            val displayMinute = timePickerState.minute
+            val timeText = formatTime12h(LocalTime(displayHour, displayMinute))
+
+            OutlinedCard(
+                onClick = { showTimePicker = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("Smart Timing", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "Auto-optimize based on activity",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text("Time", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(timeText, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                     }
-                    Switch(
-                        checked = smartTiming,
-                        onCheckedChange = { smartTiming = it }
-                    )
+                    Icon(Icons.Rounded.AccessTime, contentDescription = "Pick time", tint = MaterialTheme.colorScheme.primary)
                 }
             }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    if (title.isNotBlank()) {
-                        onConfirm(
-                            title,
-                            message,
-                            selectedType,
-                            selectedFrequency,
-                            LocalTime(timePickerState.hour, timePickerState.minute),
-                            selectedDays,
-                            smartTiming
-                        )
-                    }
-                },
-                enabled = title.isNotBlank()
-            ) {
-                Text("Add")
+
+            // Frequency
+            Text("Repeat", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                val frequencies = listOf(
+                    ReminderFrequency.ONCE to "Once",
+                    ReminderFrequency.DAILY to "Daily",
+                    ReminderFrequency.WEEKDAYS to "Weekdays",
+                    ReminderFrequency.WEEKLY to "Weekly"
+                )
+                frequencies.forEachIndexed { index, (freq, label) ->
+                    SegmentedButton(
+                        selected = selectedFrequency == freq,
+                        onClick = { selectedFrequency = freq },
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = frequencies.size)
+                    ) { Text(label, style = MaterialTheme.typography.labelSmall) }
+                }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
+
+            // Day selector
+            AnimatedVisibility(visible = selectedFrequency == ReminderFrequency.WEEKLY) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Days", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        DayOfWeek.entries.forEach { day ->
+                            FilterChip(
+                                selected = day in selectedDays,
+                                onClick = { selectedDays = if (day in selectedDays) selectedDays - day else selectedDays + day },
+                                label = { Text(day.name.take(2), style = MaterialTheme.typography.labelSmall) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Smart timing
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Smart Timing", style = MaterialTheme.typography.bodyMedium)
+                    Text("Auto-optimize based on activity", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = smartTiming, onCheckedChange = { smartTiming = it })
+            }
+
+            // Preview card
+            if (title.isNotBlank()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.CheckCircle,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Column {
+                            Text(
+                                "Preview: \"$title\" at $timeText",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                formatFrequency(
+                                    Reminder(
+                                        id = "", title = "", message = "",
+                                        type = selectedType, frequency = selectedFrequency,
+                                        scheduledTime = LocalTime(0, 0), scheduledDays = selectedDays,
+                                        createdAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+                                    )
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Action buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedCard(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 14.dp), contentAlignment = Alignment.Center) {
+                        Text("Cancel", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+                Button(
+                    onClick = {
+                        if (title.isNotBlank()) {
+                            onConfirm(
+                                title, message, selectedType, selectedFrequency,
+                                LocalTime(timePickerState.hour, timePickerState.minute),
+                                selectedDays, smartTiming
+                            )
+                        }
+                    },
+                    enabled = title.isNotBlank(),
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(vertical = 14.dp)
+                ) {
+                    Text("Create Reminder", style = MaterialTheme.typography.titleSmall)
+                }
             }
         }
-    )
+    }
 }
+
+// ── Edit Reminder Sheet ─────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EditReminderDialog(
+private fun EditReminderSheet(
     reminder: Reminder,
     onDismiss: () -> Unit,
     onSave: (Reminder) -> Unit,
@@ -884,6 +1142,7 @@ private fun EditReminderDialog(
         initialMinute = reminder.scheduledTime.minute,
         is24Hour = false
     )
+    val isAuto = reminder.id.startsWith("auto-")
 
     if (showTimePicker) {
         TimePickerDialog(
@@ -900,213 +1159,193 @@ private fun EditReminderDialog(
             text = { Text("Are you sure you want to delete \"${reminder.title}\"?") },
             confirmButton = {
                 TextButton(
-                    onClick = {
-                        showDeleteConfirm = false
-                        onDelete()
-                    },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    )
+                    onClick = { showDeleteConfirm = false; onDelete() },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) { Text("Delete") }
             },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
-            }
+            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") } }
         )
     }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Edit Reminder") },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp)
+                .navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Title") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
-                )
-
-                OutlinedTextField(
-                    value = message,
-                    onValueChange = { message = it },
-                    label = { Text("Message") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
-                )
-
-                // Time picker button
-                val displayHour = timePickerState.hour
-                val displayMinute = timePickerState.minute
-                val amPm = if (displayHour < 12) "AM" else "PM"
-                val displayHour12 = when {
-                    displayHour == 0 -> 12
-                    displayHour > 12 -> displayHour - 12
-                    else -> displayHour
-                }
-                val timeText = "${displayHour12.toString().padStart(2, '0')}:${displayMinute.toString().padStart(2, '0')} $amPm"
-
-                OutlinedCard(
-                    onClick = { showTimePicker = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Row(
+                Text("Edit Reminder", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                if (isAuto) {
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(MaterialTheme.colorScheme.tertiaryContainer)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Column {
-                            Text(
-                                "Time",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                timeText,
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        Icon(
-                            imageVector = Icons.Rounded.AccessTime,
-                            contentDescription = "Pick time",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                        Text("AUTO-MANAGED", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
                     }
                 }
+            }
 
-                // Frequency selector
-                Text(
-                    "Repeat",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    val frequencies = listOf(
-                        ReminderFrequency.ONCE to "Once",
-                        ReminderFrequency.DAILY to "Daily",
-                        ReminderFrequency.WEEKDAYS to "Weekdays",
-                        ReminderFrequency.WEEKLY to "Weekly"
-                    )
-                    frequencies.forEachIndexed { index, (freq, label) ->
-                        SegmentedButton(
-                            selected = selectedFrequency == freq,
-                            onClick = { selectedFrequency = freq },
-                            shape = SegmentedButtonDefaults.itemShape(
-                                index = index,
-                                count = frequencies.size
-                            )
-                        ) {
-                            Text(label, style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
-
-                // Day selector for weekly
-                AnimatedVisibility(visible = selectedFrequency == ReminderFrequency.WEEKLY) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            "Days",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            DayOfWeek.entries.forEach { day ->
-                                val isSelected = day in selectedDays
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = {
-                                        selectedDays = if (isSelected) selectedDays - day else selectedDays + day
-                                    },
-                                    label = {
-                                        Text(day.name.take(2), style = MaterialTheme.typography.labelSmall)
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Smart timing toggle
-                Row(
+            if (isAuto) {
+                Card(
                     modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f))
+                ) {
+                    Text(
+                        "This reminder was auto-created from your goals or habits. You can customize the time and frequency.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                label = { Text("Title") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+            )
+
+            OutlinedTextField(
+                value = message,
+                onValueChange = { message = it },
+                label = { Text("Message") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+            )
+
+            // Time picker
+            val timeText = formatTime12h(LocalTime(timePickerState.hour, timePickerState.minute))
+            OutlinedCard(
+                onClick = { showTimePicker = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("Smart Timing", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "Auto-optimize based on activity",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text("Time", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(timeText, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                     }
-                    Switch(
-                        checked = smartTiming,
-                        onCheckedChange = { smartTiming = it }
-                    )
+                    Icon(Icons.Rounded.AccessTime, contentDescription = "Pick time", tint = MaterialTheme.colorScheme.primary)
                 }
+            }
 
-                // Delete button
+            // Frequency
+            Text("Repeat", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                val frequencies = listOf(
+                    ReminderFrequency.ONCE to "Once",
+                    ReminderFrequency.DAILY to "Daily",
+                    ReminderFrequency.WEEKDAYS to "Weekdays",
+                    ReminderFrequency.WEEKLY to "Weekly"
+                )
+                frequencies.forEachIndexed { index, (freq, label) ->
+                    SegmentedButton(
+                        selected = selectedFrequency == freq,
+                        onClick = { selectedFrequency = freq },
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = frequencies.size)
+                    ) { Text(label, style = MaterialTheme.typography.labelSmall) }
+                }
+            }
+
+            // Day selector
+            AnimatedVisibility(visible = selectedFrequency == ReminderFrequency.WEEKLY) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Days", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        DayOfWeek.entries.forEach { day ->
+                            FilterChip(
+                                selected = day in selectedDays,
+                                onClick = { selectedDays = if (day in selectedDays) selectedDays - day else selectedDays + day },
+                                label = { Text(day.name.take(2), style = MaterialTheme.typography.labelSmall) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Smart timing
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Smart Timing", style = MaterialTheme.typography.bodyMedium)
+                    Text("Auto-optimize based on activity", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = smartTiming, onCheckedChange = { smartTiming = it })
+            }
+
+            // Actions
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TextButton(
                     onClick = { showDeleteConfirm = true },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    ),
-                    modifier = Modifier.fillMaxWidth()
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("Delete Reminder")
+                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Delete")
                 }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    if (title.isNotBlank()) {
-                        onSave(
-                            reminder.copy(
-                                title = title,
-                                message = message,
-                                frequency = selectedFrequency,
-                                scheduledTime = LocalTime(timePickerState.hour, timePickerState.minute),
-                                scheduledDays = selectedDays,
-                                isSmartTiming = smartTiming
-                            )
-                        )
+                Spacer(Modifier.weight(1f))
+                OutlinedCard(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Box(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
+                        Text("Cancel", style = MaterialTheme.typography.titleSmall)
                     }
-                },
-                enabled = title.isNotBlank()
-            ) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                }
+                Button(
+                    onClick = {
+                        if (title.isNotBlank()) {
+                            onSave(
+                                reminder.copy(
+                                    title = title,
+                                    message = message,
+                                    frequency = selectedFrequency,
+                                    scheduledTime = LocalTime(timePickerState.hour, timePickerState.minute),
+                                    scheduledDays = selectedDays,
+                                    isSmartTiming = smartTiming
+                                )
+                            )
+                        }
+                    },
+                    enabled = title.isNotBlank(),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
+                ) { Text("Save", style = MaterialTheme.typography.titleSmall) }
             }
         }
-    )
+    }
 }
+
+// ── Time Picker Dialog ──────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1117,32 +1356,18 @@ private fun TimePickerDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                "Select Time",
-                style = MaterialTheme.typography.titleMedium
-            )
-        },
+        title = { Text("Select Time", style = MaterialTheme.typography.titleMedium) },
         text = {
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 TimePicker(state = state)
             }
         },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text("OK")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
+        confirmButton = { TextButton(onClick = onConfirm) { Text("OK") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
+
+// ── Settings Sheet ──────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1167,13 +1392,8 @@ private fun ReminderSettingsSheet(
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text(
-                "Reminder Settings",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
+            Text("Reminder Settings", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
 
-            // Smart Timing
             SettingsRow(
                 icon = Icons.Rounded.AutoAwesome,
                 title = "Smart Timing",
@@ -1181,16 +1401,13 @@ private fun ReminderSettingsSheet(
                 trailing = {
                     Switch(
                         checked = localSettings.smartTimingEnabled,
-                        onCheckedChange = {
-                            localSettings = localSettings.copy(smartTimingEnabled = it)
-                        }
+                        onCheckedChange = { localSettings = localSettings.copy(smartTimingEnabled = it) }
                     )
                 }
             )
 
             HorizontalDivider()
 
-            // Quiet Hours
             SettingsRow(
                 icon = Icons.Rounded.NightsStay,
                 title = "Quiet Hours",
@@ -1198,7 +1415,6 @@ private fun ReminderSettingsSheet(
                 trailing = {}
             )
 
-            // Max reminders per day
             SettingsRow(
                 icon = Icons.Rounded.Repeat,
                 title = "Max Reminders/Day",
@@ -1206,7 +1422,6 @@ private fun ReminderSettingsSheet(
                 trailing = {}
             )
 
-            // Weekly Review
             SettingsRow(
                 icon = Icons.Rounded.CalendarToday,
                 title = "Weekly Review",
@@ -1216,10 +1431,7 @@ private fun ReminderSettingsSheet(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Button(
-                onClick = { onSave(localSettings) },
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            Button(onClick = { onSave(localSettings) }, modifier = Modifier.fillMaxWidth()) {
                 Text("Save Settings")
             }
         }
@@ -1234,9 +1446,7 @@ private fun SettingsRow(
     trailing: @Composable () -> Unit
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1245,27 +1455,17 @@ private fun SettingsRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.weight(1f)
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
+            Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             Column {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.modernColors.textSecondary
-                )
+                Text(text = title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.modernColors.textSecondary)
             }
         }
         trailing()
     }
 }
+
+// ── Color & Icon Helpers ────────────────────────────────────────────
 
 private fun getReminderTypeColor(type: ReminderType): Color {
     return when (type) {
@@ -1284,11 +1484,11 @@ private fun getReminderTypeIcon(type: ReminderType): ImageVector {
     return when (type) {
         ReminderType.GOAL_CHECK_IN -> Icons.Rounded.AccessTime
         ReminderType.HABIT_REMINDER -> Icons.Rounded.Repeat
-        ReminderType.MILESTONE_DUE -> Icons.Rounded.CalendarToday
+        ReminderType.MILESTONE_DUE -> Icons.Rounded.Star
         ReminderType.GOAL_DUE -> Icons.Rounded.Alarm
-        ReminderType.DAILY_REFLECTION -> Icons.Rounded.NightsStay
-        ReminderType.WEEKLY_REVIEW -> Icons.Rounded.CalendarToday
-        ReminderType.MOTIVATION -> Icons.Rounded.AutoAwesome
+        ReminderType.DAILY_REFLECTION -> Icons.Rounded.SelfImprovement
+        ReminderType.WEEKLY_REVIEW -> Icons.Rounded.ViewWeek
+        ReminderType.MOTIVATION -> Icons.Rounded.LightMode
         ReminderType.CUSTOM -> Icons.Default.Notifications
     }
 }

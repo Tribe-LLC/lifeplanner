@@ -2,13 +2,17 @@ package az.tribe.lifeplanner.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import az.tribe.lifeplanner.data.analytics.Analytics
 import az.tribe.lifeplanner.data.analytics.FacebookAnalytics
+import az.tribe.lifeplanner.data.analytics.PostHogAnalytics
+import az.tribe.lifeplanner.di.getPlatform
 import az.tribe.lifeplanner.data.auth.AuthResult
 import az.tribe.lifeplanner.data.auth.AuthService
 import az.tribe.lifeplanner.data.sync.SyncManager
 import az.tribe.lifeplanner.domain.model.User
 import az.tribe.lifeplanner.domain.repository.UserRepository
 import co.touchlab.kermit.Logger
+import com.russhwolf.settings.Settings
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.status.SessionStatus
@@ -54,6 +58,9 @@ class AuthViewModel(
         }
     }
 
+    private val settings = Settings()
+    private val PENDING_VERIFY_EMAIL_KEY = "pending_verification_email"
+
     /** Serializes all auth state mutations to prevent race conditions between
      *  checkAuthStatus, observeSessionChanges, and observeDeepLinkErrors. */
     private val authMutex = Mutex()
@@ -71,6 +78,10 @@ class AuthViewModel(
     /** True when a magic link has been sent and user can enter OTP. */
     private val _magicLinkSent = MutableStateFlow(false)
     val magicLinkSent: StateFlow<Boolean> = _magicLinkSent.asStateFlow()
+
+    /** Email that has been linked but not yet verified (for banner status). */
+    private val _pendingVerificationEmail = MutableStateFlow<String?>(null)
+    val pendingVerificationEmail: StateFlow<String?> = _pendingVerificationEmail.asStateFlow()
 
     /** Transient success message shown briefly after operations like account linking. */
     private val _successMessage = MutableStateFlow<String?>(null)
@@ -94,6 +105,12 @@ class AuthViewModel(
                     is SessionStatus.Authenticated -> authMutex.withLock {
                         // React to session changes unless already authenticated with matching user
                         val current = _authState.value
+                        // Skip if a login/linking operation is in progress — it will set
+                        // the auth state itself once it finishes with the correct data.
+                        if (current is AuthState.Loading) {
+                            Logger.d("AuthDebug") { "observeSession: Authenticated event while Loading — skipping (login in progress)" }
+                            return@withLock
+                        }
                         val supabaseUid = supabaseClient.auth.currentUserOrNull()?.id
                         val rawEmail = supabaseClient.auth.currentUserOrNull()?.email
                         Logger.d("AuthDebug") { "observeSession: Authenticated event, uid=$supabaseUid, rawEmail='$rawEmail', currentState=${current::class.simpleName}" }
@@ -117,10 +134,11 @@ class AuthViewModel(
                                     isGuest = email == null
                                 )
                                 _isLocalOnlyGuest.value = false
-                                _authState.value = if (email == null) {
-                                    AuthState.Guest(localUser)
+                                if (email == null) {
+                                    identifyInPostHog(localUser)
+                                    _authState.value = AuthState.Guest(localUser)
                                 } else {
-                                    AuthState.Authenticated(localUser)
+                                    setAuthenticatedAndSync(localUser)
                                 }
                                 Logger.d("AuthViewModel") { "Deep link auth completed for ${user.id}" }
                             }
@@ -196,6 +214,7 @@ class AuthViewModel(
                                 AuthState.Authenticated(reconciledUser)
                             }
                             Logger.d("AuthDebug") { "checkAuthStatus: matched → ${state::class.simpleName}, email='${reconciledUser.email}'" }
+                            identifyInPostHog(reconciledUser)
                             _authState.value = state
                         }
                         // Supabase session exists but no matching local user — recreate locally
@@ -220,22 +239,30 @@ class AuthViewModel(
                                 AuthState.Authenticated(recreated)
                             }
                             Logger.d("AuthDebug") { "checkAuthStatus: recreated → ${state::class.simpleName}, email='${recreated.email}'" }
+                            identifyInPostHog(recreated)
                             _authState.value = state
                         }
                         // No Supabase session but local user exists — degraded (local-only) mode
                         localUser != null -> {
                             _hasCompletedOnboarding.value = localUser.hasCompletedOnboarding
                             _isLocalOnlyGuest.value = true
+                            identifyInPostHog(localUser)
                             _authState.value = if (localUser.isGuest) {
                                 AuthState.Guest(localUser)
                             } else {
                                 AuthState.Authenticated(localUser)
                             }
                         }
-                        // Neither — unauthenticated
+                        // Neither — check for pending verification before showing Unauthenticated
                         else -> {
                             _hasCompletedOnboarding.value = false
-                            _authState.value = AuthState.Unauthenticated
+                            val pendingEmail = settings.getStringOrNull(PENDING_VERIFY_EMAIL_KEY)
+                            if (pendingEmail != null) {
+                                Logger.d("AuthDebug") { "Recovered pending verification for $pendingEmail" }
+                                _authState.value = AuthState.EmailVerificationPending(pendingEmail)
+                            } else {
+                                _authState.value = AuthState.Unauthenticated
+                            }
                         }
                     }
                 }
@@ -245,6 +272,35 @@ class AuthViewModel(
                 }
             }
         }
+    }
+
+    /**
+     * Set authenticated state and immediately trigger sync.
+     * This ensures sync runs AFTER findOrCreateLocalUser() completes (no race condition).
+     */
+    private fun setAuthenticatedAndSync(user: User) {
+        settings.remove(PENDING_VERIFY_EMAIL_KEY) // Clear pending verification
+        _authState.value = AuthState.Authenticated(user)
+        identifyInPostHog(user)
+        // Launch on SyncManager's own scope so it survives ViewModel cancellation
+        syncManager.launchFullSync(resetRetry = true)
+    }
+
+    /**
+     * Identify a user (guest or authenticated) in PostHog.
+     * Call this whenever the user identity is established or changes.
+     */
+    private fun identifyInPostHog(user: User) {
+        PostHogAnalytics.identify(user.id, buildMap {
+            put("email", user.email ?: "")
+            put("display_name", user.displayName ?: "")
+            put("is_guest", user.isGuest)
+        })
+        PostHogAnalytics.setUserProperties(buildMap {
+            put("platform", getPlatform().name)
+            put("is_guest", user.isGuest)
+            put("has_completed_onboarding", user.hasCompletedOnboarding)
+        })
     }
 
     /**
@@ -301,6 +357,7 @@ class AuthViewModel(
                 when (val result = authService.signInWithEmail(email, password)) {
                     is AuthResult.Success -> {
                         Logger.d("AuthViewModel") { "Email sign-in successful, UID: ${result.user.uid}" }
+                        Analytics.signInCompleted("email")
                         val user = findOrCreateLocalUser(
                             uid = result.user.uid,
                             email = result.user.email,
@@ -308,7 +365,7 @@ class AuthViewModel(
                             isGuest = false
                         )
                         _isLocalOnlyGuest.value = false
-                        _authState.value = AuthState.Authenticated(user)
+                        setAuthenticatedAndSync(user)
                     }
                     is AuthResult.EmailVerificationPending -> {
                         _authState.value = AuthState.EmailVerificationPending(result.email)
@@ -332,11 +389,13 @@ class AuthViewModel(
             try {
                 _authState.value = AuthState.Loading
                 Logger.d("AuthViewModel") { "Starting email sign-up for $email" }
+                Analytics.signUpStarted("email")
 
                 when (val result = authService.signUpWithEmail(email, password, displayName)) {
                     is AuthResult.Success -> {
                         Logger.d("AuthViewModel") { "Email sign-up successful, UID: ${result.user.uid}" }
                         FacebookAnalytics.logCompleteRegistration("email")
+                        Analytics.signUpCompleted("email")
                         val user = findOrCreateLocalUser(
                             uid = result.user.uid,
                             email = result.user.email,
@@ -344,10 +403,11 @@ class AuthViewModel(
                             isGuest = false
                         )
                         _isLocalOnlyGuest.value = false
-                        _authState.value = AuthState.Authenticated(user)
+                        setAuthenticatedAndSync(user)
                     }
                     is AuthResult.EmailVerificationPending -> {
                         Logger.d("AuthViewModel") { "Email verification pending for ${result.email}" }
+                        settings.putString(PENDING_VERIFY_EMAIL_KEY, result.email)
                         _authState.value = AuthState.EmailVerificationPending(result.email)
                     }
                     is AuthResult.Error -> {
@@ -372,6 +432,7 @@ class AuthViewModel(
                 when (val result = authService.signInWithGoogle()) {
                     is AuthResult.Success -> {
                         Logger.d("AuthViewModel") { "Google sign-in successful, UID: ${result.user.uid}" }
+                        Analytics.signInCompleted("google")
                         val user = findOrCreateLocalUser(
                             uid = result.user.uid,
                             email = result.user.email,
@@ -379,7 +440,7 @@ class AuthViewModel(
                             isGuest = false
                         )
                         _isLocalOnlyGuest.value = false
-                        _authState.value = AuthState.Authenticated(user)
+                        setAuthenticatedAndSync(user)
                     }
                     is AuthResult.EmailVerificationPending -> {
                         _authState.value = AuthState.EmailVerificationPending(result.email)
@@ -414,6 +475,7 @@ class AuthViewModel(
                             isGuest = true
                         )
                         _isLocalOnlyGuest.value = false
+                        identifyInPostHog(user)
                         _authState.value = AuthState.Guest(user)
                     }
                     is AuthResult.EmailVerificationPending -> {
@@ -472,6 +534,9 @@ class AuthViewModel(
                 when (val result = authService.linkEmailToAnonymousAccount(email, password, displayName)) {
                     is AuthResult.Success -> {
                         Logger.d("AuthViewModel") { "Account linked successfully, UID: ${result.user.uid}" }
+                        // Reset PostHog to cleanly separate guest session from authenticated session
+                        PostHogAnalytics.reset()
+                        _pendingVerificationEmail.value = email
                         // Update EXISTING local user — same ID preserved
                         val currentUser = userRepository.getCurrentUser()
                         if (currentUser != null) {
@@ -482,8 +547,8 @@ class AuthViewModel(
                             )
                             userRepository.updateUser(updatedUser)
                             _isLocalOnlyGuest.value = false
-                            _successMessage.value = "Account linked! A verification email has been sent to $email."
-                            _authState.value = AuthState.Authenticated(updatedUser)
+                            _successMessage.value = "Check your email to verify $email"
+                            setAuthenticatedAndSync(updatedUser)
                         } else {
                             val user = findOrCreateLocalUser(
                                 uid = result.user.uid,
@@ -492,12 +557,14 @@ class AuthViewModel(
                                 isGuest = false
                             )
                             _isLocalOnlyGuest.value = false
-                            _successMessage.value = "Account linked! A verification email has been sent to $email."
-                            _authState.value = AuthState.Authenticated(user)
+                            _successMessage.value = "Check your email to verify $email"
+                            setAuthenticatedAndSync(user)
                         }
+                        // Start polling to auto-clear banner when verified
+                        startLinkVerificationPolling(email)
                     }
                     is AuthResult.EmailVerificationPending -> {
-                        // Account linking with email verification — session stays valid
+                        _pendingVerificationEmail.value = email
                         val currentUser = userRepository.getCurrentUser()
                         if (currentUser != null) {
                             val updatedUser = currentUser.copy(
@@ -506,9 +573,10 @@ class AuthViewModel(
                                 displayName = displayName
                             )
                             userRepository.updateUser(updatedUser)
-                            _successMessage.value = "Check your email! Verify $email to complete linking."
-                            _authState.value = AuthState.Authenticated(updatedUser)
+                            _successMessage.value = "Check your email to verify $email"
+                            setAuthenticatedAndSync(updatedUser)
                         }
+                        startLinkVerificationPolling(email)
                     }
                     is AuthResult.Error -> {
                         _authState.value = AuthState.Error(result.message)
@@ -537,6 +605,65 @@ class AuthViewModel(
     }
 
     /**
+     * Poll Supabase session to detect email verification done on another device.
+     * Checks every 3 seconds while in EmailVerificationPending state.
+     * Auto-signs the user in as soon as verification is detected.
+     */
+    fun startVerificationPolling() {
+        viewModelScope.launch {
+            while (_authState.value is AuthState.EmailVerificationPending) {
+                try {
+                    kotlinx.coroutines.delay(3000)
+                    if (_authState.value !is AuthState.EmailVerificationPending) break
+
+                    supabaseClient.auth.refreshCurrentSession()
+                    val user = supabaseClient.auth.currentUserOrNull()
+                    if (user != null && user.email != null && user.emailConfirmedAt != null) {
+                        Logger.d("AuthViewModel") { "Email verified on another device! Auto-signing in." }
+                        val localUser = findOrCreateLocalUser(
+                            uid = user.id,
+                            email = user.email,
+                            displayName = user.userMetadata?.get("display_name")
+                                ?.toString()?.removeSurrounding("\"") ?: "User",
+                            isGuest = false
+                        )
+                        _isLocalOnlyGuest.value = false
+                        setAuthenticatedAndSync(localUser)
+                        break
+                    }
+                } catch (e: Exception) {
+                    Logger.d("AuthViewModel") { "Verification poll: ${e.message}" }
+                }
+            }
+        }
+    }
+
+    /**
+     * Poll to detect when a linked account's email is verified.
+     * Clears the pendingVerificationEmail banner and marks SECURE_ACCOUNT objective complete.
+     */
+    private fun startLinkVerificationPolling(email: String) {
+        viewModelScope.launch {
+            while (_pendingVerificationEmail.value == email) {
+                try {
+                    kotlinx.coroutines.delay(5000)
+                    if (_pendingVerificationEmail.value != email) break
+                    supabaseClient.auth.refreshCurrentSession()
+                    val user = supabaseClient.auth.currentUserOrNull()
+                    if (user?.emailConfirmedAt != null) {
+                        Logger.d("AuthViewModel") { "Email $email verified! Clearing banner." }
+                        _pendingVerificationEmail.value = null
+                        Analytics.accountSecured()
+                        break
+                    }
+                } catch (e: Exception) {
+                    Logger.d("AuthViewModel") { "Link verification poll: ${e.message}" }
+                }
+            }
+        }
+    }
+
+    /**
      * Verify a 6-digit OTP code for signup email confirmation.
      */
     fun verifySignupOtp(email: String, token: String) {
@@ -552,7 +679,7 @@ class AuthViewModel(
                             isGuest = false
                         )
                         _isLocalOnlyGuest.value = false
-                        _authState.value = AuthState.Authenticated(user)
+                        setAuthenticatedAndSync(user)
                     }
                     is AuthResult.Error -> _authState.value = AuthState.Error(result.message)
                     is AuthResult.EmailVerificationPending -> {}
@@ -603,6 +730,7 @@ class AuthViewModel(
                 _authState.value = AuthState.Loading
                 when (val result = authService.verifyOtp(email, token)) {
                     is AuthResult.Success -> {
+                        Analytics.signInCompleted("magic_link")
                         val user = findOrCreateLocalUser(
                             uid = result.user.uid,
                             email = result.user.email,
@@ -611,7 +739,7 @@ class AuthViewModel(
                         )
                         _magicLinkSent.value = false
                         _isLocalOnlyGuest.value = false
-                        _authState.value = AuthState.Authenticated(user)
+                        setAuthenticatedAndSync(user)
                     }
                     is AuthResult.Error -> _authState.value = AuthState.Error(result.message)
                     is AuthResult.EmailVerificationPending -> {}
@@ -673,6 +801,9 @@ class AuthViewModel(
                 syncManager.onLogout()
                 userRepository.clearAllLocalData()
                 authService.signOut()
+                Analytics.signOutCompleted()
+                PostHogAnalytics.reset()
+                settings.remove(PENDING_VERIFY_EMAIL_KEY)
                 _isLocalOnlyGuest.value = false
                 _hasCompletedOnboarding.value = false
                 _authState.value = AuthState.Unauthenticated
@@ -693,6 +824,8 @@ class AuthViewModel(
                 if (user != null) {
                     userRepository.markOnboardingComplete(user.id)
                     _hasCompletedOnboarding.value = true
+                    Analytics.onboardingCompleted()
+                    PostHogAnalytics.setUserProperties(mapOf("has_completed_onboarding" to true))
                     Logger.d("AuthViewModel") { "Onboarding marked complete for ${user.id}" }
                 }
             } catch (e: Exception) {

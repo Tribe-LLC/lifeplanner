@@ -133,6 +133,11 @@ fun SignInScreen(
         if (authState is AuthState.EmailVerificationPending) {
             val pendingEmail = (authState as AuthState.EmailVerificationPending).email
 
+            // Poll for verification done on another device (keyed on email to avoid duplicate loops)
+            LaunchedEffect(pendingEmail) {
+                authViewModel.startVerificationPolling()
+            }
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()

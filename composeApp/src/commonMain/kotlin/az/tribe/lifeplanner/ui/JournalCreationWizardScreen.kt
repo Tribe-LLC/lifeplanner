@@ -41,6 +41,7 @@ import az.tribe.lifeplanner.data.network.AiProxyService
 import az.tribe.lifeplanner.util.NetworkConnectivityObserver
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import az.tribe.lifeplanner.data.analytics.Analytics
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -67,6 +68,9 @@ fun JournalCreationWizardScreen(
     val isConnected by connectivityObserver.isConnected.collectAsState()
     val isOffline = !isConnected
 
+    // Track wizard start
+    LaunchedEffect(Unit) { Analytics.journalWizardStarted() }
+
     // Wizard state
     var currentStep by remember { mutableStateOf(JournalWizardStep.MOOD) }
     var selectedMood by remember { mutableStateOf<Mood?>(null) }
@@ -83,7 +87,10 @@ fun JournalCreationWizardScreen(
     val canGoBack = !isGenerating
     val onBack: () -> Unit = {
         when (currentStep) {
-            JournalWizardStep.MOOD -> onNavigateBack()
+            JournalWizardStep.MOOD -> {
+                Analytics.journalWizardAbandoned("mood")
+                onNavigateBack()
+            }
             JournalWizardStep.PROMPT -> currentStep = JournalWizardStep.MOOD
             JournalWizardStep.CONTEXT_GENERATE -> currentStep = JournalWizardStep.PROMPT
             JournalWizardStep.REVIEW_SAVE -> {
@@ -199,10 +206,14 @@ fun JournalCreationWizardScreen(
                             onTagsChanged = { generatedTags = it },
                             onSave = {
                                 haptic.success()
+                                val mood = selectedMood ?: Mood.NEUTRAL
+                                val hasAiContent = generatedContent.isNotBlank()
+                                Analytics.journalEntryCreated(mood.name, hasAiContent, "wizard")
+                                Analytics.journalWizardCompleted(mood.name)
                                 viewModel.createEntry(
                                     title = generatedTitle,
                                     content = generatedContent,
-                                    mood = selectedMood ?: Mood.NEUTRAL,
+                                    mood = mood,
                                     linkedGoalId = selectedGoalId,
                                     linkedHabitId = selectedHabitId,
                                     tags = generatedTags,
@@ -303,7 +314,7 @@ private fun MoodSelectionStep(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            Mood.entries.forEach { mood ->
+            Mood.entries.sortedBy { it.score }.forEach { mood ->
                 val isSelected = mood == selectedMood
                 val scale by animateFloatAsState(
                     targetValue = if (isSelected) 1.2f else 1f,

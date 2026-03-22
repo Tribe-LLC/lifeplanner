@@ -2,19 +2,24 @@ package az.tribe.lifeplanner.ui.habit
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import az.tribe.lifeplanner.data.analytics.Analytics
 import az.tribe.lifeplanner.data.mapper.createNewHabit
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.HabitFrequency
 import az.tribe.lifeplanner.domain.model.Habit
 import az.tribe.lifeplanner.domain.repository.HabitRepository
+import az.tribe.lifeplanner.domain.service.SmartReminderManager
 import az.tribe.lifeplanner.usecases.habit.CheckInHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.CreateHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.DeleteHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.UncheckHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.UpdateHabitUseCase
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -22,12 +27,16 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 
 data class HabitWithStatus(
     val habit: Habit,
-    val isCompletedToday: Boolean
+    val isCompletedToday: Boolean,
+    val weeklyCompletions: List<Boolean> = emptyList() // Mon-Sun, true if completed
 )
 
 /**
@@ -44,8 +53,13 @@ class HabitViewModel(
     private val updateHabitUseCase: UpdateHabitUseCase,
     private val deleteHabitUseCase: DeleteHabitUseCase,
     private val checkInHabitUseCase: CheckInHabitUseCase,
-    private val uncheckHabitUseCase: UncheckHabitUseCase
+    private val uncheckHabitUseCase: UncheckHabitUseCase,
+    private val smartReminderManager: SmartReminderManager
 ) : ViewModel() {
+
+    // Smart reminder events (one-shot, collected by UI for snackbar)
+    private val _reminderEvent = MutableSharedFlow<String>()
+    val reminderEvent: SharedFlow<String> = _reminderEvent.asSharedFlow()
 
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -55,8 +69,29 @@ class HabitViewModel(
 
     val habits: StateFlow<List<HabitWithStatus>> = habitRepository.observeHabitsWithTodayStatus()
         .map { pairs ->
-            pairs.map { (habit, isCompleted) -> HabitWithStatus(habit, isCompleted) }
-                .sortedWith(compareBy<HabitWithStatus> { it.isCompletedToday }.thenByDescending { it.habit.currentStreak })
+            val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+            // Calculate Monday of this week
+            val daysFromMonday = (today.dayOfWeek.ordinal - DayOfWeek.MONDAY.ordinal + 7) % 7
+            val monday = today.minus(daysFromMonday, DateTimeUnit.DAY)
+
+            pairs.map { (habit, isCompleted) ->
+                val weeklyCompletions = try {
+                    val checkIns = habitRepository.getCheckInsInRange(
+                        habit.id,
+                        monday,
+                        today
+                    )
+                    val completedDates = checkIns.filter { it.completed }.map { it.date }.toSet()
+                    // Build Mon-Sun list (up to today)
+                    (0..6).map { dayOffset ->
+                        val day = monday.minus(-dayOffset, DateTimeUnit.DAY)
+                        if (day <= today) completedDates.contains(day) else false
+                    }
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                HabitWithStatus(habit, isCompleted, weeklyCompletions)
+            }.sortedWith(compareBy<HabitWithStatus> { it.isCompletedToday }.thenByDescending { it.habit.currentStreak })
         }
         .onEach { _isLoading.value = false }
         .catch { e ->
@@ -104,6 +139,11 @@ class HabitViewModel(
                     reminderTime = reminderTime
                 )
                 createHabitUseCase(habit)
+                Analytics.habitCreated(frequency.name, linkedGoalId != null)
+                val result = smartReminderManager.syncRemindersForHabit(habit)
+                if (result.hasChanges) {
+                    _reminderEvent.emit("Reminder set for \"${habit.title}\"")
+                }
                 _showAddHabitDialog.value = false
             } catch (e: Exception) {
                 _error.value = "Failed to create habit: ${e.message}"
@@ -118,6 +158,10 @@ class HabitViewModel(
             try {
                 val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
                 checkInHabitUseCase(habitId, today, notes)
+
+                // Track check-in
+                val streak = habitRepository.getHabitById(habitId)?.currentStreak ?: 0
+                Analytics.habitCheckedIn(habitId, streak.toInt())
 
                 // Read updated habit for reflection prompt
                 val updatedHabit = habitRepository.getHabitById(habitId)
@@ -161,6 +205,7 @@ class HabitViewModel(
     fun deleteHabit(habitId: String) {
         viewModelScope.launch {
             try {
+                smartReminderManager.cleanupRemindersForDeletedHabit(habitId)
                 deleteHabitUseCase(habitId)
             } catch (e: Exception) {
                 _error.value = "Failed to delete habit: ${e.message}"
@@ -172,6 +217,7 @@ class HabitViewModel(
         viewModelScope.launch {
             try {
                 updateHabitUseCase(habit)
+                smartReminderManager.syncRemindersForHabit(habit)
             } catch (e: Exception) {
                 _error.value = "Failed to update habit: ${e.message}"
             }

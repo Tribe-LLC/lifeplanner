@@ -512,7 +512,7 @@ fun MoodPicker(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        Mood.entries.forEach { mood ->
+        Mood.entries.sortedBy { it.score }.forEach { mood ->
             MoodButton(
                 mood = mood,
                 isSelected = mood == selectedMood,

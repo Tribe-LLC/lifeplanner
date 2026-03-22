@@ -21,7 +21,6 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.automirrored.rounded.LibraryBooks
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,9 +42,8 @@ import az.tribe.lifeplanner.ui.theme.LifePlannerGradients
 /**
  * Unified bottom sheet for adding goals
  *
- * Provides three options:
+ * Provides two options:
  * - Quick Add (manual creation)
- * - From Template (template picker)
  * - AI Suggest (AI generation)
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,7 +51,6 @@ import az.tribe.lifeplanner.ui.theme.LifePlannerGradients
 fun AddGoalBottomSheet(
     onDismiss: () -> Unit,
     onQuickAddClick: () -> Unit,
-    onTemplatesClick: () -> Unit,
     onAiGenerateClick: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -105,17 +102,6 @@ fun AddGoalBottomSheet(
                         title = "Quick Add",
                         subtitle = "Create a goal manually",
                         onClick = onQuickAddClick
-                    )
-                }
-
-                // Templates option
-                item {
-                    AddGoalOption(
-                        icon = Icons.AutoMirrored.Rounded.LibraryBooks,
-                        iconGradient = LifePlannerGradients.ocean,
-                        title = "From Template",
-                        subtitle = "Start with a pre-made goal",
-                        onClick = onTemplatesClick
                     )
                 }
 

@@ -49,6 +49,7 @@ object BadgeRequirements {
         BadgeType.FOCUS_HOUR -> 1
         BadgeType.FOCUS_10 -> 10
         BadgeType.FOCUS_50 -> 50
+        BadgeType.GETTING_STARTED -> 10
     }
 
     /**
@@ -75,6 +76,8 @@ object BadgeRequirements {
 
         BadgeType.FOCUS_FIRST, BadgeType.FOCUS_HOUR,
         BadgeType.FOCUS_10, BadgeType.FOCUS_50 -> BadgeCategory.SPECIAL
+
+        BadgeType.GETTING_STARTED -> BadgeCategory.SPECIAL
     }
 }
 

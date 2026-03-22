@@ -20,7 +20,7 @@ CREATE TABLE GoalEntity (
 );
 
 selectAll:
-SELECT * FROM GoalEntity WHERE is_deleted = 0;
+SELECT * FROM GoalEntity WHERE is_deleted = 0 AND id != 'getting_started_goal';
 
 selectGoalById:
 SELECT * FROM GoalEntity WHERE id = ?;
@@ -98,7 +98,7 @@ WHERE (title LIKE '%' || ? || '%' OR description LIKE '%' || ? || '%') AND isArc
 
 getActiveGoals:
 SELECT * FROM GoalEntity
-WHERE status != 'COMPLETED' AND isArchived = 0 AND is_deleted = 0;
+WHERE status != 'COMPLETED' AND isArchived = 0 AND is_deleted = 0 AND id != 'getting_started_goal';
 
 getCompletedGoals:
 SELECT * FROM GoalEntity
@@ -134,19 +134,19 @@ WHERE isArchived = 0 AND is_deleted = 0
 GROUP BY category;
 
 getTotalGoalCount:
-SELECT COUNT(*) FROM GoalEntity WHERE isArchived = 0 AND is_deleted = 0;
+SELECT COUNT(*) FROM GoalEntity WHERE isArchived = 0 AND is_deleted = 0 AND id != 'getting_started_goal';
 
 getActiveGoalCount:
-SELECT COUNT(*) FROM GoalEntity WHERE status != 'COMPLETED' AND isArchived = 0 AND is_deleted = 0;
+SELECT COUNT(*) FROM GoalEntity WHERE status != 'COMPLETED' AND isArchived = 0 AND is_deleted = 0 AND id != 'getting_started_goal';
 
 getCompletedGoalCount:
-SELECT COUNT(*) FROM GoalEntity WHERE status = 'COMPLETED' AND isArchived = 0 AND is_deleted = 0;
+SELECT COUNT(*) FROM GoalEntity WHERE status = 'COMPLETED' AND isArchived = 0 AND is_deleted = 0 AND id != 'getting_started_goal';
 
 getOverallCompletionRate:
 SELECT
     CAST(COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) AS REAL) / COUNT(*) * 100
 FROM GoalEntity
-WHERE isArchived = 0 AND is_deleted = 0;
+WHERE isArchived = 0 AND is_deleted = 0 AND id != 'getting_started_goal';
 
 -- Milestone table (already exists in your schema)
 CREATE TABLE IF NOT EXISTS MilestoneEntity (
@@ -1379,10 +1379,10 @@ SELECT DISTINCT date FROM (
 
 -- Goal sync queries
 getUnsyncedGoals:
-SELECT * FROM GoalEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+SELECT * FROM GoalEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0 AND id != 'getting_started_goal';
 
 getDeletedGoals:
-SELECT * FROM GoalEntity WHERE is_deleted = 1;
+SELECT * FROM GoalEntity WHERE is_deleted = 1 AND id != 'getting_started_goal';
 
 markGoalSynced:
 UPDATE GoalEntity SET last_synced_at = ? WHERE id = ?;
@@ -1395,10 +1395,10 @@ DELETE FROM GoalEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
 
 -- Milestone sync queries
 getUnsyncedMilestones:
-SELECT * FROM MilestoneEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+SELECT * FROM MilestoneEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0 AND id NOT LIKE 'gs_milestone_%';
 
 getDeletedMilestones:
-SELECT * FROM MilestoneEntity WHERE is_deleted = 1;
+SELECT * FROM MilestoneEntity WHERE is_deleted = 1 AND id NOT LIKE 'gs_milestone_%';
 
 markMilestoneSynced:
 UPDATE MilestoneEntity SET last_synced_at = ? WHERE id = ?;
@@ -1414,10 +1414,10 @@ DELETE FROM MilestoneEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
 
 -- GoalHistory sync queries
 getUnsyncedGoalHistory:
-SELECT * FROM GoalHistoryEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+SELECT * FROM GoalHistoryEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0 AND goalId != 'getting_started_goal';
 
 getDeletedGoalHistory:
-SELECT * FROM GoalHistoryEntity WHERE is_deleted = 1;
+SELECT * FROM GoalHistoryEntity WHERE is_deleted = 1 AND goalId != 'getting_started_goal';
 
 markGoalHistorySynced:
 UPDATE GoalHistoryEntity SET last_synced_at = ? WHERE id = ?;
@@ -1877,7 +1877,13 @@ getAllBeginnerObjectives:
 SELECT * FROM BeginnerObjectiveEntity WHERE is_deleted = 0;
 
 getBeginnerObjectiveByType:
-SELECT * FROM BeginnerObjectiveEntity WHERE objectiveType = ? AND is_deleted = 0;
+SELECT * FROM BeginnerObjectiveEntity WHERE objectiveType = ? AND is_deleted = 0 LIMIT 1;
+
+deduplicateBeginnerObjectives:
+DELETE FROM BeginnerObjectiveEntity
+WHERE id NOT IN (
+    SELECT MIN(id) FROM BeginnerObjectiveEntity GROUP BY objectiveType
+);
 
 getCompletedBeginnerObjectivesCount:
 SELECT COUNT(*) FROM BeginnerObjectiveEntity WHERE isCompleted = 1 AND is_deleted = 0;
@@ -1886,6 +1892,11 @@ completeBeginnerObjective:
 UPDATE BeginnerObjectiveEntity
 SET isCompleted = 1, completedAt = ?, xpAwarded = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE objectiveType = ? AND isCompleted = 0;
+
+uncompleteBeginnerObjective:
+UPDATE BeginnerObjectiveEntity
+SET isCompleted = 0, completedAt = NULL, xpAwarded = 0, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE objectiveType = ? AND isCompleted = 1;
 
 deleteAllBeginnerObjectives:
 DELETE FROM BeginnerObjectiveEntity;

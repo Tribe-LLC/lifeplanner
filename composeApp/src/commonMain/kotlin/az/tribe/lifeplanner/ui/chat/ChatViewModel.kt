@@ -2,6 +2,7 @@ package az.tribe.lifeplanner.ui.chat
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import az.tribe.lifeplanner.data.analytics.Analytics
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.enum.GoalTimeline
@@ -424,6 +425,10 @@ class ChatViewModel(
             co.touchlab.kermit.Logger.w("ChatViewModel") { "sendMessage: userContext is null, using default" }
             defaultUserContext()
         }
+
+        val coachId = session.coachId
+        val isFirst = _uiState.value.messages.none { it.role == az.tribe.lifeplanner.domain.model.MessageRole.USER }
+        Analytics.chatMessageSent(coachId, isFirst)
 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSending = true, error = null)

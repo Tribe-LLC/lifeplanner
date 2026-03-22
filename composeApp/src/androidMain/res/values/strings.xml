@@ -5,4 +5,6 @@
     <string name="widget_habit_description">Check in your habits directly from your home screen</string>
     <string name="widget_dashboard_label">Daily Dashboard</string>
     <string name="widget_habit_label">Habit Check-In</string>
+    <string name="facebook_app_id">4516330652024411</string>
+    <string name="facebook_client_token">2ffddcf7a4d75907179ec27fa229dbcc</string>
 </resources>

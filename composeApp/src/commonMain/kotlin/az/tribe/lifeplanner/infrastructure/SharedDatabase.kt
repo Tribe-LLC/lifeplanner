@@ -99,6 +99,10 @@ class SharedDatabase(
         return this { db -> db.lifePlannerDBQueries.selectAll().executeAsList() }
     }
 
+    suspend fun getGoalById(id: String): GoalEntity? {
+        return this { db -> db.lifePlannerDBQueries.selectGoalById(id).executeAsOneOrNull() }
+    }
+
     suspend fun deleteAllGoals() {
         this { db ->
             val goals = db.lifePlannerDBQueries.selectAll().executeAsList()
@@ -1709,6 +1713,12 @@ class SharedDatabase(
         return this { db -> db.lifePlannerDBQueries.getCompletedBeginnerObjectivesCount().executeAsOne() }
     }
 
+    suspend fun deduplicateBeginnerObjectives() {
+        this { db ->
+            db.lifePlannerDBQueries.deduplicateBeginnerObjectives()
+        }
+    }
+
     suspend fun insertBeginnerObjective(
         id: String,
         objectiveType: String,
@@ -1728,6 +1738,12 @@ class SharedDatabase(
     suspend fun completeBeginnerObjective(completedAt: String, xpAwarded: Long, objectiveType: String) {
         this { db ->
             db.lifePlannerDBQueries.completeBeginnerObjective(completedAt, xpAwarded, objectiveType)
+        }
+    }
+
+    suspend fun uncompleteBeginnerObjective(objectiveType: String) {
+        this { db ->
+            db.lifePlannerDBQueries.uncompleteBeginnerObjective(objectiveType)
         }
     }
 

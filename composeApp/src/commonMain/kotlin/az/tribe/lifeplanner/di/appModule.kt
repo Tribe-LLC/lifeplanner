@@ -11,6 +11,7 @@ import az.tribe.lifeplanner.data.repository.AiUsageRepositoryImpl
 import az.tribe.lifeplanner.data.repository.BackupRepositoryImpl
 import az.tribe.lifeplanner.data.repository.BeginnerObjectiveRepositoryImpl
 import az.tribe.lifeplanner.data.repository.ChatRepositoryImpl
+import az.tribe.lifeplanner.data.repository.CoachPostRepositoryImpl
 import az.tribe.lifeplanner.data.repository.CoachRepositoryImpl
 import az.tribe.lifeplanner.di.FileSharer
 import az.tribe.lifeplanner.di.createFileSharer
@@ -32,6 +33,7 @@ import az.tribe.lifeplanner.domain.repository.AiUsageRepository
 import az.tribe.lifeplanner.domain.repository.BackupRepository
 import az.tribe.lifeplanner.domain.repository.BeginnerObjectiveRepository
 import az.tribe.lifeplanner.domain.repository.ChatRepository
+import az.tribe.lifeplanner.domain.repository.CoachPostRepository
 import az.tribe.lifeplanner.domain.repository.CoachRepository
 import az.tribe.lifeplanner.domain.repository.GamificationRepository
 import az.tribe.lifeplanner.domain.repository.GeminiRepository
@@ -196,6 +198,7 @@ val appModule = module {
     single<JournalRepository> { JournalRepositoryImpl(get(), get()) }
     single<GoalDependencyRepository> { GoalDependencyRepositoryImpl(get(), get()) }
     single<CoachRepository> { CoachRepositoryImpl(get(), get()) }
+    single<CoachPostRepository> { CoachPostRepositoryImpl(get()) }
     single<ChatRepository> { ChatRepositoryImpl(get(), get<AiProxyService>(), get(), get()) }
     single { ReviewMessageBuilder(get()) }
     single<ReminderRepository> { ReminderRepositoryImpl(get(), get(), get()) }

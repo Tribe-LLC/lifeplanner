@@ -1,0 +1,42 @@
+{
+  "ambient_ocean": {
+    "description": "Ocean waves crashing and receding",
+    "license": "CC0 / Public Domain / Synthetic",
+    "loopable": true,
+    "duration_sec": 30,
+    "sample_rate": 44100,
+    "channels": 2
+  },
+  "ambient_fireplace": {
+    "description": "Cozy fireplace crackling sounds",
+    "license": "CC0 / Public Domain / Synthetic",
+    "loopable": true,
+    "duration_sec": 30,
+    "sample_rate": 44100,
+    "channels": 2
+  },
+  "ambient_night": {
+    "description": "Nighttime crickets and gentle wind",
+    "license": "CC0 / Public Domain / Synthetic",
+    "loopable": true,
+    "duration_sec": 30,
+    "sample_rate": 44100,
+    "channels": 2
+  },
+  "ambient_cafe": {
+    "description": "Cozy cafe background ambience",
+    "license": "CC0 / Public Domain / Synthetic",
+    "loopable": true,
+    "duration_sec": 30,
+    "sample_rate": 44100,
+    "channels": 2
+  },
+  "ambient_birds": {
+    "description": "Morning birdsong in nature",
+    "license": "CC0 / Public Domain / Synthetic",
+    "loopable": true,
+    "duration_sec": 30,
+    "sample_rate": 44100,
+    "channels": 2
+  }
+}

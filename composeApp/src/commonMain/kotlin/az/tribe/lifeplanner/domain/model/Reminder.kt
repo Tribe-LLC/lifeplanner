@@ -60,7 +60,7 @@ data class ReminderSettings(
     val preferredMorningTime: LocalTime = LocalTime(8, 0),
     val preferredEveningTime: LocalTime = LocalTime(20, 0),
     val smartTimingEnabled: Boolean = true,
-    val maxRemindersPerDay: Int = 5,
+    val maxRemindersPerDay: Int = 2,
     val weeklyReviewDay: DayOfWeek = DayOfWeek.SUNDAY,
     val weeklyReviewTime: LocalTime = LocalTime(10, 0)
 )

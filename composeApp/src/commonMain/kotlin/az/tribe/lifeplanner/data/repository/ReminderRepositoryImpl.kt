@@ -236,6 +236,58 @@ class ReminderRepositoryImpl(
         }
     }
 
+    /**
+     * Find an available time slot near [preferredTime] that doesn't collide with existing reminders.
+     * Offsets in 15-minute increments, respecting quiet hours.
+     */
+    override suspend fun findAvailableTimeSlot(preferredTime: LocalTime, excludeReminderId: String?): LocalTime {
+        val settings = getSettings()
+        val existing = getEnabledReminders()
+            .filter { it.id != excludeReminderId }
+            .map { it.scheduledTime }
+            .toSet()
+
+        // If no collision, use preferred time
+        if (!existing.any { isWithinMinutes(it, preferredTime, 5) }) {
+            return preferredTime
+        }
+
+        // Try offsets: +15, -15, +30, -30, +45, -45, +60, -60
+        val offsets = listOf(15, -15, 30, -30, 45, -45, 60, -60, 90, -90, 120, -120)
+        for (offset in offsets) {
+            val candidate = addMinutesToTime(preferredTime, offset)
+            if (!existing.any { isWithinMinutes(it, candidate, 5) } &&
+                !isInQuietHours(candidate, settings.quietHoursStart, settings.quietHoursEnd)
+            ) {
+                return candidate
+            }
+        }
+
+        // Fallback: just use preferred time
+        return preferredTime
+    }
+
+    private fun isWithinMinutes(a: LocalTime, b: LocalTime, minutes: Int): Boolean {
+        val aMin = a.hour * 60 + a.minute
+        val bMin = b.hour * 60 + b.minute
+        val diff = kotlin.math.abs(aMin - bMin)
+        return diff < minutes || (1440 - diff) < minutes
+    }
+
+    private fun addMinutesToTime(time: LocalTime, minutes: Int): LocalTime {
+        val totalMinutes = (time.hour * 60 + time.minute + minutes + 1440) % 1440
+        return LocalTime(totalMinutes / 60, totalMinutes % 60)
+    }
+
+    private fun isInQuietHours(time: LocalTime, start: LocalTime, end: LocalTime): Boolean {
+        return if (start > end) {
+            // Quiet hours span midnight (e.g., 22:00 - 07:00)
+            time >= start || time < end
+        } else {
+            time in start..end
+        }
+    }
+
     override suspend fun recordUserActivity(activityTime: LocalDateTime) {
         val pattern = getUserActivityPattern()
         val hour = activityTime.hour

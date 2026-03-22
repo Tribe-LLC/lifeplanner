@@ -13,7 +13,7 @@ import org.koin.mp.KoinPlatform
 
 private const val PREFS_NAME = "lifeplanner_db_prefs"
 private const val KEY_DB_SCHEMA_VERSION = "db_schema_version"
-private const val CURRENT_SCHEMA_VERSION = 2 // Increment this when you want to force a fresh DB for all users
+private const val CURRENT_SCHEMA_VERSION = 3 // Increment this when you want to force a fresh DB for all users
 
 actual class DatabaseDriverFactory {
     actual suspend fun createDriver(): SqlDriver {
@@ -40,6 +40,8 @@ actual class DatabaseDriverFactory {
                     migrateToVersion12(db)
                     migrateToSyncColumns(db)
                     migrateToVersion13(db)
+                    migrateToVersion14(db)
+                    migrateToVersion15(db)
                 }
 
                 override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -556,6 +558,30 @@ actual class DatabaseDriverFactory {
                             coachId TEXT PRIMARY KEY NOT NULL,
                             userPersona TEXT NOT NULL DEFAULT '',
                             updatedAt TEXT NOT NULL,
+                            sync_updated_at TEXT,
+                            is_deleted INTEGER NOT NULL DEFAULT 0,
+                            sync_version INTEGER NOT NULL DEFAULT 0,
+                            last_synced_at TEXT
+                        )
+                        """.trimIndent()
+                    )
+                }
+
+                private fun migrateToVersion14(db: SupportSQLiteDatabase) {
+                    addColumnSafe(db, "GoalEntity", "aiReasoning", "TEXT")
+                }
+
+                private fun migrateToVersion15(db: SupportSQLiteDatabase) {
+                    // Create BeginnerObjectiveEntity table (matches migration 13.sqm)
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS BeginnerObjectiveEntity (
+                            id TEXT PRIMARY KEY NOT NULL,
+                            objectiveType TEXT NOT NULL,
+                            isCompleted INTEGER NOT NULL DEFAULT 0,
+                            completedAt TEXT,
+                            xpAwarded INTEGER NOT NULL DEFAULT 0,
+                            createdAt TEXT NOT NULL,
                             sync_updated_at TEXT,
                             is_deleted INTEGER NOT NULL DEFAULT 0,
                             sync_version INTEGER NOT NULL DEFAULT 0,

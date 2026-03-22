@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Life Planner - Development Journey</title>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e0e0e0; overflow: hidden; }
+
+  /* ── Toolbar ── */
+  #toolbar {
+    background: #1a1b26; border-bottom: 1px solid #2a2b3d;
+    z-index: 20; position: relative;
+  }
+  #toolbar-top {
+    padding: 10px 20px 6px; display: flex; align-items: center; gap: 12px;
+  }
+  #toolbar h1 { font-size: 18px; color: #7aa2f7; white-space: nowrap; }
+  #toolbar .subtitle { font-size: 12px; color: #555; white-space: nowrap; }
+  #toolbar .stats { font-size: 11px; color: #555; white-space: nowrap; }
+  #search-box {
+    padding: 6px 12px; border-radius: 6px; border: 1px solid #3a3b4d; background: #0f1117;
+    color: #e0e0e0; font-size: 13px; width: 200px; outline: none; transition: border 0.2s;
+  }
+  #search-box:focus { border-color: #7aa2f7; }
+  #search-box::placeholder { color: #555; }
+
+  .toolbar-btn {
+    padding: 5px 12px; border-radius: 6px; border: 1px solid #3a3b4d; background: #1a1b26;
+    color: #888; font-size: 11px; cursor: pointer; transition: all 0.2s; white-space: nowrap;
+    text-decoration: none;
+  }
+  .toolbar-btn:hover { background: #2a2b3d; border-color: #7aa2f7; color: #fff; }
+  .toolbar-btn.active { background: #7aa2f7; color: #1a1b26; border-color: #7aa2f7; font-weight: 600; }
+
+  .separator { width: 1px; height: 20px; background: #2a2b3d; }
+  .toolbar-right { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+
+  /* ── Legend ── */
+  #toolbar-legend {
+    padding: 4px 20px 8px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; cursor: pointer; opacity: 0.7; transition: opacity 0.2s; color: #888; letter-spacing: 0.3px; }
+  .legend-item:hover { opacity: 1; }
+  .legend-item.dimmed { opacity: 0.2; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── Network ── */
+  #network { width: 100%; height: calc(100vh - 66px); }
+
+  /* ── Tooltip ── */
+  #tooltip {
+    position: absolute; background: #1a1b26; border: 1px solid #7aa2f7; border-radius: 10px;
+    padding: 14px 18px; font-size: 13px; max-width: 450px; pointer-events: none;
+    display: none; z-index: 30; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    backdrop-filter: blur(8px);
+  }
+  #tooltip h3 { color: #7aa2f7; margin-bottom: 4px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  #tooltip .date { color: #666; font-family: 'SF Mono', Menlo, monospace; font-size: 11px; margin-bottom: 6px; }
+  #tooltip .commit { color: #73daca; font-family: 'SF Mono', Menlo, monospace; font-size: 10px; margin-bottom: 8px; padding: 3px 8px; background: #0f1117; border-radius: 4px; display: inline-block; }
+  #tooltip .desc { color: #bbb; font-size: 12px; margin-bottom: 8px; line-height: 1.5; }
+  #tooltip ul { padding-left: 16px; margin: 4px 0; }
+  #tooltip li { margin: 3px 0; font-size: 12px; color: #bbb; }
+  #tooltip .section-label { color: #9ece6a; font-weight: 600; margin-top: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  #tooltip .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; margin-left: 6px; }
+  #tooltip .tag { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 9px; font-weight: 600; margin: 1px 2px; border: 1px solid; }
+
+  /* ── Side Panel ── */
+  #side-panel {
+    position: absolute; top: 66px; right: 0; width: 400px; height: calc(100vh - 66px);
+    background: #1a1b26; border-left: 1px solid #2a2b3d; z-index: 15;
+    transform: translateX(100%); transition: transform 0.3s ease; overflow-y: auto;
+    padding: 0;
+  }
+  #side-panel.open { transform: translateX(0); }
+  #side-panel .panel-header {
+    padding: 16px 20px; border-bottom: 1px solid #2a2b3d; display: flex;
+    align-items: center; justify-content: space-between; position: sticky; top: 0;
+    background: #1a1b26; z-index: 2;
+  }
+  #side-panel .panel-header h2 { font-size: 16px; color: #7aa2f7; display: flex; align-items: center; gap: 8px; }
+  #side-panel .close-btn { background: none; border: none; color: #666; font-size: 20px; cursor: pointer; }
+  #side-panel .close-btn:hover { color: #fff; }
+  .panel-section { padding: 16px 20px; border-bottom: 1px solid #1f2030; }
+  .panel-section h3 { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; }
+  .panel-section .info-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; }
+  .panel-section .info-label { color: #888; }
+  .panel-section .info-value { color: #e0e0e0; font-family: 'SF Mono', Menlo, monospace; font-size: 12px; }
+  .panel-section .desc-text { color: #bbb; font-size: 13px; line-height: 1.6; }
+  .panel-section ul { padding-left: 16px; margin: 6px 0; }
+  .panel-section li { margin: 4px 0; font-size: 13px; color: #bbb; }
+  .file-list { list-style: none; padding: 0; }
+  .file-list li { padding: 4px 0; font-family: 'SF Mono', Menlo, monospace; font-size: 11px; color: #73daca; }
+  .nav-list { list-style: none; padding: 0; }
+  .nav-list li {
+    padding: 8px 12px; border-radius: 6px; font-size: 13px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px; transition: background 0.15s;
+  }
+  .nav-list li:hover { background: #2a2b3d; }
+  .nav-list .nav-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .nav-list .nav-label { color: #ccc; }
+  .nav-list .nav-meta { color: #666; font-size: 11px; margin-left: auto; }
+  .tag-chip {
+    display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 8px;
+    font-size: 11px; margin: 3px 4px 3px 0; border: 1px solid; white-space: nowrap;
+  }
+  .tag-chip.cat-core { background: #1f2a3d; color: #7aa2f7; border-color: #2a3a5d; }
+  .tag-chip.cat-feature { background: #1a3530; color: #73daca; border-color: #2a4540; }
+  .tag-chip.cat-ai { background: #2a2040; color: #bb9af7; border-color: #443060; }
+  .tag-chip.cat-ux { background: #3d3020; color: #e0af68; border-color: #554530; }
+  .tag-chip.cat-fix { background: #3d1f28; color: #f7768e; border-color: #553040; }
+  .tag-chip.cat-infra { background: #1a2530; color: #7dcfff; border-color: #2a4050; }
+  .tag-chip.cat-growth { background: #243020; color: #9ece6a; border-color: #344530; }
+
+  /* ── Keyboard hints ── */
+  #kb-hints {
+    position: absolute; bottom: 16px; right: 16px; font-size: 11px; color: #444; z-index: 10;
+    display: flex; gap: 12px;
+  }
+  #kb-hints kbd {
+    background: #1a1b26; border: 1px solid #2a2b3d; padding: 2px 6px; border-radius: 3px;
+    font-family: 'SF Mono', Menlo, monospace; font-size: 10px; color: #666;
+  }
+</style>
+</head>
+<body>
+
+<!-- Toolbar -->
+<div id="toolbar">
+  <div id="toolbar-top">
+    <h1>Development Journey</h1>
+    <span class="subtitle">How Life Planner was built — feature by feature</span>
+    <span class="stats" id="stats-label"></span>
+    <div class="separator"></div>
+    <input id="search-box" type="text" placeholder="Search... (Ctrl+K)" autocomplete="off" />
+    <div class="toolbar-right">
+      <a class="toolbar-btn" href="navigation-map.html">Nav Map</a>
+      <div class="separator"></div>
+      <button class="toolbar-btn" id="btn-fit" title="Fit to screen (F)">Fit</button>
+      <button class="toolbar-btn" id="btn-physics" title="Toggle physics (P)">Physics: ON</button>
+      <button class="toolbar-btn" id="btn-layout" title="Switch layout (L)">Layout: Timeline</button>
+    </div>
+  </div>
+  <div id="toolbar-legend">
+    <div class="legend-item" data-group="core"><div class="legend-dot" style="background:#7aa2f7"></div>Core</div>
+    <div class="legend-item" data-group="feature"><div class="legend-dot" style="background:#73daca"></div>Feature</div>
+    <div class="legend-item" data-group="ai"><div class="legend-dot" style="background:#bb9af7"></div>AI / Coach</div>
+    <div class="legend-item" data-group="ux"><div class="legend-dot" style="background:#e0af68"></div>UX Polish</div>
+    <div class="legend-item" data-group="fix"><div class="legend-dot" style="background:#f7768e"></div>Bug Fix</div>
+    <div class="legend-item" data-group="infra"><div class="legend-dot" style="background:#7dcfff"></div>Infra / DevOps</div>
+    <div class="legend-item" data-group="growth"><div class="legend-dot" style="background:#9ece6a"></div>Growth / Onboarding</div>
+  </div>
+</div>
+
+<!-- Network canvas -->
+<div id="network"></div>
+
+<!-- Tooltip -->
+<div id="tooltip"></div>
+
+<!-- Side detail panel -->
+<div id="side-panel">
+  <div class="panel-header">
+    <h2><span id="panel-icon"></span> <span id="panel-title"></span></h2>
+    <button class="close-btn" id="panel-close">&times;</button>
+  </div>
+  <div id="panel-body"></div>
+</div>
+
+<!-- Keyboard hints -->
+<div id="kb-hints">
+  <span><kbd>Ctrl</kbd>+<kbd>K</kbd> Search</span>
+  <span><kbd>F</kbd> Fit</span>
+  <span><kbd>P</kbd> Physics</span>
+  <span><kbd>L</kbd> Layout</span>
+  <span><kbd>Esc</kbd> Reset</span>
+</div>
+
+<script>
+// ─── Development Milestones ───────────────────────────────────────
+// Each node is a real development milestone from git history
+const milestones = {
+  // ── Phase 1: Foundation (2025-03 to 2025-05) ──
+  initial_release: {
+    label: "Initial Release",
+    group: "core",
+    date: "2025-03-15",
+    commit: "ecaac77",
+    icon: "🚀",
+    phase: 1,
+    desc: "Open-source release of LifePlanner — Kotlin Multiplatform project with Android & iOS targets, basic goal tracking, and Compose Multiplatform UI.",
+    changes: ["KMP project structure", "Basic goal CRUD", "SQLDelight database", "Compose Multiplatform UI", "Koin dependency injection"],
+    files: ["App.kt", "GoalsScreen.kt", "SharedDatabase.kt", "appModule.kt"],
+    tags: ["KMP", "Compose", "SQLDelight"],
+  },
+
+  cicd_setup: {
+    label: "CI/CD Pipeline",
+    group: "infra",
+    date: "2025-03-16",
+    commit: "83f034f",
+    icon: "⚙️",
+    phase: 1,
+    desc: "Iterative CI/CD setup — 13 iterations of GitHub Actions and Firebase App Distribution to get automated builds working for both platforms.",
+    changes: ["GitHub Actions workflow (android.yml)", "Firebase App Distribution integration", "13 CI/CD iterations to stabilize", "Automated build + distribute"],
+    files: [".github/workflows/android.yml"],
+    tags: ["GitHub Actions", "Firebase", "CI/CD"],
+    realCase: "Took 13+ attempts to get Firebase distribution working reliably — learned to isolate Android/iOS build steps.",
+  },
+
+  notifications: {
+    label: "Notifications",
+    group: "feature",
+    date: "2025-05-14",
+    commit: "02c22ba",
+    icon: "🔔",
+    phase: 1,
+    desc: "Push notification system for goal reminders and habit nudges — first platform-specific feature using expect/actual pattern.",
+    changes: ["Notification scheduling", "Platform-specific implementations", "Expect/actual pattern for KMP"],
+    files: ["NotificationManager.kt"],
+    tags: ["Notifications", "expect/actual"],
+  },
+
+  // ── Phase 2: Feature Explosion (2025-12) ──
+  major_features: {
+    label: "Major Features Drop",
+    group: "feature",
+    date: "2025-12-17",
+    commit: "8859c7a",
+    icon: "💥",
+    phase: 2,
+    desc: "Massive feature addition in a single commit — Habit Tracker, Journal, Life Balance wheel, AI Chat with coaches, and complete navigation overhaul.",
+    changes: ["Habit Tracker with streaks", "Journal with entries", "Life Balance wheel", "AI Chat with coach system", "Bottom navigation redesign", "Analytics dashboard stub"],
+    files: ["HabitTrackerScreen.kt", "JournalScreen.kt", "LifeBalanceScreen.kt", "AIChatScreen.kt"],
+    tags: ["Habits", "Journal", "AI Chat", "Life Balance"],
+    realCase: "Built 5 major features at once to hit critical mass — risky but needed a 'complete app' feel for user testing.",
+  },
+
+  home_redesign: {
+    label: "Home Redesign",
+    group: "ux",
+    date: "2025-12-17",
+    commit: "907f29a",
+    icon: "🏠",
+    phase: 2,
+    desc: "Complete HomeScreen redesign — dashboard widgets for goals, habits, journal, focus timer, and quick actions. Made the app feel cohesive.",
+    changes: ["Dashboard widgets", "Quick action cards", "XP progress display", "Recent activity feed"],
+    files: ["HomeScreen.kt", "DashboardWidgets.kt"],
+    tags: ["Dashboard", "Widgets"],
+    realCase: "Users found the old home screen confusing — needed a clear hub that shows everything at a glance.",
+  },
+
+  padding_fixes: {
+    label: "Layout Fixes",
+    group: "fix",
+    date: "2025-12-17",
+    commit: "e9349eb",
+    icon: "📐",
+    phase: 2,
+    desc: "Fixed padding issues between screens and bottom navigation — content was being cut off or had double padding.",
+    changes: ["Fix innerPadding for bottom nav screens", "Fix extra padding between content and nav bar", "Collapsing toolbar scroll behavior"],
+    files: ["HomeScreen.kt", "GoalsScreen.kt", "HabitTrackerScreen.kt"],
+    tags: ["Layout", "Padding"],
+    realCase: "Classic Compose scaffold padding trap — innerPadding was applied twice on bottom nav screens.",
+  },
+
+  habit_ux: {
+    label: "Habit UX Polish",
+    group: "ux",
+    date: "2025-12-17",
+    commit: "4fe18df",
+    icon: "✅",
+    phase: 2,
+    desc: "Multiple habit UX improvements in one session — templates, bottom sheet creation, edit/uncheck, and duplicate check-in prevention.",
+    changes: ["Habit templates", "Bottom sheet creation flow", "Edit & uncheck functionality", "Fix duplicate check-in bug"],
+    files: ["HabitTrackerScreen.kt", "AddHabitScreen.kt"],
+    tags: ["Habits", "Templates", "Bottom Sheet"],
+    realCase: "Users accidentally checked in twice, causing 'more than one row' SQLDelight crash. Fixed with conflict resolution.",
+  },
+
+  journal_modal: {
+    label: "Journal Modals",
+    group: "ux",
+    date: "2025-12-17",
+    commit: "84c2fe3",
+    icon: "📓",
+    phase: 2,
+    desc: "Converted journal entry dialog to ModalBottomSheet — consistent with the habit creation flow and better UX on mobile.",
+    changes: ["Dialog → ModalBottomSheet", "NEW badge for today's goals"],
+    files: ["JournalScreen.kt"],
+    tags: ["Bottom Sheet", "Journal"],
+  },
+
+  goal_detail_ux: {
+    label: "Goal Detail UX",
+    group: "ux",
+    date: "2025-12-22",
+    commit: "18cd8f9",
+    icon: "🎯",
+    phase: 2,
+    desc: "Goal detail screen improvements and onboarding skip button — making the goal lifecycle clearer.",
+    changes: ["Improved goal detail layout", "Onboarding skip button", "Better milestone display"],
+    files: ["GoalDetailScreen.kt", "WelcomeScreen.kt"],
+    tags: ["Goals", "Onboarding"],
+    realCase: "Guest login flow had a bug — 'Continue as Guest' button didn't work on first click (fixed in 745daf4).",
+  },
+
+  // ── Phase 3: AI & Gamification (2026-02) ──
+  big_feature_wave: {
+    label: "Habits + AI Coaches + Gamification",
+    group: "ai",
+    date: "2026-02-26",
+    commit: "043050c",
+    icon: "🤖",
+    phase: 3,
+    desc: "Second major feature wave — journal wizard with AI, AI coach personas, dashboard widgets, gamification XP/badges, and backup/restore.",
+    changes: ["Journal creation wizard (AI-assisted)", "AI coach personas & chat", "Gamification: XP, badges, streaks", "Dashboard widgets", "Backup & restore to JSON"],
+    files: ["JournalCreationWizardScreen.kt", "AIChatScreen.kt", "AchievementsScreen.kt", "GamificationRepository.kt"],
+    tags: ["AI", "Gamification", "Journal Wizard", "Backup"],
+    realCase: "AI coaches were the breakthrough — giving each coach a personality prompt made AI feel personalized vs generic.",
+  },
+
+  critical_bug_fixes: {
+    label: "5 Critical Bug Fixes",
+    group: "fix",
+    date: "2026-02-27",
+    commit: "e1acfef",
+    icon: "🔥",
+    phase: 3,
+    desc: "Emergency bug fix session — widget XP bar overflow, milestone update race condition, habit check-in race condition, and crash data loss.",
+    changes: ["Widget XP bar overflow fix", "Milestone update race condition", "Habit check-in race condition", "Crash data loss prevention", "Error boundary improvements"],
+    files: ["DashboardWidgets.kt", "GoalDetailScreen.kt", "HabitViewModel.kt"],
+    tags: ["Race Condition", "Crash Fix", "XP"],
+    realCase: "XP bar widget was causing ANR — infinite recomposition loop when XP exceeded level threshold.",
+  },
+
+  offline_ai: {
+    label: "AI Offline Mode",
+    group: "ai",
+    date: "2026-02-27",
+    commit: "ed0b085",
+    icon: "📡",
+    phase: 3,
+    desc: "Offline-first AI features — graceful degradation when network is unavailable, cached responses, and connectivity-aware UI.",
+    changes: ["Connectivity awareness", "AI feature graceful degradation", "Cached AI responses", "Offline-friendly UI states"],
+    files: ["AiProxyServiceImpl.kt", "AIChatScreen.kt"],
+    tags: ["Offline", "AI", "Connectivity"],
+    realCase: "Users in areas with poor connectivity were seeing blank screens — needed fallback content and clear offline indicators.",
+  },
+
+  // ── Phase 4: Focus & Sync (2026-03) ──
+  focus_and_sync: {
+    label: "Focus Timer + Sync + Retrospectives",
+    group: "feature",
+    date: "2026-03-04",
+    commit: "692559c",
+    icon: "⏱️",
+    phase: 4,
+    desc: "Focus timer with animated backgrounds, ambient sounds, Supabase sync engine, retrospective journaling, AI proxy migration, and gamification overhaul.",
+    changes: ["Focus timer with Pomodoro + free flow", "Animated gradient backgrounds", "Ambient sound player (expect/actual)", "Supabase bidirectional sync", "Retrospective screen", "AI proxy via Edge Function", "Gamification overhaul: challenges, badges"],
+    files: ["FocusScreen.kt", "FocusViewModel.kt", "FocusAnimatedBackground.kt", "AmbientSoundPlayer.kt", "SyncManager.kt", "RetrospectiveScreen.kt"],
+    tags: ["Focus", "Sync", "Ambient", "Retrospective", "AI Proxy"],
+    realCase: "Focus timer demanded high polish — animated backgrounds and ambient sounds made it the most 'premium' feeling feature. Sync was the hardest — JSONB type mismatches in Supabase required multiple fix iterations.",
+  },
+
+  security_cleanup: {
+    label: "Security Hardening",
+    group: "infra",
+    date: "2026-03-04",
+    commit: "81c8fbe",
+    icon: "🔒",
+    phase: 4,
+    desc: "Security audit — removed Firebase config files from repo, added .gitignore rules, security policy, and sync error logging.",
+    changes: ["Remove Firebase config from repo", "Add to .gitignore", "Security policy (SECURITY.md)", "Sync JSONB type mismatch fixes", "Error logging improvements"],
+    files: [".gitignore", "SECURITY.md", "SyncManager.kt"],
+    tags: ["Security", "Secrets", "Logging"],
+    realCase: "Realized Firebase config files were committed to a public repo — immediate cleanup needed.",
+  },
+
+  focus_freeflow: {
+    label: "Focus Free Flow + Auth",
+    group: "feature",
+    date: "2026-03-05",
+    commit: "d454ab0",
+    icon: "🌊",
+    phase: 4,
+    desc: "Focus timer free flow mode (no time limit), auth improvements, chat UX enhancements, and iOS build fixes.",
+    changes: ["Free flow mode (infinite timer)", "Auth state management fixes", "Chat UI improvements", "iOS build compatibility", "App screenshots"],
+    files: ["FocusScreen.kt", "FocusViewModel.kt", "AuthViewModel.kt"],
+    tags: ["Focus", "Auth", "iOS"],
+    realCase: "Users wanted to focus without time pressure — free flow mode was the most requested feature after initial timer launch.",
+  },
+
+  // ── Phase 5: Onboarding & Polish (2026-03) ──
+  welcome_and_coaches: {
+    label: "Welcome + Coach Profiles + Notifications",
+    group: "growth",
+    date: "2026-03-14",
+    commit: "3938b2a",
+    icon: "👋",
+    phase: 5,
+    desc: "Welcome screen, push notification setup during onboarding, coach profile pages, video backgrounds, Supabase hardening, and test coverage.",
+    changes: ["Welcome screen with onboarding flow", "Onboarding reminder setup", "Coach profile pages", "Video backgrounds (Focus)", "Supabase RLS hardening", "Unit tests"],
+    files: ["WelcomeScreen.kt", "OnboardingReminderScreen.kt", "CoachProfileScreen.kt"],
+    tags: ["Onboarding", "Coaches", "Tests", "Supabase"],
+    realCase: "Retention was low without proper onboarding — welcome screen + reminder setup during onboarding improved first-week retention.",
+  },
+
+  navigation_map: {
+    label: "Navigation Map",
+    group: "infra",
+    date: "2026-03-20",
+    commit: "704dd83",
+    icon: "🗺️",
+    phase: 5,
+    desc: "Interactive navigation map (vis.js) — visualizes all 37 screens, their connections, shared services, and source file locations.",
+    changes: ["Interactive graph visualization", "37 screen nodes with metadata", "75+ navigation edges", "Service layer overlay", "Search, filter, export"],
+    files: ["docs/navigation-map.html"],
+    tags: ["Docs", "Visualization", "vis.js"],
+    realCase: "App grew to 37 screens — needed a visual map to keep track of navigation flows during development.",
+  },
+
+  bug_sweep: {
+    label: "13 Bug Sweep",
+    group: "fix",
+    date: "2026-03-20",
+    commit: "678ba33",
+    icon: "🧹",
+    phase: 5,
+    desc: "Systematic sweep fixing 13 critical and medium-priority issues across auth, sync, database, and security.",
+    changes: ["Auth state edge cases", "Sync conflict resolution", "DB migration safety", "Security vulnerability patches", "13 issues resolved in one session"],
+    files: ["AuthViewModel.kt", "SyncManager.kt", "SharedDatabase.kt"],
+    tags: ["Auth", "Sync", "DB", "Security"],
+    realCase: "Used Claude to audit the entire codebase — surfaced 13 issues ranging from SQL injection risk to race conditions in sync.",
+  },
+
+  guest_and_ai_locks: {
+    label: "Guest Linking + AI Provider Locks",
+    group: "growth",
+    date: "2026-03-20",
+    commit: "19c8e17",
+    icon: "🔗",
+    phase: 5,
+    desc: "Guest account linking to permanent accounts, UX improvements, and AI provider selection with subscription level locks.",
+    changes: ["Guest → permanent account linking", "AI provider level locks (free/premium)", "UX improvements across screens"],
+    files: ["AuthViewModel.kt", "ProfileScreen.kt"],
+    tags: ["Auth", "AI Providers", "Monetization"],
+    realCase: "Guest users who built data were losing it — account linking preserved their goals, habits, and journal entries.",
+  },
+
+  // ── Phase 6: Current Work (2026-03) ──
+  beginner_objectives: {
+    label: "Beginner Objectives",
+    group: "growth",
+    date: "2026-03-21",
+    commit: "WIP",
+    icon: "🎓",
+    phase: 6,
+    desc: "Guided beginner objectives system — step-by-step onboarding tasks that teach users the app features and reward XP.",
+    changes: ["BeginnerObjective model & repository", "Objectives UI screen", "Syncer for objectives", "XP rewards for completion", "DB migration 13 & 14"],
+    files: ["BeginnerObjective.kt", "BeginnerObjectiveRepository.kt", "BeginnerObjectiveRepositoryImpl.kt"],
+    tags: ["Onboarding", "Gamification", "Objectives"],
+    realCase: "Users didn't know what to do after onboarding — guided objectives bridge the gap between 'signed up' and 'engaged'.",
+  },
+
+  analytics_engine: {
+    label: "Analytics Engine",
+    group: "feature",
+    date: "2026-03-21",
+    commit: "WIP",
+    icon: "📊",
+    phase: 6,
+    desc: "Product analytics via PostHog and Facebook — event tracking, feature flags, user properties, install attribution, and screen tracking.",
+    changes: ["PostHog analytics (expect/actual)", "Facebook analytics (expect/actual)", "Event tracking infrastructure", "Feature flags support", "User properties & attribution"],
+    files: ["data/analytics/PostHogAnalytics.kt", "data/analytics/FacebookAnalytics.kt"],
+    tags: ["Analytics", "PostHog", "Facebook", "Tracking"],
+    realCase: "Flying blind on what features users actually use — PostHog for product analytics, Facebook for install attribution.",
+  },
+
+  coach_posts: {
+    label: "Coach Posts",
+    group: "ai",
+    date: "2026-03-21",
+    commit: "WIP",
+    icon: "📝",
+    phase: 6,
+    desc: "Coach-authored content system — posts and articles displayed on coach profile pages to deepen coach personas.",
+    changes: ["CoachPost domain model", "CoachPostRepository interface & impl", "Coach profile content section"],
+    files: ["CoachPost.kt", "CoachPostRepository.kt", "CoachPostRepositoryImpl.kt"],
+    tags: ["Coaches", "Content", "AI"],
+    realCase: "Coach profiles felt empty — adding posts/articles makes each coach feel like a real thought leader.",
+  },
+
+  keep_screen_on: {
+    label: "Keep Screen On",
+    group: "ux",
+    date: "2026-03-21",
+    commit: "WIP",
+    icon: "💡",
+    phase: 6,
+    desc: "Prevents screen from sleeping during focus timer sessions — expect/actual pattern for Android (FLAG_KEEP_SCREEN_ON) and iOS.",
+    changes: ["KeepScreenOn composable (common)", "Android implementation (FLAG_KEEP_SCREEN_ON)", "iOS implementation"],
+    files: ["ui/components/KeepScreenOn.kt", "ui/components/KeepScreenOn.android.kt", "ui/components/KeepScreenOn.ios.kt"],
+    tags: ["Focus", "UX", "expect/actual"],
+    realCase: "Users reported screen going dark during focus sessions — keeping screen on is essential for timer visibility.",
+  },
+
+  ambient_sounds_expansion: {
+    label: "Ambient Sounds Expansion",
+    group: "feature",
+    date: "2026-03-21",
+    commit: "WIP",
+    icon: "🎵",
+    phase: 6,
+    desc: "Expanded ambient sound library — added birds, cafe, fireplace, night, and ocean sounds for the focus timer.",
+    changes: ["5 new ambient sounds", "Birds, cafe, fireplace, night, ocean", "iOS sound files", "AmbientSound enum expansion"],
+    files: ["AmbientSound.kt", "AmbientSoundPlayer.android.kt", "AmbientSoundPlayer.ios.kt"],
+    tags: ["Focus", "Ambient", "Audio"],
+    realCase: "Rain and white noise weren't enough — users wanted variety. Nature and cafe sounds are the most popular in competitor apps.",
+  },
+};
+
+// ─── Edge definitions (dependency / evolution arrows) ──────────────
+const edgeList = [
+  // Phase 1 → Phase 2
+  ["initial_release", "cicd_setup", "automate builds"],
+  ["initial_release", "notifications", "add notifications"],
+  ["initial_release", "major_features", "feature explosion"],
+
+  // Phase 2 internal
+  ["major_features", "home_redesign", "needs dashboard"],
+  ["major_features", "padding_fixes", "layout bugs from"],
+  ["major_features", "habit_ux", "polish habits"],
+  ["major_features", "journal_modal", "polish journal"],
+  ["major_features", "goal_detail_ux", "improve goals"],
+
+  // Phase 2 → Phase 3
+  ["major_features", "big_feature_wave", "add AI + gamification"],
+  ["habit_ux", "big_feature_wave", "habit patterns inform"],
+
+  // Phase 3 internal
+  ["big_feature_wave", "critical_bug_fixes", "bugs from features"],
+  ["big_feature_wave", "offline_ai", "AI needs offline"],
+
+  // Phase 3 → Phase 4
+  ["big_feature_wave", "focus_and_sync", "next features"],
+  ["offline_ai", "focus_and_sync", "AI proxy rewrite"],
+
+  // Phase 4 internal
+  ["focus_and_sync", "security_cleanup", "security audit"],
+  ["focus_and_sync", "focus_freeflow", "extend timer"],
+
+  // Phase 4 → Phase 5
+  ["focus_and_sync", "welcome_and_coaches", "onboarding needed"],
+  ["focus_freeflow", "welcome_and_coaches", "coach profiles"],
+  ["security_cleanup", "bug_sweep", "continued hardening"],
+
+  // Phase 5 internal
+  ["welcome_and_coaches", "navigation_map", "map complexity"],
+  ["welcome_and_coaches", "bug_sweep", "fix before ship"],
+  ["bug_sweep", "guest_and_ai_locks", "polish + monetize"],
+
+  // Phase 5 → Phase 6 (current)
+  ["welcome_and_coaches", "beginner_objectives", "retention gap"],
+  ["guest_and_ai_locks", "beginner_objectives", "onboard linked users"],
+  ["focus_and_sync", "ambient_sounds_expansion", "expand sounds"],
+  ["focus_and_sync", "analytics_engine", "need metrics"],
+  ["critical_bug_fixes", "analytics_engine", "understand issues"],
+  ["welcome_and_coaches", "coach_posts", "enrich coach profiles"],
+  ["big_feature_wave", "coach_posts", "coach content"],
+  ["focus_and_sync", "keep_screen_on", "screen sleep fix"],
+  ["focus_freeflow", "keep_screen_on", "timer UX"],
+];
+
+// ─── Phase metadata ──────────────────────────────────────────────
+const phases = {
+  1: { label: "Foundation", period: "Mar–May 2025", color: "#7aa2f7" },
+  2: { label: "Feature Explosion", period: "Dec 2025", color: "#73daca" },
+  3: { label: "AI & Gamification", period: "Feb 2026", color: "#bb9af7" },
+  4: { label: "Focus & Sync", period: "Mar 4–5 2026", color: "#e0af68" },
+  5: { label: "Onboarding & Polish", period: "Mar 14–20 2026", color: "#9ece6a" },
+  6: { label: "Current Work", period: "Mar 21 2026", color: "#f7768e" },
+};
+
+const groupColors = {
+  core:    { bg: "#7aa2f7", border: "#7aa2f7", font: "#1a1b26" },
+  feature: { bg: "#73daca", border: "#73daca", font: "#1a1b26" },
+  ai:      { bg: "#bb9af7", border: "#bb9af7", font: "#1a1b26" },
+  ux:      { bg: "#e0af68", border: "#e0af68", font: "#1a1b26" },
+  fix:     { bg: "#f7768e", border: "#f7768e", font: "#1a1b26" },
+  infra:   { bg: "#7dcfff", border: "#7dcfff", font: "#1a1b26" },
+  growth:  { bg: "#9ece6a", border: "#9ece6a", font: "#1a1b26" },
+};
+
+// ─── Build vis.js nodes ──────────────────────────────────────────
+// Timeline layout: X = time, Y = category
+const phaseX = { 1: -600, 2: -300, 3: 0, 4: 300, 5: 600, 6: 900 };
+const groupY = { core: -200, infra: -100, feature: 0, ux: 100, ai: -100, fix: 200, growth: 100 };
+const phaseCounters = {};
+
+let useTimeline = true;
+
+function getTimelinePos(id) {
+  const m = milestones[id];
+  const key = `${m.phase}_${m.group}`;
+  phaseCounters[key] = (phaseCounters[key] || 0) + 1;
+  const count = phaseCounters[key];
+  const baseX = phaseX[m.phase] || 0;
+  const baseY = groupY[m.group] || 0;
+  return { x: baseX + (count - 1) * 80, y: baseY + (count % 2 === 0 ? 40 : -40) };
+}
+
+function buildNodes() {
+  Object.keys(phaseCounters).forEach(k => delete phaseCounters[k]);
+  return Object.entries(milestones).map(([id, m]) => {
+    const gc = groupColors[m.group];
+    const isWIP = m.commit === "WIP";
+    const pos = useTimeline ? getTimelinePos(id) : {};
+    return {
+      id,
+      label: `${m.icon} ${m.label}`,
+      group: m.group,
+      color: {
+        background: isWIP ? gc.bg + "40" : gc.bg,
+        border: gc.bg,
+        highlight: { background: "#fff", border: gc.bg },
+        hover: { background: "#fff", border: gc.bg },
+      },
+      font: { color: isWIP ? gc.bg : gc.font, size: 12, face: "-apple-system, system-ui, sans-serif", bold: true },
+      shape: isWIP ? "diamond" : "box",
+      size: 16,
+      borderWidth: isWIP ? 2 : 2,
+      borderDashes: isWIP ? [5, 3] : false,
+      shadow: { enabled: true, color: gc.bg + "30", size: 8 },
+      ...(useTimeline ? { x: pos.x, y: pos.y } : {}),
+    };
+  });
+}
+
+const nodes = new vis.DataSet(buildNodes());
+
+const edges = new vis.DataSet(
+  edgeList.map(([from, to, label], i) => ({
+    id: `e_${i}`, from, to,
+    font: { size: 0 },
+    arrows: { to: { enabled: true, scaleFactor: 0.5, type: "arrow" } },
+    color: { color: "#252636", highlight: "#7aa2f7", hover: "#7aa2f7", opacity: 0.5 },
+    smooth: { type: "dynamic", roundness: 0.2 },
+    width: 1.2, hoverWidth: 0.5, selectionWidth: 2,
+  }))
+);
+
+// Update stats
+function updateStats() {
+  const nodeCount = Object.keys(milestones).length;
+  const edgeCount = edgeList.length;
+  document.getElementById("stats-label").innerHTML = `${nodeCount} milestones &middot; ${edgeCount} connections &middot; 6 phases`;
+}
+updateStats();
+
+// ─── Tooltip data ────────────────────────────────────────────────
+const tooltipData = {};
+Object.keys(milestones).forEach(id => {
+  tooltipData[id] = {
+    outgoing: edgeList.filter(e => e[0] === id).map(e => ({ to: e[1], label: e[2] })),
+    incoming: edgeList.filter(e => e[1] === id).map(e => ({ from: e[0], label: e[2] })),
+  };
+});
+
+// ─── Network ────────────────────────────────────────────────────
+const container = document.getElementById("network");
+let physicsEnabled = true;
+
+const network = new vis.Network(container, { nodes, edges }, {
+  physics: {
+    enabled: true,
+    solver: "forceAtlas2Based",
+    forceAtlas2Based: { gravitationalConstant: -100, centralGravity: 0.004, springLength: 180, springConstant: 0.025, damping: 0.5 },
+    stabilization: { iterations: 500, fit: true },
+  },
+  interaction: { hover: true, tooltipDelay: 100, zoomView: true, dragView: true, multiselect: true, navigationButtons: false },
+  layout: { improvedLayout: true },
+  edges: { selectionWidth: 2 },
+});
+
+// ─── Tooltip ────────────────────────────────────────────────────
+const tooltip = document.getElementById("tooltip");
+
+network.on("hoverNode", (params) => {
+  const id = params.node;
+  const m = milestones[id];
+  const t = tooltipData[id];
+  if (!m) return;
+
+  const gc = groupColors[m.group];
+  const ph = phases[m.phase];
+  let html = `<h3><span>${m.icon}</span> ${m.label}
+    <span class="badge" style="background:${gc.bg};color:${gc.font}">${m.group}</span>
+    <span class="badge" style="background:${ph.color}30;color:${ph.color};border:1px solid ${ph.color}">${ph.label}</span>
+  </h3>`;
+
+  html += `<div class="date">📅 ${m.date} &middot; <span style="color:#73daca">${m.commit}</span></div>`;
+  html += `<div class="desc">${m.desc}</div>`;
+
+  if (m.tags && m.tags.length) {
+    m.tags.forEach(tag => {
+      html += `<span class="tag" style="background:${gc.bg}20;color:${gc.bg};border-color:${gc.bg}50">${tag}</span> `;
+    });
+  }
+
+  if (m.realCase) {
+    html += `<div class="section-label" style="margin-top:10px">💡 Real Case</div>`;
+    html += `<div style="color:#e0af68;font-size:12px;font-style:italic;margin-top:4px">"${m.realCase}"</div>`;
+  }
+
+  if (t.outgoing.length) {
+    html += `<div class="section-label">Led to (${t.outgoing.length})</div><ul>`;
+    t.outgoing.forEach(e => {
+      const target = milestones[e.to];
+      html += `<li>${target?.icon || ""} ${target?.label || e.to} <span style="color:#555">— ${e.label}</span></li>`;
+    });
+    html += `</ul>`;
+  }
+
+  tooltip.innerHTML = html;
+  tooltip.style.display = "block";
+});
+
+network.on("blurNode", () => { tooltip.style.display = "none"; });
+container.addEventListener("mousemove", (e) => {
+  if (tooltip.style.display !== "block") return;
+  const x = Math.min(e.pageX + 16, window.innerWidth - 470);
+  const y = Math.min(e.pageY + 16, window.innerHeight - 350);
+  tooltip.style.left = x + "px";
+  tooltip.style.top = y + "px";
+});
+
+// ─── Click → Side Panel ─────────────────────────────────────────
+const sidePanel = document.getElementById("side-panel");
+const panelBody = document.getElementById("panel-body");
+const panelTitle = document.getElementById("panel-title");
+const panelIcon = document.getElementById("panel-icon");
+document.getElementById("panel-close").onclick = () => sidePanel.classList.remove("open");
+
+network.on("doubleClick", (params) => {
+  if (!params.nodes.length) return;
+  openPanel(params.nodes[0]);
+});
+
+function openPanel(id) {
+  const m = milestones[id];
+  const t = tooltipData[id];
+  if (!m) return;
+
+  const gc = groupColors[m.group];
+  const ph = phases[m.phase];
+  panelIcon.textContent = m.icon;
+  panelTitle.textContent = m.label;
+
+  let html = `
+    <div class="panel-section">
+      <h3>Details</h3>
+      <div class="info-row"><span class="info-label">Date</span><span class="info-value">${m.date}</span></div>
+      <div class="info-row"><span class="info-label">Commit</span><span class="info-value" style="color:#73daca">${m.commit}</span></div>
+      <div class="info-row"><span class="info-label">Phase</span><span class="info-value" style="color:${ph.color}">${ph.label} (${ph.period})</span></div>
+      <div class="info-row"><span class="info-label">Category</span><span class="info-value" style="color:${gc.bg}">${m.group}</span></div>
+      <div class="info-row"><span class="info-label">Leads to</span><span class="info-value">${t.outgoing.length}</span></div>
+      <div class="info-row"><span class="info-label">Built on</span><span class="info-value">${t.incoming.length}</span></div>
+    </div>`;
+
+  html += `
+    <div class="panel-section">
+      <h3>Description</h3>
+      <div class="desc-text">${m.desc}</div>
+    </div>`;
+
+  if (m.realCase) {
+    html += `
+    <div class="panel-section">
+      <h3>💡 Real Case / Lesson</h3>
+      <div class="desc-text" style="color:#e0af68;font-style:italic">"${m.realCase}"</div>
+    </div>`;
+  }
+
+  if (m.changes && m.changes.length) {
+    html += `<div class="panel-section"><h3>Changes</h3><ul>`;
+    m.changes.forEach(c => { html += `<li>${c}</li>`; });
+    html += `</ul></div>`;
+  }
+
+  if (m.tags && m.tags.length) {
+    html += `<div class="panel-section"><h3>Tags</h3><div style="display:flex;flex-wrap:wrap;gap:4px">`;
+    const catClass = `cat-${m.group}`;
+    m.tags.forEach(tag => {
+      html += `<span class="tag-chip ${catClass}">${tag}</span>`;
+    });
+    html += `</div></div>`;
+  }
+
+  if (m.files && m.files.length) {
+    html += `<div class="panel-section"><h3>Key Files</h3><ul class="file-list">`;
+    m.files.forEach(f => { html += `<li>📄 ${f}</li>`; });
+    html += `</ul></div>`;
+  }
+
+  if (t.outgoing.length) {
+    html += `<div class="panel-section"><h3>Led To</h3><ul class="nav-list">`;
+    t.outgoing.forEach(e => {
+      const target = milestones[e.to];
+      const tgc = groupColors[target?.group];
+      html += `<li onclick="focusNode('${e.to}')">
+        <span class="nav-dot" style="background:${tgc?.bg || '#555'}"></span>
+        <span class="nav-label">${target?.icon || ""} ${target?.label || e.to}</span>
+        <span class="nav-meta">${e.label}</span>
+      </li>`;
+    });
+    html += `</ul></div>`;
+  }
+
+  if (t.incoming.length) {
+    html += `<div class="panel-section"><h3>Built On</h3><ul class="nav-list">`;
+    t.incoming.forEach(e => {
+      const source = milestones[e.from];
+      const sgc = groupColors[source?.group];
+      html += `<li onclick="focusNode('${e.from}')">
+        <span class="nav-dot" style="background:${sgc?.bg || '#555'}"></span>
+        <span class="nav-label">${source?.icon || ""} ${source?.label || e.from}</span>
+        <span class="nav-meta">${e.label}</span>
+      </li>`;
+    });
+    html += `</ul></div>`;
+  }
+
+  panelBody.innerHTML = html;
+  sidePanel.classList.add("open");
+}
+
+function focusNode(id) {
+  network.focus(id, { scale: 1.5, animation: { duration: 400, easingFunction: "easeInOutCubic" } });
+  network.selectNodes([id]);
+  highlightConnected(id);
+  openPanel(id);
+}
+
+// ─── Highlight connected ────────────────────────────────────────
+function highlightConnected(selected) {
+  const connectedEdges = network.getConnectedEdges(selected);
+  const connectedNodes = new Set(network.getConnectedNodes(selected));
+  connectedNodes.add(selected);
+
+  nodes.forEach(n => nodes.update({ id: n.id, opacity: connectedNodes.has(n.id) ? 1 : 0.08 }));
+  edges.forEach(e => {
+    const isC = connectedEdges.includes(e.id);
+    edges.update({ id: e.id, color: { color: isC ? "#7aa2f7" : "#252636", opacity: isC ? 1 : 0.03 }, width: isC ? 2.5 : 0.5 });
+  });
+}
+
+function resetHighlight() {
+  nodes.forEach(n => nodes.update({ id: n.id, opacity: 1 }));
+  edges.forEach(e => {
+    edges.update({ id: e.id, color: { color: "#252636", opacity: 0.5 }, width: 1.2 });
+  });
+}
+
+network.on("click", (params) => {
+  if (params.nodes.length === 0) { resetHighlight(); return; }
+  highlightConnected(params.nodes[0]);
+});
+
+// ─── Search ─────────────────────────────────────────────────────
+const searchBox = document.getElementById("search-box");
+let searchResults = [];
+let searchIndex = -1;
+
+searchBox.addEventListener("input", () => {
+  const q = searchBox.value.toLowerCase().trim();
+  if (!q) { resetHighlight(); searchResults = []; searchIndex = -1; return; }
+
+  searchResults = Object.entries(milestones)
+    .filter(([id, m]) =>
+      m.label.toLowerCase().includes(q) ||
+      m.group.toLowerCase().includes(q) ||
+      m.desc.toLowerCase().includes(q) ||
+      (m.tags || []).some(t => t.toLowerCase().includes(q)) ||
+      (m.realCase || "").toLowerCase().includes(q)
+    )
+    .map(([id]) => id);
+
+  if (searchResults.length === 0) { resetHighlight(); return; }
+
+  const matchSet = new Set(searchResults);
+  nodes.forEach(n => nodes.update({ id: n.id, opacity: matchSet.has(n.id) ? 1 : 0.1 }));
+  edges.forEach(e => {
+    const isMatch = matchSet.has(e.from) && matchSet.has(e.to);
+    edges.update({ id: e.id, color: { color: isMatch ? "#7aa2f7" : "#2a2b3d", opacity: isMatch ? 0.8 : 0.03 }, width: isMatch ? 2.5 : 1 });
+  });
+
+  if (searchResults.length) {
+    searchIndex = 0;
+    network.focus(searchResults[0], { scale: 1.2, animation: { duration: 300, easingFunction: "easeInOutCubic" } });
+    network.selectNodes([searchResults[0]]);
+  }
+});
+
+searchBox.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && searchResults.length > 1) {
+    searchIndex = (searchIndex + 1) % searchResults.length;
+    const id = searchResults[searchIndex];
+    network.focus(id, { scale: 1.2, animation: { duration: 300, easingFunction: "easeInOutCubic" } });
+    network.selectNodes([id]);
+  }
+  if (e.key === "Escape") { searchBox.value = ""; searchBox.blur(); resetHighlight(); }
+});
+
+// ─── Legend filtering ───────────────────────────────────────────
+const hiddenGroups = new Set();
+document.querySelectorAll(".legend-item").forEach(el => {
+  el.addEventListener("click", () => {
+    const g = el.dataset.group;
+    if (hiddenGroups.has(g)) { hiddenGroups.delete(g); el.classList.remove("dimmed"); }
+    else { hiddenGroups.add(g); el.classList.add("dimmed"); }
+
+    nodes.forEach(n => {
+      const m = milestones[n.id];
+      if (m) nodes.update({ id: n.id, hidden: hiddenGroups.has(m.group) });
+    });
+  });
+});
+
+// ─── Layout toggle ──────────────────────────────────────────────
+document.getElementById("btn-layout").onclick = () => {
+  useTimeline = !useTimeline;
+  const btn = document.getElementById("btn-layout");
+  btn.textContent = `Layout: ${useTimeline ? "Timeline" : "Free"}`;
+
+  if (useTimeline) {
+    Object.keys(phaseCounters).forEach(k => delete phaseCounters[k]);
+    Object.entries(milestones).forEach(([id, m]) => {
+      const pos = getTimelinePos(id);
+      nodes.update({ id, x: pos.x, y: pos.y });
+    });
+    network.setOptions({ physics: { enabled: true } });
+    physicsEnabled = true;
+    document.getElementById("btn-physics").textContent = "Physics: ON";
+  } else {
+    network.setOptions({ physics: { enabled: true } });
+    physicsEnabled = true;
+    document.getElementById("btn-physics").textContent = "Physics: ON";
+  }
+  network.fit({ animation: { duration: 400, easingFunction: "easeInOutCubic" } });
+};
+
+// ─── Toolbar buttons ────────────────────────────────────────────
+document.getElementById("btn-fit").onclick = () => network.fit({ animation: { duration: 400, easingFunction: "easeInOutCubic" } });
+
+document.getElementById("btn-physics").onclick = () => {
+  physicsEnabled = !physicsEnabled;
+  network.setOptions({ physics: { enabled: physicsEnabled } });
+  const btn = document.getElementById("btn-physics");
+  btn.textContent = `Physics: ${physicsEnabled ? "ON" : "OFF"}`;
+  btn.classList.toggle("active", physicsEnabled);
+};
+
+// ─── Keyboard shortcuts ─────────────────────────────────────────
+document.addEventListener("keydown", (e) => {
+  if (document.activeElement === searchBox) return;
+
+  if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+    e.preventDefault();
+    searchBox.focus();
+    searchBox.select();
+  }
+  if (e.key === "f" || e.key === "F") network.fit({ animation: { duration: 400, easingFunction: "easeInOutCubic" } });
+  if (e.key === "p" || e.key === "P") document.getElementById("btn-physics").click();
+  if (e.key === "l" || e.key === "L") document.getElementById("btn-layout").click();
+  if (e.key === "Escape") {
+    resetHighlight();
+    sidePanel.classList.remove("open");
+    searchBox.value = "";
+  }
+});
+
+// ─── Stabilization done → reduce physics ─────────────────────────
+network.on("stabilizationIterationsDone", () => {
+  network.setOptions({
+    physics: {
+      forceAtlas2Based: { gravitationalConstant: -40, centralGravity: 0.003, springConstant: 0.015 },
+    }
+  });
+});
+</script>
+</body>
+</html>

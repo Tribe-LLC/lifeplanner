@@ -18,6 +18,7 @@ import org.koin.core.component.inject
 import dev.gitlive.firebase.initialize
 import dev.gitlive.firebase.perf.android
 import dev.gitlive.firebase.perf.performance
+import az.tribe.lifeplanner.data.analytics.PostHogAnalytics
 import org.koin.android.ext.koin.androidContext
 
 class MainApplication : Application(), KoinComponent {
@@ -39,6 +40,15 @@ class MainApplication : Application(), KoinComponent {
 
         Firebase.initialize(appContext)
         Firebase.performance.android.isPerformanceCollectionEnabled = true
+
+        // PostHog product analytics
+        Logger.i("PostHog") { "API key present: ${BuildKonfig.POSTHOG_API_KEY.isNotBlank()}, host: ${BuildKonfig.POSTHOG_HOST}" }
+        if (BuildKonfig.POSTHOG_API_KEY.isNotBlank()) {
+            PostHogAnalytics.setup(BuildKonfig.POSTHOG_API_KEY, BuildKonfig.POSTHOG_HOST)
+            Logger.i("PostHog") { "PostHog initialized with session replay" }
+        } else {
+            Logger.w("PostHog") { "PostHog API key is empty — skipping init" }
+        }
 
         initKoin {
             androidContext(this@MainApplication)

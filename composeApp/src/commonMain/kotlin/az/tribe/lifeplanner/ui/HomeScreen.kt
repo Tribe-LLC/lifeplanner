@@ -69,7 +69,10 @@ import az.tribe.lifeplanner.ui.components.CompactGoalTile
 import az.tribe.lifeplanner.ui.components.NextAction
 import az.tribe.lifeplanner.ui.components.NextActionCard
 import az.tribe.lifeplanner.ui.components.GlassCard
+import az.tribe.lifeplanner.ui.components.NewBadgesCard
 import az.tribe.lifeplanner.ui.components.QuickActionsPillRow
+import az.tribe.lifeplanner.ui.components.UpdateReminderBanner
+import az.tribe.lifeplanner.ui.components.VerifyEmailBanner
 import az.tribe.lifeplanner.ui.components.SyncStatusIndicator
 import az.tribe.lifeplanner.data.sync.SyncManager
 import az.tribe.lifeplanner.data.sync.SyncStatus
@@ -98,6 +101,7 @@ fun HomeScreen(
     onAddGoalClick: () -> Unit,
     goToAiGeneration: () -> Unit,
     onNavigateToHabits: () -> Unit = {},
+    onNavigateToAddHabit: () -> Unit = {},
     onNavigateToJournal: () -> Unit = {},
     onNavigateToGoals: () -> Unit = {},
     onNavigateToAchievements: () -> Unit = {},
@@ -110,6 +114,8 @@ fun HomeScreen(
     onNavigateToTemplates: () -> Unit = {},
     onContinueChat: (sessionId: String) -> Unit = {},
     onStartFocusForMilestone: (goalId: String, milestoneId: String) -> Unit = { _, _ -> },
+    showUpdateReminder: Boolean = false,
+    onUpdateClick: () -> Unit = {},
 ) {
     val snackBarHostState = remember { SnackbarHostState() }
     var showAccountSheet by remember { mutableStateOf(false) }
@@ -124,6 +130,7 @@ fun HomeScreen(
 
     val authState by authViewModel.authState.collectAsState()
     val userProgress by gamificationViewModel.userProgress.collectAsState()
+    val newBadges by gamificationViewModel.newBadges.collectAsState()
     val goals by viewModel.goals.collectAsState()
     val habits by habitViewModel.habits.collectAsState()
 
@@ -184,6 +191,7 @@ fun HomeScreen(
     val beginnerObjectives by objectiveViewModel.objectives.collectAsState()
     val objectivesExpanded by objectiveViewModel.isExpanded.collectAsState()
     val objectivesDismissed by objectiveViewModel.isDismissed.collectAsState()
+    val pendingVerifyEmail by authViewModel.pendingVerificationEmail.collectAsState()
 
     val habitsCompleted = habits.count { it.isCompletedToday }
     val totalHabits = habits.size
@@ -204,7 +212,7 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(authState) {
         viewModel.loadAllGoals()
         viewModel.loadAnalytics()
         habitViewModel.loadHabits()
@@ -273,11 +281,16 @@ fun HomeScreen(
                     level = level,
                     streak = streak,
                     levelTitle = userProgress?.title ?: "Novice",
-                    syncStatus = syncManager.syncStatus,
-                    onRetrySync = { scope.launch { syncManager.performFullSync(resetRetry = true) } },
                     isSignedIn = authState is AuthState.Authenticated && currentUser?.email != null,
                     onProfileClick = onNavigateToProfile
                 )
+            }
+
+            // Update reminder banner (shown after user skips soft update)
+            if (showUpdateReminder) {
+                item(key = "update_reminder") {
+                    UpdateReminderBanner(onUpdateClick = onUpdateClick)
+                }
             }
 
             // 2. Smart Actions — contextual based on user state
@@ -285,7 +298,8 @@ fun HomeScreen(
                 QuickActionsPillRow(
                     onAddGoal = { showAddGoalSheet = true },
                     onAiSuggest = goToAiGeneration,
-                    onNewHabit = onNavigateToHabits,
+                    onNewHabit = onNavigateToAddHabit,
+                    onHabitCheckIn = onNavigateToHabits,
                     onJournal = onNavigateToJournal,
                     onFocus = onNavigateToFocus,
                     onCoach = onNavigateToChat,
@@ -299,47 +313,54 @@ fun HomeScreen(
             }
 
 
-            // 3. Beginner Objectives — getting started checklist
+            // 3. Beginner Objectives — getting started checklist (hidden permanently once all done)
             if (!objectivesDismissed && beginnerObjectives.isNotEmpty()) {
-                val allCompleted = beginnerObjectives.all { it.isCompleted }
-                // Show always if not all done, or show collapsed if all done
-                if (!allCompleted || objectivesExpanded) {
-                    item(key = "beginner_objectives") {
-                        BeginnerObjectivesCard(
-                            objectives = beginnerObjectives,
-                            isExpanded = objectivesExpanded,
-                            onToggleExpanded = { objectiveViewModel.toggleExpanded() },
-                            onObjectiveClick = { type ->
-                                when (type) {
-                                    ObjectiveType.CREATE_GOAL -> onAddGoalClick()
-                                    ObjectiveType.CREATE_HABIT -> onNavigateToHabits()
-                                    ObjectiveType.WRITE_JOURNAL -> onNavigateToJournal()
-                                    ObjectiveType.COMPLETE_HABIT_CHECKIN -> onNavigateToHabits()
-                                    ObjectiveType.START_FOCUS_SESSION -> onNavigateToFocus()
-                                    ObjectiveType.CHAT_WITH_COACH -> onNavigateToChat()
-                                    ObjectiveType.SET_REMINDER -> onNavigateToReminders()
-                                    ObjectiveType.CHECK_LIFE_BALANCE -> onNavigateToLifeBalance()
-                                    ObjectiveType.COMPLETE_GOAL -> onNavigateToGoals()
-                                    ObjectiveType.SECURE_ACCOUNT -> { showAccountSheet = true }
-                                }
+                item(key = "beginner_objectives") {
+                    BeginnerObjectivesCard(
+                        objectives = beginnerObjectives,
+                        isExpanded = objectivesExpanded,
+                        allComplete = beginnerObjectives.isNotEmpty() && beginnerObjectives.all { it.isCompleted },
+                        onToggleExpanded = { objectiveViewModel.toggleExpanded() },
+                        onDismiss = { objectiveViewModel.dismiss() },
+                        onObjectiveClick = { type ->
+                            when (type) {
+                                ObjectiveType.CREATE_GOAL -> onAddGoalClick()
+                                ObjectiveType.CREATE_HABIT -> onNavigateToAddHabit()
+                                ObjectiveType.WRITE_JOURNAL -> onNavigateToJournal()
+                                ObjectiveType.COMPLETE_HABIT_CHECKIN -> onNavigateToHabits()
+                                ObjectiveType.START_FOCUS_SESSION -> onNavigateToFocus()
+                                ObjectiveType.CHAT_WITH_COACH -> onNavigateToChat()
+                                ObjectiveType.SET_REMINDER -> onNavigateToReminders()
+                                ObjectiveType.CHECK_LIFE_BALANCE -> onNavigateToLifeBalance()
+                                ObjectiveType.COMPLETE_GOAL -> onNavigateToGoals()
+                                ObjectiveType.SECURE_ACCOUNT -> { showAccountSheet = true }
                             }
-                        )
-                    }
-                } else if (allCompleted) {
-                    // Show compact "all done" that can be dismissed
-                    item(key = "beginner_objectives") {
-                        BeginnerObjectivesCard(
-                            objectives = beginnerObjectives,
-                            isExpanded = false,
-                            onToggleExpanded = { objectiveViewModel.toggleExpanded() },
-                            onObjectiveClick = {}
-                        )
-                    }
+                        }
+                    )
                 }
             }
 
-            // Secure Account CTA — show for anyone without a verified email account
-            if (currentUser?.email == null) {
+            // New Badges quick action — tap to view on Achievements screen
+            if (newBadges.isNotEmpty()) {
+                item(key = "new_badges") {
+                    NewBadgesCard(
+                        badges = newBadges,
+                        onClick = onNavigateToAchievements
+                    )
+                }
+            }
+
+            // Secure Account CTA — smart status banner
+            if (pendingVerifyEmail != null) {
+                // Email linked but not yet verified — show verification status
+                item(key = "verify_email_banner") {
+                    VerifyEmailBanner(
+                        email = pendingVerifyEmail!!,
+                        onResend = { authViewModel.resendVerificationEmail(pendingVerifyEmail!!) }
+                    )
+                }
+            } else if (currentUser?.email == null) {
+                // Pure guest — show secure account CTA
                 item {
                     SecureAccountCTABanner(onClick = { showAccountSheet = true })
                 }
@@ -865,8 +886,6 @@ private fun HeroBanner(
     level: Int,
     streak: Int,
     levelTitle: String,
-    syncStatus: StateFlow<SyncStatus>,
-    onRetrySync: () -> Unit,
     isSignedIn: Boolean,
     onProfileClick: () -> Unit
 ) {
@@ -965,13 +984,7 @@ private fun HeroBanner(
 
                     Spacer(Modifier.weight(1f))
 
-                    if (isSignedIn) {
-                        SyncStatusIndicator(
-                            syncStatus = syncStatus,
-                            onRetryClick = onRetrySync,
-                            compact = false
-                        )
-                    } else {
+                    if (!isSignedIn) {
                         Surface(
                             shape = RoundedCornerShape(50),
                             color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)

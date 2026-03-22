@@ -54,6 +54,10 @@
 # ─── BuildKonfig ───
 -keep class az.tribe.lifeplanner.BuildKonfig { *; }
 
+# ─── PostHog ───
+-keep class com.posthog.** { *; }
+-dontwarn com.posthog.**
+
 # ─── Facebook SDK ───
 -keep class com.facebook.** { *; }
 -dontwarn com.facebook.**

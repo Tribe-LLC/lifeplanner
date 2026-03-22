@@ -7,32 +7,26 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import platform.AVFAudio.AVAudioPlayer
 import platform.AVFAudio.AVAudioSession
-import platform.AVFAudio.AVAudioSessionCategoryPlayback
+import platform.AVFAudio.AVAudioSessionCategoryAmbient
 import platform.AVFAudio.setActive
 import platform.Foundation.NSBundle
 import platform.Foundation.NSURL
 
 actual class CelebrationSoundPlayer {
     private var players = mutableMapOf<CelebrationType, AVAudioPlayer?>()
+    private var loaded = false
 
-    init {
-        // Configure audio session
-        try {
-            val session = AVAudioSession.sharedInstance()
-            session.setCategory(AVAudioSessionCategoryPlayback, error = null)
-            session.setActive(true, error = null)
-        } catch (_: Exception) {
-            // Audio session setup failed, sounds won't play
-        }
+    private val soundFiles = mapOf(
+        CelebrationType.GOAL_COMPLETED to "celebration_goal_complete",
+        CelebrationType.BADGE_UNLOCKED to "celebration_badge_unlock",
+        CelebrationType.STREAK_MILESTONE to "celebration_streak",
+        CelebrationType.LEVEL_UP to "celebration_level_up"
+    )
 
-        // Pre-load all celebration sounds
-        val soundFiles = mapOf(
-            CelebrationType.GOAL_COMPLETED to "celebration_goal_complete",
-            CelebrationType.BADGE_UNLOCKED to "celebration_badge_unlock",
-            CelebrationType.STREAK_MILESTONE to "celebration_streak",
-            CelebrationType.LEVEL_UP to "celebration_level_up"
-        )
-
+    // Load sounds lazily — only when first celebration plays, not on app launch
+    private fun ensureLoaded() {
+        if (loaded) return
+        loaded = true
         soundFiles.forEach { (type, fileName) ->
             val path = NSBundle.mainBundle.pathForResource(fileName, ofType = "wav")
             if (path != null) {
@@ -45,6 +39,14 @@ actual class CelebrationSoundPlayer {
     }
 
     actual fun play(type: CelebrationType) {
+        // Use Ambient category — mixes with Spotify/podcasts instead of stopping them
+        try {
+            val session = AVAudioSession.sharedInstance()
+            session.setCategory(AVAudioSessionCategoryAmbient, error = null)
+            session.setActive(true, error = null)
+        } catch (_: Exception) { }
+
+        ensureLoaded()
         val player = players[type] ?: return
         if (player.isPlaying()) {
             player.currentTime = 0.0
@@ -55,6 +57,7 @@ actual class CelebrationSoundPlayer {
     actual fun release() {
         players.values.forEach { it?.stop() }
         players.clear()
+        loaded = false
     }
 }
 

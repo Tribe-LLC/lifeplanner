@@ -19,6 +19,7 @@ data class Goal(
     val notes: String = "",
     val createdAt: LocalDateTime,
     val completionRate: Float = 0f, // For the 60% progress shown in UI
-    val isArchived: Boolean = false
+    val isArchived: Boolean = false,
+    val aiReasoning: String? = null
 )
 

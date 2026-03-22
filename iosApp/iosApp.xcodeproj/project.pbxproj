@@ -18,9 +18,24 @@
 		6DA768632EF26F3B004CA68C /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 6DA768622EF26F3B004CA68C /* FirebaseCore */; };
 		6DA768652EF26F3B004CA68C /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 6DA768642EF26F3B004CA68C /* FirebaseMessaging */; };
 		6DA768672EF26F3B004CA68C /* FirebasePerformance in Frameworks */ = {isa = PBXBuildFile; productRef = 6DA768662EF26F3B004CA68C /* FirebasePerformance */; };
+		6DAB100B2F6D000100000001 /* ambient_rain.wav in Resources */ = {isa = PBXBuildFile; fileRef = 6DAB100A2F6D000100000001 /* ambient_rain.wav */; };
+		6DAB100D2F6D000100000002 /* ambient_forest.wav in Resources */ = {isa = PBXBuildFile; fileRef = 6DAB100C2F6D000100000002 /* ambient_forest.wav */; };
+		6DAB100F2F6D000100000003 /* ambient_lofi.wav in Resources */ = {isa = PBXBuildFile; fileRef = 6DAB100E2F6D000100000003 /* ambient_lofi.wav */; };
+		6DAB10112F6D000100000004 /* ambient_white_noise.wav in Resources */ = {isa = PBXBuildFile; fileRef = 6DAB10102F6D000100000004 /* ambient_white_noise.wav */; };
+		6DAB10132F6D000100000005 /* ambient_ocean.wav in Resources */ = {isa = PBXBuildFile; fileRef = 6DAB10122F6D000100000005 /* ambient_ocean.wav */; };
+		6DAB10152F6D000100000006 /* ambient_fireplace.wav in Resources */ = {isa = PBXBuildFile; fileRef = 6DAB10142F6D000100000006 /* ambient_fireplace.wav */; };
+		6DAB10172F6D000100000007 /* ambient_night.wav in Resources */ = {isa = PBXBuildFile; fileRef = 6DAB10162F6D000100000007 /* ambient_night.wav */; };
+		6DAB10192F6D000100000008 /* ambient_cafe.wav in Resources */ = {isa = PBXBuildFile; fileRef = 6DAB10182F6D000100000008 /* ambient_cafe.wav */; };
+		6DAB101B2F6D000100000009 /* ambient_birds.wav in Resources */ = {isa = PBXBuildFile; fileRef = 6DAB101A2F6D000100000009 /* ambient_birds.wav */; };
+		6DAB101D2F6D00010000000A /* celebration_badge_unlock.wav in Resources */ = {isa = PBXBuildFile; fileRef = 6DAB101C2F6D00010000000A /* celebration_badge_unlock.wav */; };
+		6DAB101F2F6D00010000000B /* celebration_goal_complete.wav in Resources */ = {isa = PBXBuildFile; fileRef = 6DAB101E2F6D00010000000B /* celebration_goal_complete.wav */; };
+		6DAB10212F6D00010000000C /* celebration_level_up.wav in Resources */ = {isa = PBXBuildFile; fileRef = 6DAB10202F6D00010000000C /* celebration_level_up.wav */; };
+		6DAB10232F6D00010000000D /* celebration_streak.wav in Resources */ = {isa = PBXBuildFile; fileRef = 6DAB10222F6D00010000000D /* celebration_streak.wav */; };
+		6DB5A4342F6DF35E0021C22C /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = 6DB5A4332F6DF35E0021C22C /* PostHog */; };
 		6DBB21D12DCD2A4E00D4EE92 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 6DBB21D02DCD2A4E00D4EE92 /* libsqlite3.tbd */; };
 		6DC5D3AB2DCE112F009CFA89 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 6DC5D3AA2DCE112F009CFA89 /* SplashScreen.storyboard */; };
 		6DEF438B2DD37CC300E134BF /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 6DEF438A2DD37CC300E134BF /* GoogleService-Info.plist */; };
+		6DFB000100000001004FB001 /* FacebookCore in Frameworks */ = {isa = PBXBuildFile; productRef = 6DFB000100000000004FB001 /* FacebookCore */; };
 		7555FF83242A565900829871 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7555FF82242A565900829871 /* ContentView.swift */; };
 /* End PBXBuildFile section */
 
@@ -55,6 +70,19 @@
 		6D3474682F4C60E800BFC671 /* LifePlannerWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LifePlannerWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		6D3474692F4C60E800BFC671 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = /System/Library/Frameworks/WidgetKit.framework; sourceTree = "<absolute>"; };
 		6D34746B2F4C60E800BFC671 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = /System/Library/Frameworks/SwiftUI.framework; sourceTree = "<absolute>"; };
+		6DAB100A2F6D000100000001 /* ambient_rain.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ambient_rain.wav; sourceTree = "<group>"; };
+		6DAB100C2F6D000100000002 /* ambient_forest.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ambient_forest.wav; sourceTree = "<group>"; };
+		6DAB100E2F6D000100000003 /* ambient_lofi.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ambient_lofi.wav; sourceTree = "<group>"; };
+		6DAB10102F6D000100000004 /* ambient_white_noise.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ambient_white_noise.wav; sourceTree = "<group>"; };
+		6DAB10122F6D000100000005 /* ambient_ocean.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ambient_ocean.wav; sourceTree = "<group>"; };
+		6DAB10142F6D000100000006 /* ambient_fireplace.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ambient_fireplace.wav; sourceTree = "<group>"; };
+		6DAB10162F6D000100000007 /* ambient_night.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ambient_night.wav; sourceTree = "<group>"; };
+		6DAB10182F6D000100000008 /* ambient_cafe.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ambient_cafe.wav; sourceTree = "<group>"; };
+		6DAB101A2F6D000100000009 /* ambient_birds.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ambient_birds.wav; sourceTree = "<group>"; };
+		6DAB101C2F6D00010000000A /* celebration_badge_unlock.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = celebration_badge_unlock.wav; sourceTree = "<group>"; };
+		6DAB101E2F6D00010000000B /* celebration_goal_complete.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = celebration_goal_complete.wav; sourceTree = "<group>"; };
+		6DAB10202F6D00010000000C /* celebration_level_up.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = celebration_level_up.wav; sourceTree = "<group>"; };
+		6DAB10222F6D00010000000D /* celebration_streak.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = celebration_streak.wav; sourceTree = "<group>"; };
 		6DBB21D02DCD2A4E00D4EE92 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		6DC5D3AA2DCE112F009CFA89 /* SplashScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = SplashScreen.storyboard; sourceTree = "<group>"; };
 		6DDC6F6D2DD4D398009C5D6E /* iosApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = iosApp.entitlements; sourceTree = "<group>"; };
@@ -96,8 +124,10 @@
 				6DA7685F2EF26F3B004CA68C /* FirebaseAnalytics in Frameworks */,
 				6DA768612EF26F3B004CA68C /* FirebaseAuth in Frameworks */,
 				6DA768672EF26F3B004CA68C /* FirebasePerformance in Frameworks */,
+				6DB5A4342F6DF35E0021C22C /* PostHog in Frameworks */,
 				6DA768652EF26F3B004CA68C /* FirebaseMessaging in Frameworks */,
 				6DA768632EF26F3B004CA68C /* FirebaseCore in Frameworks */,
+				6DFB000100000001004FB001 /* FacebookCore in Frameworks */,
 				6DBB21D12DCD2A4E00D4EE92 /* libsqlite3.tbd in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -154,6 +184,19 @@
 				2152FB032600AC8F00CF470E /* iOSApp.swift */,
 				058557D7273AAEEB004C7B11 /* Preview Content */,
 				6DC5D3AA2DCE112F009CFA89 /* SplashScreen.storyboard */,
+				6DAB100A2F6D000100000001 /* ambient_rain.wav */,
+				6DAB100C2F6D000100000002 /* ambient_forest.wav */,
+				6DAB100E2F6D000100000003 /* ambient_lofi.wav */,
+				6DAB10102F6D000100000004 /* ambient_white_noise.wav */,
+				6DAB10122F6D000100000005 /* ambient_ocean.wav */,
+				6DAB10142F6D000100000006 /* ambient_fireplace.wav */,
+				6DAB10162F6D000100000007 /* ambient_night.wav */,
+				6DAB10182F6D000100000008 /* ambient_cafe.wav */,
+				6DAB101A2F6D000100000009 /* ambient_birds.wav */,
+				6DAB101C2F6D00010000000A /* celebration_badge_unlock.wav */,
+				6DAB101E2F6D00010000000B /* celebration_goal_complete.wav */,
+				6DAB10202F6D00010000000C /* celebration_level_up.wav */,
+				6DAB10222F6D00010000000D /* celebration_streak.wav */,
 			);
 			path = iosApp;
 			sourceTree = "<group>";
@@ -213,6 +256,8 @@
 				6DA768622EF26F3B004CA68C /* FirebaseCore */,
 				6DA768642EF26F3B004CA68C /* FirebaseMessaging */,
 				6DA768662EF26F3B004CA68C /* FirebasePerformance */,
+				6DFB000100000000004FB001 /* FacebookCore */,
+				6DB5A4332F6DF35E0021C22C /* PostHog */,
 			);
 			productName = iosApp;
 			productReference = 7555FF7B242A565900829871 /* Life Planner.app */;
@@ -248,6 +293,8 @@
 			mainGroup = 7555FF72242A565900829871;
 			packageReferences = (
 				6DA7685D2EF26F3B004CA68C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				6DFB000000000000004FB001 /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */,
+				6DB5A4322F6DF35E0021C22C /* XCRemoteSwiftPackageReference "posthog-ios" */,
 			);
 			productRefGroup = 7555FF7C242A565900829871 /* Products */;
 			projectDirPath = "";
@@ -275,6 +322,19 @@
 				6DEF438B2DD37CC300E134BF /* GoogleService-Info.plist in Resources */,
 				058557D9273AAEEB004C7B11 /* Preview Assets.xcassets in Resources */,
 				058557BB273AAA24004C7B11 /* Assets.xcassets in Resources */,
+				6DAB100B2F6D000100000001 /* ambient_rain.wav in Resources */,
+				6DAB100D2F6D000100000002 /* ambient_forest.wav in Resources */,
+				6DAB100F2F6D000100000003 /* ambient_lofi.wav in Resources */,
+				6DAB10112F6D000100000004 /* ambient_white_noise.wav in Resources */,
+				6DAB10132F6D000100000005 /* ambient_ocean.wav in Resources */,
+				6DAB10152F6D000100000006 /* ambient_fireplace.wav in Resources */,
+				6DAB10172F6D000100000007 /* ambient_night.wav in Resources */,
+				6DAB10192F6D000100000008 /* ambient_cafe.wav in Resources */,
+				6DAB101B2F6D000100000009 /* ambient_birds.wav in Resources */,
+				6DAB101D2F6D00010000000A /* celebration_badge_unlock.wav in Resources */,
+				6DAB101F2F6D00010000000B /* celebration_goal_complete.wav in Resources */,
+				6DAB10212F6D00010000000C /* celebration_level_up.wav in Resources */,
+				6DAB10232F6D00010000000D /* celebration_streak.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -338,7 +398,7 @@
 				CODE_SIGN_ENTITLEMENTS = LifePlannerWidgets/LifePlannerWidgets.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 9T27H6JKJM;
 				ENABLE_APP_SANDBOX = YES;
@@ -362,7 +422,7 @@
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 2.2;
 				PRODUCT_BUNDLE_IDENTIFIER = az.tribe.lifeplanner.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -388,7 +448,7 @@
 				CODE_SIGN_ENTITLEMENTS = LifePlannerWidgets/LifePlannerWidgets.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 9T27H6JKJM;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -411,7 +471,7 @@
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 2.2;
 				PRODUCT_BUNDLE_IDENTIFIER = az.tribe.lifeplanner.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -557,7 +617,7 @@
 				CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
 				DEVELOPMENT_TEAM = 9T27H6JKJM;
 				ENABLE_PREVIEWS = YES;
@@ -572,7 +632,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 2.2;
 				PRODUCT_BUNDLE_IDENTIFIER = az.tribe.lifeplanner;
 				PRODUCT_NAME = "${APP_NAME}";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -589,7 +649,7 @@
 				CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
 				DEVELOPMENT_TEAM = 9T27H6JKJM;
 				ENABLE_PREVIEWS = YES;
@@ -604,7 +664,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 2.2;
 				PRODUCT_BUNDLE_IDENTIFIER = az.tribe.lifeplanner;
 				PRODUCT_NAME = "${APP_NAME}";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -651,7 +711,23 @@
 			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 12.7.0;
+				minimumVersion = 11.0.0;
+			};
+		};
+		6DB5A4322F6DF35E0021C22C /* XCRemoteSwiftPackageReference "posthog-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/PostHog/posthog-ios.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.48.0;
+			};
+		};
+		6DFB000000000000004FB001 /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/facebook/facebook-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 18.0.3;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -681,6 +757,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 6DA7685D2EF26F3B004CA68C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebasePerformance;
+		};
+		6DB5A4332F6DF35E0021C22C /* PostHog */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6DB5A4322F6DF35E0021C22C /* XCRemoteSwiftPackageReference "posthog-ios" */;
+			productName = PostHog;
+		};
+		6DFB000100000000004FB001 /* FacebookCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6DFB000000000000004FB001 /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */;
+			productName = FacebookCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

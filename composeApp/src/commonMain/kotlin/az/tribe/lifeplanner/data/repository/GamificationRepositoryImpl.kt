@@ -64,7 +64,15 @@ class GamificationRepositoryImpl(
                 database.getUserProgressEntity()
             }
         if (progress != null) {
-            emit(progress.toDomain())
+            // Recalculate level if out of sync with XP
+            val correctLevel = UserProgress.calculateLevelFromXp(progress.totalXp.toInt())
+            if (correctLevel != progress.currentLevel.toInt()) {
+                database.updateUserXp(progress.totalXp, correctLevel.toLong())
+                val updated = database.getUserProgressEntity()
+                emit(updated?.toDomain() ?: progress.toDomain())
+            } else {
+                emit(progress.toDomain())
+            }
         } else {
             emit(UserProgress.default())
         }
@@ -162,7 +170,7 @@ class GamificationRepositoryImpl(
     // --- Daily Streak via Server RPC ---
 
     @Serializable
-    private data class StreakResult(val new_streak: Int, val xp_awarded: Int)
+    private data class StreakResult(val new_streak: Int, val xp_awarded: Int = 0)
 
     override suspend fun updateDailyStreakRemote(): Pair<Int, Int> {
         return try {
@@ -182,5 +190,39 @@ class GamificationRepositoryImpl(
             Logger.w("GamificationRepositoryImpl") { "updateDailyStreakRemote failed: ${e.message}" }
             Pair(0, 0)
         }
+    }
+
+    override suspend fun awardXp(amount: Long) {
+        initializeProgress()
+        database.addXp(amount)
+        // Recalculate level from updated total XP
+        val progress = database.getUserProgressEntity()
+        if (progress != null) {
+            val newLevel = UserProgress.calculateLevelFromXp(progress.totalXp.toInt())
+            if (newLevel != progress.currentLevel.toInt()) {
+                database.updateUserXp(progress.totalXp, newLevel.toLong())
+            }
+        }
+        syncManager.requestSync()
+        notifyWidgets()
+    }
+
+    @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+    override suspend fun awardBadge(type: BadgeType) {
+        if (hasBadge(type)) return
+        val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).toString()
+        database.insertBadge(
+            az.tribe.lifeplanner.database.BadgeEntity(
+                id = kotlin.uuid.Uuid.random().toString(),
+                badgeType = type.name,
+                earnedAt = now,
+                isNew = 1L,
+                sync_updated_at = now,
+                is_deleted = 0L,
+                sync_version = 0L,
+                last_synced_at = null
+            )
+        )
+        syncManager.requestSync()
     }
 }

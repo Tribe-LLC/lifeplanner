@@ -11,8 +11,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -35,12 +37,15 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import az.tribe.lifeplanner.data.repository.GoalTemplateProvider
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.enum.GoalTimeline
 import az.tribe.lifeplanner.domain.model.Goal
+import az.tribe.lifeplanner.domain.model.GoalTemplate
 import az.tribe.lifeplanner.domain.model.Milestone
 import az.tribe.lifeplanner.domain.model.NewMilestone
+import az.tribe.lifeplanner.ui.theme.backgroundColor
 import az.tribe.lifeplanner.ui.theme.modernColors
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
@@ -71,6 +76,24 @@ fun AddGoalScreen(
 
     var milestones by remember { mutableStateOf(listOf<NewMilestone>()) }
     var isFormValid by remember { mutableStateOf(false) }
+
+    // Template browser state
+    var selectedTemplateCategory by remember { mutableStateOf<GoalCategory?>(null) }
+    val templates = remember(selectedTemplateCategory) {
+        val cat = selectedTemplateCategory
+        if (cat == null) GoalTemplateProvider.getAllTemplates().take(8)
+        else GoalTemplateProvider.getTemplatesByCategory(cat)
+    }
+
+    fun applyTemplate(template: GoalTemplate) {
+        title = TextFieldValue(template.title)
+        description = TextFieldValue(template.description)
+        selectedCategory = template.category
+        selectedTimeline = template.suggestedTimeline
+        milestones = template.suggestedMilestones.map { m ->
+            NewMilestone(title = TextFieldValue(m), dueDate = TextFieldValue(""))
+        }
+    }
 
     val datePickerState = rememberDatePickerState(
         initialSelectedDateMillis = Clock.System.now().toEpochMilliseconds()
@@ -127,7 +150,7 @@ fun AddGoalScreen(
                             progress = 0,
                             milestones = milestones.mapIndexed { idx, m ->
                                 Milestone(
-                                    id = idx.toString(),
+                                    id = Uuid.random().toString(),
                                     title = m.title.text.trim(),
                                     dueDate = try {
                                         LocalDate.parse(m.dueDate.text)
@@ -175,6 +198,58 @@ fun AddGoalScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            item { Spacer(modifier = Modifier.height(8.dp)) }
+
+            // Template browser — start from a template
+            item {
+                FormSectionHeader(title = "Start from Template", icon = null)
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Category filter chips
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = selectedTemplateCategory == null,
+                        onClick = { selectedTemplateCategory = null },
+                        label = { Text("All") },
+                        shape = RoundedCornerShape(50)
+                    )
+                    GoalCategory.entries.forEach { cat ->
+                        FilterChip(
+                            selected = selectedTemplateCategory == cat,
+                            onClick = { selectedTemplateCategory = if (selectedTemplateCategory == cat) null else cat },
+                            label = {
+                                Text(
+                                    cat.name.lowercase().replaceFirstChar { it.uppercase() }
+                                )
+                            },
+                            shape = RoundedCornerShape(50)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Template cards — horizontal scroll
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    templates.forEach { template ->
+                        TemplateChipCard(
+                            template = template,
+                            onClick = { applyTemplate(template) }
+                        )
+                    }
+                }
+            }
+
             item { Spacer(modifier = Modifier.height(8.dp)) }
 
             // Title Section
@@ -571,6 +646,48 @@ fun <T> ModernDropdownMenu(
                     )
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun TemplateChipCard(
+    template: GoalTemplate,
+    onClick: () -> Unit
+) {
+    val categoryColor = template.category.backgroundColor()
+
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = categoryColor.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, categoryColor.copy(alpha = 0.2f)),
+        modifier = Modifier.width(180.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp)
+        ) {
+            Text(
+                text = template.title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                color = MaterialTheme.modernColors.textPrimary
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = template.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.modernColors.textSecondary,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "${template.suggestedMilestones.size} milestones",
+                style = MaterialTheme.typography.labelSmall,
+                color = categoryColor
+            )
         }
     }
 }

@@ -43,6 +43,9 @@ enum class BadgeType(
     HEALTH_FOCUS("Health Champion", "Complete 5 health goals", "heart", 0xFFE91E63),
     CAREER_FOCUS("Career Climber", "Complete 5 career goals", "briefcase", 0xFF3F51B5),
 
+    // Onboarding Badge
+    GETTING_STARTED("Explorer", "Complete all Getting Started objectives", "rocket", 0xFFFF6B35),
+
     // Special Badges
     EARLY_BIRD("Early Bird", "Check in before 7 AM", "sun", 0xFFFFC107),
     NIGHT_OWL("Night Owl", "Check in after 10 PM", "moon", 0xFF673AB7),
