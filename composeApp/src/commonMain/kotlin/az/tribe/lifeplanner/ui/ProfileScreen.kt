@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Devices
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Feedback
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -115,11 +116,13 @@ fun ProfileScreen(
     gamificationViewModel: GamificationViewModel = koinViewModel(),
     onNavigateToAchievements: () -> Unit,
     onNavigateToLifeBalance: () -> Unit,
+    onNavigateToHealth: () -> Unit = {},
     onNavigateToReminders: () -> Unit,
     onNavigateToBackup: () -> Unit,
     onNavigateToRetrospective: () -> Unit = {},
     onNavigateToAICoach: () -> Unit,
-    onNavigateToSignIn: () -> Unit = {}
+    onNavigateToSignIn: () -> Unit = {},
+    onNavigateToFeedback: () -> Unit = {}
 ) {
     val syncManager: SyncManager = koinInject()
     val settings: Settings = koinInject()
@@ -266,6 +269,14 @@ fun ProfileScreen(
                 )
             }
 
+            item {
+                ProfileMenuItem(
+                    icon = Icons.Rounded.Favorite,
+                    title = "Health",
+                    subtitle = "Steps, heart rate, sleep & weight",
+                    onClick = onNavigateToHealth
+                )
+            }
 
             // Settings Section
             item {
@@ -305,6 +316,15 @@ fun ProfileScreen(
                     title = "Day Retrospective",
                     subtitle = "Browse past days and activity",
                     onClick = onNavigateToRetrospective
+                )
+            }
+
+            item {
+                ProfileMenuItem(
+                    icon = Icons.Rounded.Feedback,
+                    title = "Send Feedback",
+                    subtitle = "Report bugs, request features",
+                    onClick = onNavigateToFeedback
                 )
             }
 

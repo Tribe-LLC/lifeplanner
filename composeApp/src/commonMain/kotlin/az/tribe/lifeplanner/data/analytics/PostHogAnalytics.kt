@@ -249,6 +249,47 @@ object Analytics {
             "current_version" to currentVersion
         ))
 
+    // ── Feedback & Reviews ────────────────────────────────────────────
+    fun feedbackSubmitted(category: String, rating: Int? = null) =
+        PostHogAnalytics.capture("feedback_submitted", buildMap {
+            put("category", category)
+            rating?.let { put("rating", it) }
+        })
+
+    fun featureRequestSubmitted(category: String) =
+        PostHogAnalytics.capture("feature_request_submitted", mapOf(
+            "category" to category
+        ))
+
+    fun appReviewPrompted(trigger: String) =
+        PostHogAnalytics.capture("app_review_prompted", mapOf("trigger" to trigger))
+
+    fun appReviewCompleted(trigger: String) =
+        PostHogAnalytics.capture("app_review_completed", mapOf("trigger" to trigger))
+
+    fun appReviewDismissed(trigger: String) =
+        PostHogAnalytics.capture("app_review_dismissed", mapOf("trigger" to trigger))
+
+    // ── Health ───────────────────────────────────────────────────────
+    fun healthDashboardViewed() = PostHogAnalytics.screen("health_dashboard")
+
+    fun healthSyncCompleted(steps: Int, weight: Int, heartRate: Int, sleep: Int) =
+        PostHogAnalytics.capture("health_sync_completed", mapOf(
+            "steps_records" to steps,
+            "weight_records" to weight,
+            "heart_rate_records" to heartRate,
+            "sleep_records" to sleep,
+            "total_records" to (steps + weight + heartRate + sleep)
+        ))
+
+    fun healthPermissionGranted(platform: String) =
+        PostHogAnalytics.capture("health_permission_granted", mapOf("platform" to platform))
+
+    fun healthPermissionDenied(platform: String) =
+        PostHogAnalytics.capture("health_permission_denied", mapOf("platform" to platform))
+
+    fun healthWeightAdded() = PostHogAnalytics.capture("health_weight_added_manually")
+
     // ── Error tracking ───────────────────────────────────────────────
     fun errorOccurred(screen: String, error: String, isFatal: Boolean = false) =
         PostHogAnalytics.capture("error_occurred", mapOf(

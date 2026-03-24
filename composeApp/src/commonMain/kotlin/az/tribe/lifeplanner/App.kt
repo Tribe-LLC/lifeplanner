@@ -501,6 +501,11 @@ fun App(
                                 launchSingleTop = true
                             }
                         },
+                        onNavigateToHealth = {
+                            navController.navigate(Screen.Health.route) {
+                                launchSingleTop = true
+                            }
+                        },
                         onNavigateToTemplates = {
                             navController.navigate(Screen.Templates.route) {
                                 launchSingleTop = true
@@ -513,6 +518,11 @@ fun App(
                         },
                         onStartFocusForMilestone = { goalId, milestoneId ->
                             navController.navigate("focus_setup?goalId=$goalId&milestoneId=$milestoneId") {
+                                launchSingleTop = true
+                            }
+                        },
+                        onNavigateToJournalEntry = { entryId ->
+                            navController.navigate("journal_entry_detail/$entryId") {
                                 launchSingleTop = true
                             }
                         },
@@ -699,6 +709,11 @@ fun App(
                             launchSingleTop = true
                         }
                     },
+                    onNavigateToHealth = {
+                        navController.navigate(Screen.Health.route) {
+                            launchSingleTop = true
+                        }
+                    },
                     onNavigateToReminders = {
                         navController.navigate(Screen.Reminders.route) {
                             launchSingleTop = true
@@ -723,7 +738,19 @@ fun App(
                         navController.navigate("sign_in") {
                             launchSingleTop = true
                         }
+                    },
+                    onNavigateToFeedback = {
+                        navController.navigate(Screen.Feedback.route) {
+                            launchSingleTop = true
+                        }
                     }
+                )
+            }
+
+            // Feedback Screen
+            composable(Screen.Feedback.route) {
+                az.tribe.lifeplanner.ui.feedback.FeedbackScreen(
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
 
@@ -1082,6 +1109,13 @@ fun App(
             composable(Screen.Retrospective.route) {
                 RetrospectiveScreen(
                     onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            // Health Dashboard Screen
+            composable(Screen.Health.route) {
+                az.tribe.lifeplanner.ui.health.HealthDashboardScreen(
+                    navController = navController
                 )
             }
 

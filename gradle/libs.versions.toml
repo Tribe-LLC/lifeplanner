@@ -1,28 +1,28 @@
 [versions]
 agp = "8.12.3"
 android-compileSdk = "36"
-android-minSdk = "24"
+android-minSdk = "26"
 android-targetSdk = "35"
 androidx-activityCompose = "1.10.1"
 androidx-lifecycle = "2.10.0-alpha06"
-compose-multiplatform = "1.10.2"
+compose-multiplatform = "1.10.3"
 desugar_jdk_libs = "2.1.5"
 firebaseCommon = "2.1.0"
 supabase = "3.1.1"
-kotlin = "2.2.20"
+kotlin = "2.3.0"
 sqldelight = "2.0.2"
 
 kermit = "2.0.5"
 ktor = "3.1.1"
 settings = "1.3.0"
 dateTime = "0.7.1-0.6.x-compat"
-koin = "4.0.2"
+koin = "4.2.0"
 coroutines = "1.10.1"
 navigationCompose = "2.9.1"
 core-splashscreen = "1.0.1"
 accompanistSystemuicontroller = "0.30.1"
 
-buildkonfig = "0.17.0"
+buildkonfig = "0.17.1"
 
 firebaseCommonKtx = "21.0.0"
 
@@ -34,12 +34,16 @@ composeMediaPlayer = "1.0.50"
 kmpnotifier = "1.6.1"
 workmanager = "2.10.0"
 glance = "1.1.1"
-kotlinTest = "2.2.20"
-turbine = "1.2.0"
-kover = "0.9.1"
+kotlinTest = "2.3.0"
+turbine = "1.2.1"
+kover = "0.9.7"
 facebookSdk = "18.1.3"
-posthog = "3.38.2"
+posthog = "3.39.0"
 playAppUpdate = "2.1.0"
+playReview = "2.0.2"
+healthConnect = "1.1.0"
+healthKmp = "1.0.1"
+phosphorIcons = "1.0.0"
 
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activityCompose" }
@@ -109,6 +113,15 @@ posthog-android = { module = "com.posthog:posthog-android", version.ref = "posth
 # Google Play In-App Updates
 play-app-update = { module = "com.google.android.play:app-update", version.ref = "playAppUpdate" }
 play-app-update-ktx = { module = "com.google.android.play:app-update-ktx", version.ref = "playAppUpdate" }
+play-review = { module = "com.google.android.play:review", version.ref = "playReview" }
+play-review-ktx = { module = "com.google.android.play:review-ktx", version.ref = "playReview" }
+
+# Health Connect
+health-connect = { module = "androidx.health.connect:connect-client", version.ref = "healthConnect" }
+health-kmp = { module = "com.viktormykhailiv:health-kmp", version.ref = "healthKmp" }
+
+# Phosphor Icons
+phosphor-icons = { module = "com.adamglin:phosphor-icon", version.ref = "phosphorIcons" }
 
 # Test dependencies
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlinTest" }
