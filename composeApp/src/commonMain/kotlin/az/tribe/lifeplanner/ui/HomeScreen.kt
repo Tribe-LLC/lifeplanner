@@ -84,6 +84,11 @@ import az.tribe.lifeplanner.ui.objectives.BeginnerObjectiveViewModel
 import az.tribe.lifeplanner.ui.objectives.BeginnerObjectivesCard
 import az.tribe.lifeplanner.domain.model.ObjectiveType
 import az.tribe.lifeplanner.ui.components.AddGoalBottomSheet
+import az.tribe.lifeplanner.ui.components.StoriesCarousel
+import az.tribe.lifeplanner.ui.home.generateDailyRecapStory
+import az.tribe.lifeplanner.ui.home.getCuratedTipStories
+import az.tribe.lifeplanner.domain.model.Story
+import az.tribe.lifeplanner.domain.repository.StoryRepository
 import az.tribe.lifeplanner.ui.viewmodel.AuthState
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
 import kotlinx.datetime.Clock
@@ -111,9 +116,12 @@ fun HomeScreen(
     onNavigateToChat: () -> Unit = {},
     onNavigateToReminders: () -> Unit = {},
     onNavigateToLifeBalance: () -> Unit = {},
+    onNavigateToHealth: () -> Unit = {},
+    onNavigateToStoryReader: () -> Unit = {},
     onNavigateToTemplates: () -> Unit = {},
     onContinueChat: (sessionId: String) -> Unit = {},
     onStartFocusForMilestone: (goalId: String, milestoneId: String) -> Unit = { _, _ -> },
+    onNavigateToJournalEntry: (entryId: String) -> Unit = {},
     showUpdateReminder: Boolean = false,
     onUpdateClick: () -> Unit = {},
 ) {
@@ -125,8 +133,9 @@ fun HomeScreen(
     val authViewModel: AuthViewModel = koinInject()
     val gamificationViewModel: GamificationViewModel = koinViewModel()
     val habitViewModel: HabitViewModel = koinViewModel()
-    val syncManager: SyncManager = koinInject()
     val objectiveViewModel: BeginnerObjectiveViewModel = koinViewModel()
+
+    val storyRepository: StoryRepository = koinInject()
 
     val authState by authViewModel.authState.collectAsState()
     val userProgress by gamificationViewModel.userProgress.collectAsState()
@@ -142,7 +151,7 @@ fun HomeScreen(
     }
 
     // Calculate dashboard stats
-    val totalProgress = if (goals.isNotEmpty()) {
+    if (goals.isNotEmpty()) {
         (goals.sumOf { it.progress ?: 0L } / goals.size).toInt()
     } else 0
 
@@ -156,6 +165,17 @@ fun HomeScreen(
     val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
     val goalsDueToday = goals.filter { goal ->
         goal.status != GoalStatus.COMPLETED && goal.dueDate == today
+    }
+
+    // Stories: remote + daily recap + curated tips
+    var remoteStories by remember { mutableStateOf<List<Story>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        remoteStories = storyRepository.getActiveStories()
+    }
+    val allStories = remember(habits, userProgress, today, remoteStories) {
+        val recap = generateDailyRecapStory(userProgress, habits, today)
+        val tips = getCuratedTipStories(today)
+        listOf(recap) + tips + remoteStories
     }
 
     // Calculate next milestones (first incomplete per active goal)
@@ -193,6 +213,22 @@ fun HomeScreen(
     val objectivesDismissed by objectiveViewModel.isDismissed.collectAsState()
     val pendingVerifyEmail by authViewModel.pendingVerificationEmail.collectAsState()
 
+    // Reflection prompt after habit check-in from HomeScreen
+    val recentCheckIn by habitViewModel.recentCheckIn.collectAsState()
+    LaunchedEffect(recentCheckIn) {
+        recentCheckIn?.let { checkIn ->
+            val result = snackBarHostState.showSnackbar(
+                message = "Nice work on \"${checkIn.habit.title}\"! Add a reflection?",
+                actionLabel = "Reflect",
+                duration = androidx.compose.material3.SnackbarDuration.Long
+            )
+            if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                onNavigateToJournal()
+            }
+            habitViewModel.clearRecentCheckIn()
+        }
+    }
+
     val habitsCompleted = habits.count { it.isCompletedToday }
     val totalHabits = habits.size
 
@@ -219,7 +255,22 @@ fun HomeScreen(
         gamificationViewModel.refresh()
     }
 
-    val scope = rememberCoroutineScope()
+    rememberCoroutineScope()
+
+    fun handleStoryAction(action: String?) {
+        when (action) {
+            "habits" -> onNavigateToHabits()
+            "add_habit" -> onNavigateToAddHabit()
+            "goals" -> onNavigateToGoals()
+            "focus" -> onNavigateToFocus()
+            "journal" -> onNavigateToJournal()
+            "achievements" -> onNavigateToAchievements()
+            "ai_chat" -> onNavigateToChat()
+            "life_balance" -> onNavigateToLifeBalance()
+            "health" -> onNavigateToHealth()
+            else -> { /* no-op */ }
+        }
+    }
 
     val greetingLine = remember(currentUser?.displayName) {
         val hour = Clock.System.now()
@@ -290,6 +341,17 @@ fun HomeScreen(
             if (showUpdateReminder) {
                 item(key = "update_reminder") {
                     UpdateReminderBanner(onUpdateClick = onUpdateClick)
+                }
+            }
+
+            // Stories carousel
+            if (allStories.isNotEmpty()) {
+                item(key = "stories_carousel") {
+                    StoriesCarousel(
+                        stories = allStories,
+                        onStoryAction = { action -> handleStoryAction(action) },
+                        onOpenReader = { onNavigateToStoryReader() }
+                    )
                 }
             }
 
@@ -371,7 +433,7 @@ fun HomeScreen(
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         "Priority Goals",
@@ -379,21 +441,21 @@ fun HomeScreen(
                         fontWeight = FontWeight.Bold
                     )
                     if (upcomingGoals.isNotEmpty()) {
-                        androidx.compose.material3.Surface(
+                        Surface(
                             onClick = onNavigateToGoals,
                             shape = RoundedCornerShape(50),
                             color = Color.Transparent
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     "See all",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.primary
                                 )
-                                androidx.compose.material3.Icon(
+                                Icon(
                                     Icons.Rounded.ChevronRight,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary,
@@ -415,16 +477,16 @@ fun HomeScreen(
                     ) {
                         Row(
                             modifier = Modifier.padding(16.dp),
-                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
                                 modifier = Modifier
                                     .size(40.dp)
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-                                contentAlignment = androidx.compose.ui.Alignment.Center
+                                contentAlignment = Alignment.Center
                             ) {
-                                androidx.compose.material3.Icon(
+                                Icon(
                                     Icons.Rounded.Add,
                                     null,
                                     tint = MaterialTheme.colorScheme.primary,
@@ -445,7 +507,7 @@ fun HomeScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            androidx.compose.material3.Icon(
+                            Icon(
                                 Icons.Rounded.ChevronRight,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -516,7 +578,7 @@ fun HomeScreen(
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             if (habits.isNotEmpty()) "Today's Habits ($habitsCompleted/$totalHabits)"
@@ -525,21 +587,21 @@ fun HomeScreen(
                             fontWeight = FontWeight.Bold
                         )
                         if (habits.isNotEmpty()) {
-                            androidx.compose.material3.Surface(
+                            Surface(
                                 onClick = onNavigateToHabits,
                                 shape = RoundedCornerShape(50),
                                 color = Color.Transparent
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
                                         "See all",
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.primary
                                     )
-                                    androidx.compose.material3.Icon(
+                                    Icon(
                                         Icons.Rounded.ChevronRight,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.primary,
@@ -561,16 +623,16 @@ fun HomeScreen(
                         ) {
                             Row(
                                 modifier = Modifier.padding(16.dp),
-                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
                                     modifier = Modifier
                                         .size(40.dp)
                                         .clip(RoundedCornerShape(12.dp))
                                         .background(Color(0xFF4CAF50).copy(alpha = 0.12f)),
-                                    contentAlignment = androidx.compose.ui.Alignment.Center
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    androidx.compose.material3.Icon(
+                                    Icon(
                                         Icons.Rounded.Add,
                                         null,
                                         tint = Color(0xFF4CAF50),
@@ -590,7 +652,7 @@ fun HomeScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                androidx.compose.material3.Icon(
+                                Icon(
                                     Icons.Rounded.ChevronRight,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -654,14 +716,14 @@ fun HomeScreen(
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
                             modifier = Modifier
                                 .size(40.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(Color(0xFF7C4DFF).copy(alpha = 0.12f)),
-                            contentAlignment = androidx.compose.ui.Alignment.Center
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 Icons.Rounded.History,
@@ -703,14 +765,14 @@ fun HomeScreen(
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
                             modifier = Modifier
                                 .size(40.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(Color(0xFFFF6B35).copy(alpha = 0.12f)),
-                            contentAlignment = androidx.compose.ui.Alignment.Center
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 Icons.Rounded.PlayArrow,
@@ -766,7 +828,7 @@ fun HomeScreen(
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
                             modifier = Modifier
@@ -776,7 +838,7 @@ fun HomeScreen(
                                     if (coachUnlocked) Color(0xFF00BFA5).copy(alpha = 0.12f)
                                     else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
                                 ),
-                            contentAlignment = androidx.compose.ui.Alignment.Center
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 Icons.Rounded.Psychology,
@@ -1017,7 +1079,7 @@ private fun CompactHomeHabitRow(
             .fillMaxWidth()
             .clickable(onClick = onCheckIn)
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically
     ) {
         // Category icon
         Box(
@@ -1025,9 +1087,9 @@ private fun CompactHomeHabitRow(
                 .size(32.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(categoryColor.copy(alpha = 0.15f)),
-            contentAlignment = androidx.compose.ui.Alignment.Center
+            contentAlignment = Alignment.Center
         ) {
-            androidx.compose.material3.Icon(
+            Icon(
                 imageVector = habit.category.getIcon(),
                 contentDescription = null,
                 tint = categoryColor,
@@ -1061,9 +1123,9 @@ private fun CompactHomeHabitRow(
                 .size(28.dp)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
-            contentAlignment = androidx.compose.ui.Alignment.Center
+            contentAlignment = Alignment.Center
         ) {
-            androidx.compose.material3.Icon(
+            Icon(
                 Icons.Rounded.Check,
                 contentDescription = "Complete",
                 tint = MaterialTheme.colorScheme.primary,
@@ -1088,7 +1150,7 @@ private fun CompactHomeMilestoneRow(
             .fillMaxWidth()
             .clickable(onClick = onRowClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically
     ) {
         // Category-colored dot
         Box(
@@ -1134,7 +1196,7 @@ private fun CompactHomeMilestoneRow(
                 .clip(CircleShape)
                 .background(Color(0xFFFF6B35).copy(alpha = 0.15f))
                 .clickable(onClick = onStartFocus),
-            contentAlignment = androidx.compose.ui.Alignment.Center
+            contentAlignment = Alignment.Center
         ) {
             Icon(
                 Icons.Rounded.PlayArrow,
@@ -1183,7 +1245,7 @@ private fun AllHabitsDoneCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(20.dp),
-                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
                     text = "\uD83C\uDF89",
@@ -1211,7 +1273,7 @@ private fun AllHabitsDoneCard(
 
                 if (currentStreak > 0) {
                     Spacer(Modifier.height(12.dp))
-                    androidx.compose.material3.Surface(
+                    Surface(
                         shape = RoundedCornerShape(50),
                         color = Color(0xFFFF6B35).copy(alpha = 0.1f)
                     ) {

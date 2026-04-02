@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
@@ -63,14 +64,16 @@ fun BeginnerObjectivesCard(
         targetValue = if (totalCount > 0) completedCount.toFloat() / totalCount else 0f,
         animationSpec = tween(600)
     )
-    val totalXp = objectives.filter { it.isCompleted }.sumOf { it.xpAwarded }
+
+    // The next incomplete objective to focus on
+    val nextObjective = objectives.firstOrNull { !it.isCompleted }
 
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = 20.dp
     ) {
         Column {
-            // Gradient accent
+            // Gradient accent bar
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -83,81 +86,86 @@ fun BeginnerObjectivesCard(
                     )
             )
 
-            Column(
+            // Header: progress summary + expand toggle
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onToggleExpanded)
-                    .padding(16.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Header row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(
-                                    if (allDone) Color(0xFF4CAF50).copy(alpha = 0.12f)
-                                    else Color(0xFFFF6B35).copy(alpha = 0.12f)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Rounded.Star,
-                                contentDescription = null,
-                                tint = if (allDone) Color(0xFF4CAF50) else Color(0xFFFF6B35),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                if (allDone) "All objectives complete!" else "Getting Started",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                "$completedCount/$totalCount completed · ${totalXp} XP earned",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                if (allDone) Color(0xFF4CAF50).copy(alpha = 0.12f)
+                                else Color(0xFFFF6B35).copy(alpha = 0.12f)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.Star,
+                            contentDescription = null,
+                            tint = if (allDone) Color(0xFF4CAF50) else Color(0xFFFF6B35),
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
-
-                    Icon(
-                        if (isExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                        contentDescription = if (isExpanded) "Collapse" else "Expand",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(24.dp)
-                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            if (allDone) "All done! 🎉" else "Getting Started",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "$completedCount / $totalCount steps",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
-
-                Spacer(Modifier.height(12.dp))
-
-                // Progress bar
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp)),
-                    color = if (allDone) Color(0xFF4CAF50) else Color(0xFFFF6B35),
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                Icon(
+                    if (isExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                    contentDescription = if (isExpanded) "Collapse" else "Expand",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
                 )
             }
 
-            // Expandable list
+            // Progress bar
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .height(5.dp)
+                    .clip(RoundedCornerShape(3.dp)),
+                color = if (allDone) Color(0xFF4CAF50) else Color(0xFFFF6B35),
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+
+            // Next step spotlight — always visible unless all done
+            if (!allDone && nextObjective != null) {
+                Spacer(Modifier.height(12.dp))
+                NextObjectiveSpotlight(
+                    objective = nextObjective,
+                    stepNumber = completedCount + 1,
+                    totalCount = totalCount,
+                    onClick = { onObjectiveClick(nextObjective.type) }
+                )
+            }
+
+            // Full list — shown when expanded
             AnimatedVisibility(
                 visible = isExpanded,
                 enter = expandVertically(),
                 exit = shrinkVertically()
             ) {
                 Column(
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp)
                 ) {
                     objectives.forEachIndexed { index, objective ->
                         ObjectiveRow(
@@ -179,6 +187,7 @@ fun BeginnerObjectivesCard(
 
             // Dismiss button — visible only when all objectives are complete
             if (allComplete) {
+                Spacer(Modifier.height(8.dp))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -194,8 +203,93 @@ fun BeginnerObjectivesCard(
                         color = Color(0xFF4CAF50)
                     )
                 }
+            } else {
+                Spacer(Modifier.height(8.dp))
             }
         }
+    }
+}
+
+/**
+ * Spotlight card highlighting the single next incomplete objective.
+ * Replaces the overwhelming full-list view with a focused "do this next" prompt.
+ */
+@Composable
+private fun NextObjectiveSpotlight(
+    objective: BeginnerObjective,
+    stepNumber: Int,
+    totalCount: Int,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFFF6B35).copy(alpha = 0.07f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Step number bubble
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(Color(0xFFFF6B35).copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "$stepNumber",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFFF6B35)
+            )
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Next: ${objective.type.title}",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = objective.type.description,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Spacer(Modifier.width(8.dp))
+
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = Color(0xFFFF6B35).copy(alpha = 0.1f)
+        ) {
+            Text(
+                text = "+${objective.type.xpReward} XP",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFFF6B35),
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+            )
+        }
+
+        Spacer(Modifier.width(6.dp))
+
+        Icon(
+            Icons.Rounded.ChevronRight,
+            contentDescription = null,
+            tint = Color(0xFFFF6B35),
+            modifier = Modifier.size(18.dp)
+        )
     }
 }
 

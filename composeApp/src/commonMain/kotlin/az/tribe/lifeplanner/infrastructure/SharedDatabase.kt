@@ -26,6 +26,7 @@ import az.tribe.lifeplanner.database.CoachGroupEntity
 import az.tribe.lifeplanner.database.BeginnerObjectiveEntity
 import az.tribe.lifeplanner.database.CoachGroupMemberEntity
 import az.tribe.lifeplanner.database.FocusSessionEntity
+import az.tribe.lifeplanner.database.HealthMetricEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
@@ -1762,6 +1763,57 @@ class SharedDatabase(
                 historyStart, historyEnd,
                 badgeStart, badgeEnd
             ).executeAsList().mapNotNull { it }
+        }
+    }
+
+    // --- Health Metric operations ---
+
+    fun observeHealthMetricsByType(metricType: String): Flow<List<HealthMetricEntity>> = flow {
+        emitAll(
+            this@SharedDatabase { db ->
+                db.lifePlannerDBQueries.observeHealthMetricsByType(metricType)
+            }.asFlow().mapToList(Dispatchers.IO)
+        )
+    }
+
+    suspend fun getHealthMetricsByTypeAndDateRange(
+        metricType: String,
+        startDate: String,
+        endDate: String
+    ): List<HealthMetricEntity> {
+        return this { db ->
+            db.lifePlannerDBQueries.getHealthMetricsByTypeAndDateRange(metricType, startDate, endDate)
+                .executeAsList()
+        }
+    }
+
+    suspend fun getLatestHealthMetric(metricType: String): HealthMetricEntity? {
+        return this { db ->
+            db.lifePlannerDBQueries.getLatestHealthMetric(metricType).executeAsOneOrNull()
+        }
+    }
+
+    suspend fun insertHealthMetric(
+        id: String,
+        metricType: String,
+        value: Double,
+        unit: String,
+        date: String,
+        source: String,
+        recordedAt: String,
+        createdAt: String
+    ) {
+        this { db ->
+            db.lifePlannerDBQueries.insertHealthMetric(
+                id = id,
+                metricType = metricType,
+                value_ = value,
+                unit = unit,
+                date = date,
+                source = source,
+                recordedAt = recordedAt,
+                createdAt = createdAt
+            )
         }
     }
 }

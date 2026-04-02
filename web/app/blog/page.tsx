@@ -25,8 +25,10 @@ export const metadata: Metadata = {
   },
 };
 
-export default function BlogListPage() {
-  const posts = getAllPosts();
+export const revalidate = 3600;
+
+export default async function BlogListPage() {
+  const posts = await getAllPosts();
 
   return (
     <div className="min-h-screen dark:bg-[#0a0a0f] bg-gray-50 dark:text-white text-gray-900 transition-colors duration-500">

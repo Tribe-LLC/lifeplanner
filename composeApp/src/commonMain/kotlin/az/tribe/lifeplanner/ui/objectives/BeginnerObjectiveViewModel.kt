@@ -85,7 +85,6 @@ class BeginnerObjectiveViewModel(
     fun dismiss() {
         _isDismissed.value = true
         settings.putBoolean("objectives_completed", true)
-        Analytics.allObjectivesCompleted()
     }
 
     fun completeObjective(type: ObjectiveType) {
@@ -274,6 +273,10 @@ class BeginnerObjectiveViewModel(
                 } catch (e: Exception) {
                     log.e(e) { "Failed to award Explorer badge" }
                 }
+
+                // Fire analytics immediately when all objectives are actually done,
+                // not gated on the user tapping the dismiss button.
+                Analytics.allObjectivesCompleted()
 
                 // Notify UI to show celebration — card stays visible so the user
                 // can see the "All objectives complete!" state. The card is

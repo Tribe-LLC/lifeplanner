@@ -83,12 +83,16 @@ kotlin {
             implementation(libs.posthog.android)
             implementation(libs.play.app.update)
             implementation(libs.play.app.update.ktx)
+            implementation(libs.play.review)
+            implementation(libs.play.review.ktx)
+            implementation(libs.health.connect)
         }
         commonMain.dependencies {
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)
             implementation(compose.materialIconsExtended)
+            implementation(libs.phosphor.icons)
             implementation(compose.ui)
             implementation(compose.components.resources)
             implementation(compose.components.uiToolingPreview)
@@ -137,6 +141,8 @@ kotlin {
             implementation(libs.sqldelight.ios)
             // ktor
             implementation(libs.ktor.client.darwin)
+            // HealthKit wrapper
+            implementation(libs.health.kmp)
         }
 
         commonTest.dependencies {
@@ -159,7 +165,7 @@ sqldelight {
         create("LifePlannerDB") {
             packageName.set("az.tribe.lifeplanner.database")
             schemaOutputDirectory = file("src/commonMain/sqldelight/databases")
-            version = 14 // v2.1: Add CoachPersonaOverride, sync indexes, BeginnerObjectives
+            version = 18 // v2.3: Add HealthMetricEntity (migrations 14–17 applied)
             generateAsync.set(true)
         }
     }
@@ -197,8 +203,8 @@ android {
         applicationId = "az.tribe.lifeplanner"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 8
-        versionName = "2.2"
+        versionCode = 9
+        versionName = "2.3"
 
     }
     packaging {
@@ -275,7 +281,7 @@ buildkonfig {
         buildConfigField(
             FieldSpec.Type.STRING,
             "APP_VERSION",
-            "2.2",
+            "2.3",
         )
     }
 

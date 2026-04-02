@@ -1,0 +1,18 @@
+-- Add HealthMetricEntity table for Apple Health / Health Connect integration
+CREATE TABLE IF NOT EXISTS HealthMetricEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    metricType TEXT NOT NULL,
+    value_ REAL NOT NULL,
+    unit TEXT NOT NULL,
+    date TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'PLATFORM',
+    recordedAt TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_health_metric_type ON HealthMetricEntity(metricType);
+CREATE INDEX IF NOT EXISTS idx_health_metric_date ON HealthMetricEntity(date);

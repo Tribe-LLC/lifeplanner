@@ -1,0 +1,2 @@
+-- Add habitType column to distinguish BUILD vs QUIT habits
+ALTER TABLE HabitEntity ADD COLUMN habitType TEXT NOT NULL DEFAULT 'BUILD';

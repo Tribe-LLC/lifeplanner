@@ -818,12 +818,15 @@ class AuthViewModel(
      * Mark onboarding complete for the current user (no personalization data).
      */
     fun completeOnboarding() {
+        // Idempotency guard: prevent double-firing if called from multiple call sites
+        // (e.g. handleFinish() + LaunchedEffect(authState) in OnboardingScreen)
+        if (_hasCompletedOnboarding.value) return
+        _hasCompletedOnboarding.value = true
         viewModelScope.launch {
             try {
                 val user = userRepository.getCurrentUser()
                 if (user != null) {
                     userRepository.markOnboardingComplete(user.id)
-                    _hasCompletedOnboarding.value = true
                     Analytics.onboardingCompleted()
                     PostHogAnalytics.setUserProperties(mapOf("has_completed_onboarding" to true))
                     Logger.d("AuthViewModel") { "Onboarding marked complete for ${user.id}" }

@@ -163,22 +163,14 @@ fun HabitTrackerScreen(
         }
     }
 
-    // Show reflection prompt after habit check-in
+    // Auto-show reflection sheet after habit check-in — no snackbar intermediary
     LaunchedEffect(recentCheckIn) {
         recentCheckIn?.let { checkIn ->
-            val result = snackbarHostState.showSnackbar(
-                message = "Great job completing ${checkIn.habit.title}!",
-                actionLabel = "Add Reflection",
-                duration = SnackbarDuration.Short
-            )
-            if (result == SnackbarResult.ActionPerformed) {
-                habitForReflection = checkIn.habit
-                // Find linked goal if any
-                linkedGoalForReflection = checkIn.habit.linkedGoalId?.let { goalId ->
-                    goals.find { it.id == goalId }
-                }
-                showReflectionSheet = true
+            habitForReflection = checkIn.habit
+            linkedGoalForReflection = checkIn.habit.linkedGoalId?.let { goalId ->
+                goals.find { it.id == goalId }
             }
+            showReflectionSheet = true
             viewModel.clearRecentCheckIn()
         }
     }

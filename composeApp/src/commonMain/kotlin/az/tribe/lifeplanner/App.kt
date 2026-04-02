@@ -58,6 +58,7 @@ import az.tribe.lifeplanner.ui.ProfileScreen
 import az.tribe.lifeplanner.ui.ReminderSettingsScreen
 import az.tribe.lifeplanner.ui.TemplatePickerScreen
 import az.tribe.lifeplanner.ui.HomeScreen
+import az.tribe.lifeplanner.ui.StoryReaderScreen
 import az.tribe.lifeplanner.ui.focus.FocusScreen
 import az.tribe.lifeplanner.ui.retrospective.RetrospectiveScreen
 import az.tribe.lifeplanner.ui.OnboardingScreen
@@ -503,6 +504,11 @@ fun App(
                         },
                         onNavigateToHealth = {
                             navController.navigate(Screen.Health.route) {
+                                launchSingleTop = true
+                            }
+                        },
+                        onNavigateToStoryReader = {
+                            navController.navigate(Screen.StoryReader.route) {
                                 launchSingleTop = true
                             }
                         },
@@ -1116,6 +1122,13 @@ fun App(
             composable(Screen.Health.route) {
                 az.tribe.lifeplanner.ui.health.HealthDashboardScreen(
                     navController = navController
+                )
+            }
+
+            // Story Reader Screen
+            composable(Screen.StoryReader.route) {
+                StoryReaderScreen(
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
 

@@ -1917,3 +1917,38 @@ DELETE FROM BeginnerObjectiveEntity WHERE is_deleted = 1 AND last_synced_at IS N
 upsertBeginnerObjectiveFromSync:
 INSERT OR REPLACE INTO BeginnerObjectiveEntity(id, objectiveType, isCompleted, completedAt, xpAwarded, createdAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- ===== Health Metrics =====
+CREATE TABLE IF NOT EXISTS HealthMetricEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    metricType TEXT NOT NULL,
+    value_ REAL NOT NULL,
+    unit TEXT NOT NULL,
+    date TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'PLATFORM',
+    recordedAt TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_health_metric_type ON HealthMetricEntity(metricType);
+CREATE INDEX IF NOT EXISTS idx_health_metric_date ON HealthMetricEntity(date);
+
+insertHealthMetric:
+INSERT OR REPLACE INTO HealthMetricEntity(id, metricType, value_, unit, date, source, recordedAt, createdAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0, 0, NULL);
+
+observeHealthMetricsByType:
+SELECT * FROM HealthMetricEntity WHERE metricType = ? AND is_deleted = 0 ORDER BY date DESC;
+
+getHealthMetricsByTypeAndDateRange:
+SELECT * FROM HealthMetricEntity WHERE metricType = ? AND date >= ? AND date <= ? AND is_deleted = 0 ORDER BY date ASC;
+
+getLatestHealthMetric:
+SELECT * FROM HealthMetricEntity WHERE metricType = ? AND is_deleted = 0 ORDER BY date DESC LIMIT 1;
+
+deleteHealthMetric:
+UPDATE HealthMetricEntity SET is_deleted = 1, sync_updated_at = datetime('now') WHERE id = ?;

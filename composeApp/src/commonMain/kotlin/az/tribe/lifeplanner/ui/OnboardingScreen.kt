@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import az.tribe.lifeplanner.ui.theme.modernColors
 import az.tribe.lifeplanner.ui.viewmodel.AuthState
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
+import az.tribe.lifeplanner.data.analytics.Analytics
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -103,6 +104,13 @@ fun OnboardingScreen(
                 else -> {}
             }
         }
+    }
+
+    // Track each carousel page view for the onboarding funnel
+    val pageNames = listOf("welcome", "offline_promise", "ai_preview", "quick_tour")
+    LaunchedEffect(pagerState.currentPage) {
+        val pageName = pageNames.getOrElse(pagerState.currentPage) { "unknown" }
+        Analytics.onboardingStepCompleted(pageName, pagerState.currentPage)
     }
 
     // Back handler: scroll pager back or do nothing on first page

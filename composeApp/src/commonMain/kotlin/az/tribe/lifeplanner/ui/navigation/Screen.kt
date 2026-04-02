@@ -34,4 +34,7 @@ sealed class Screen(val route: String) {
     object Retrospective : Screen("retrospective")
     object CoachProfile : Screen("coach_profile/{coachId}")
     object OnboardingReminders : Screen("onboarding_reminders")
+    object Health : Screen("health")
+    object Feedback : Screen("feedback")
+    object StoryReader : Screen("story_reader")
 }

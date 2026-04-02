@@ -9,6 +9,7 @@ import az.tribe.lifeplanner.data.network.GeminiService
 import az.tribe.lifeplanner.data.network.GeminiServiceImpl
 import az.tribe.lifeplanner.data.repository.AiUsageRepositoryImpl
 import az.tribe.lifeplanner.data.repository.BackupRepositoryImpl
+import az.tribe.lifeplanner.data.repository.StoryRepositoryImpl
 import az.tribe.lifeplanner.data.repository.BeginnerObjectiveRepositoryImpl
 import az.tribe.lifeplanner.data.repository.ChatRepositoryImpl
 import az.tribe.lifeplanner.data.repository.CoachPostRepositoryImpl
@@ -31,6 +32,7 @@ import az.tribe.lifeplanner.domain.service.SmartReminderManager
 import az.tribe.lifeplanner.data.repository.UserRepositoryImpl
 import az.tribe.lifeplanner.domain.repository.AiUsageRepository
 import az.tribe.lifeplanner.domain.repository.BackupRepository
+import az.tribe.lifeplanner.domain.repository.StoryRepository
 import az.tribe.lifeplanner.domain.repository.BeginnerObjectiveRepository
 import az.tribe.lifeplanner.domain.repository.ChatRepository
 import az.tribe.lifeplanner.domain.repository.CoachPostRepository
@@ -270,6 +272,9 @@ val appModule = module {
 
     // Backup Repository
     single<BackupRepository> { BackupRepositoryImpl(get(), get()) }
+
+    // Story Repository
+    single<StoryRepository> { StoryRepositoryImpl(get()) }
 
     // ViewModels
     viewModelOf(::GoalViewModel)
