@@ -311,6 +311,9 @@ internal fun AuthBottomSheet(
         keyboardController?.hide()
     }
 
+    // Allow toggling between sign-up and sign-in within the same sheet
+    var showSignUp by remember { mutableStateOf(isSignUp) }
+
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
@@ -442,7 +445,7 @@ internal fun AuthBottomSheet(
             Text(
                 text = when {
                     isVerifying -> "Verify Your Email"
-                    isSignUp -> "Create Account"
+                    showSignUp -> "Create Account"
                     else -> "Welcome Back"
                 },
                 style = MaterialTheme.typography.headlineSmall,
@@ -455,7 +458,7 @@ internal fun AuthBottomSheet(
             Text(
                 text = when {
                     isVerifying -> "Enter the 6-digit code we sent to your email"
-                    isSignUp -> "Sign up to start planning your life"
+                    showSignUp -> "Sign up to start planning your life"
                     !usePasswordMode -> "We'll send a magic link to your email"
                     else -> "Sign in with your password"
                 },
@@ -466,7 +469,7 @@ internal fun AuthBottomSheet(
 
             Spacer(Modifier.height(24.dp))
 
-            if (isSignUp && !isVerifying) {
+            if (showSignUp && !isVerifying) {
                 val emailFocus = remember { FocusRequester() }
                 val passwordFocus = remember { FocusRequester() }
                 val isCurrentlyGuest = authState is AuthState.Guest
@@ -569,12 +572,29 @@ internal fun AuthBottomSheet(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold, color = Color.White
                         )
+
                     }
                 }
 
                 generalError()?.let { error ->
                     Spacer(Modifier.height(12.dp))
                     InlineErrorBanner(error)
+                }
+
+                // Toggle to sign-in (only for non-guest users creating a fresh account)
+                if (!isCurrentlyGuest) {
+                    Spacer(Modifier.height(12.dp))
+                    TextButton(onClick = {
+                        showSignUp = false
+                        clearErrors()
+                        email = ""; password = ""; displayName = ""
+                    }) {
+                        Text(
+                            "Already have an account? Sign in",
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
                 }
             } else if (isVerifying) {
                 // --- EMAIL VERIFICATION: OTP + deep link auto-detect ---
@@ -848,6 +868,19 @@ internal fun AuthBottomSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium)
                 }
+
+                TextButton(onClick = {
+                    showSignUp = true
+                    clearErrors()
+                    email = ""; password = ""
+                    authViewModel.clearMagicLinkState()
+                }) {
+                    Text(
+                        "New here? Create account",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
             } else {
                 // --- SIGN IN: Password mode ---
                 val signInPasswordFocus = remember { FocusRequester() }
@@ -941,6 +974,20 @@ internal fun AuthBottomSheet(
                     Text("Use magic link instead",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium)
+                }
+
+                TextButton(onClick = {
+                    showSignUp = true
+                    clearErrors()
+                    usePasswordMode = false
+                    email = ""; password = ""
+                    authViewModel.clearMagicLinkState()
+                }) {
+                    Text(
+                        "New here? Create account",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                 }
             }
 
