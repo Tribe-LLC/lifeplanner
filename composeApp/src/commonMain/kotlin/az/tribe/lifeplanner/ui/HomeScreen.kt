@@ -537,7 +537,7 @@ fun HomeScreen(
                             }
                         },
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp)
+                        contentPadding = PaddingValues(start = 32.dp, end = 16.dp)
                     ) {
                         items(upcomingGoals.size) { index ->
                             CompactGoalTile(
