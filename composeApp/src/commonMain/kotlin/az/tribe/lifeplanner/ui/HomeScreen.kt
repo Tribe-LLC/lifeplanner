@@ -350,7 +350,8 @@ fun HomeScreen(
                     StoriesCarousel(
                         stories = allStories,
                         onStoryAction = { action -> handleStoryAction(action) },
-                        onOpenReader = { onNavigateToStoryReader() }
+                        onOpenReader = { onNavigateToStoryReader() },
+                        modifier = Modifier.padding(horizontal = -LifePlannerDesign.Padding.screenHorizontal)
                     )
                 }
             }
