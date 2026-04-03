@@ -351,7 +351,15 @@ fun HomeScreen(
                         stories = allStories,
                         onStoryAction = { action -> handleStoryAction(action) },
                         onOpenReader = { onNavigateToStoryReader() },
-                        modifier = Modifier.padding(horizontal = -LifePlannerDesign.Padding.screenHorizontal)
+                        modifier = Modifier.layout { measurable, constraints ->
+                            val extraWidth = LifePlannerDesign.Padding.screenHorizontal.roundToPx() * 2
+                            val placeable = measurable.measure(
+                                constraints.copy(maxWidth = constraints.maxWidth + extraWidth)
+                            )
+                            layout(placeable.width, placeable.height) {
+                                placeable.place(-LifePlannerDesign.Padding.screenHorizontal.roundToPx(), 0)
+                            }
+                        }
                     )
                 }
             }
