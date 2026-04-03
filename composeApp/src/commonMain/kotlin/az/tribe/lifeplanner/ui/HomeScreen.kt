@@ -61,6 +61,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontWeight
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.model.Goal
@@ -526,8 +527,17 @@ fun HomeScreen(
                     }
                 } else {
                     LazyRow(
+                        modifier = Modifier.layout { measurable, constraints ->
+                            val extraWidth = LifePlannerDesign.Padding.screenHorizontal.roundToPx() * 2
+                            val placeable = measurable.measure(
+                                constraints.copy(maxWidth = constraints.maxWidth + extraWidth)
+                            )
+                            layout(placeable.width, placeable.height) {
+                                placeable.place(-LifePlannerDesign.Padding.screenHorizontal.roundToPx(), 0)
+                            }
+                        },
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(end = 4.dp)
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp)
                     ) {
                         items(upcomingGoals.size) { index ->
                             CompactGoalTile(

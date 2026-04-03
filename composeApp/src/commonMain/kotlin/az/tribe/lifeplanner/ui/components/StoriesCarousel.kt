@@ -76,7 +76,7 @@ fun StoriesCarousel(
     LazyRow(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp)
     ) {
         sortedStories.forEachIndexed { index, story ->
             item(key = story.id) {
