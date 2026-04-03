@@ -30,13 +30,13 @@ enum class ObjectiveType(
         title = "Write a journal entry",
         description = "Reflect on your day with a journal entry",
         xpReward = 40,
-        sortOrder = 2
+        sortOrder = 3
     ),
     COMPLETE_HABIT_CHECKIN(
         title = "Complete a habit check-in",
         description = "Mark a habit as done for today",
         xpReward = 35,
-        sortOrder = 3
+        sortOrder = 2
     ),
     START_FOCUS_SESSION(
         title = "Mindfulness Minutes",
