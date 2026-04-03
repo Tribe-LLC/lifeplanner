@@ -6,7 +6,6 @@ import { motion } from 'framer-motion';
 import { Download } from 'lucide-react';
 import { ThemeToggle } from '@/components/landing/theme-toggle';
 import { SmartAppBanner } from '@/components/lifeplanner/smart-app-banner';
-import { MetaPixel } from '@/components/lifeplanner/meta-pixel';
 
 const features = [
   {
@@ -50,7 +49,6 @@ const highlights = [
 export default function LifePlannerPage() {
   return (
     <div className="min-h-screen dark:bg-[#0a0a0f] bg-gray-50 dark:text-white text-gray-900 transition-colors duration-500">
-      <MetaPixel />
       <SmartAppBanner />
 
       {/* Animated Background */}
