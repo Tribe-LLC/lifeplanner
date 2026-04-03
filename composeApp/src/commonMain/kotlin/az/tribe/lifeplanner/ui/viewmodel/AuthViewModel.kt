@@ -820,7 +820,6 @@ class AuthViewModel(
     fun completeOnboarding() {
         // Idempotency guard: prevent double-firing if called from multiple call sites
         // (e.g. handleFinish() + LaunchedEffect(authState) in OnboardingScreen)
-        if (_hasCompletedOnboarding.value) return
         _hasCompletedOnboarding.value = true
         viewModelScope.launch {
             try {
