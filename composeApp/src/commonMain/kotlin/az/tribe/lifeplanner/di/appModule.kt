@@ -23,6 +23,7 @@ import az.tribe.lifeplanner.data.repository.GoalHistoryRepositoryImpl
 import az.tribe.lifeplanner.data.repository.FocusRepositoryImpl
 import az.tribe.lifeplanner.data.repository.RetrospectiveRepositoryImpl
 import az.tribe.lifeplanner.data.repository.GoalRepositoryImpl
+import az.tribe.lifeplanner.data.repository.AbilityRepositoryImpl
 import az.tribe.lifeplanner.data.repository.HabitRepositoryImpl
 import az.tribe.lifeplanner.data.repository.JournalRepositoryImpl
 import az.tribe.lifeplanner.data.repository.LifeBalanceRepositoryImpl
@@ -44,6 +45,7 @@ import az.tribe.lifeplanner.domain.repository.GoalHistoryRepository
 import az.tribe.lifeplanner.domain.repository.FocusRepository
 import az.tribe.lifeplanner.domain.repository.RetrospectiveRepository
 import az.tribe.lifeplanner.domain.repository.GoalRepository
+import az.tribe.lifeplanner.domain.repository.AbilityRepository
 import az.tribe.lifeplanner.domain.repository.HabitRepository
 import az.tribe.lifeplanner.domain.repository.JournalRepository
 import az.tribe.lifeplanner.domain.repository.LifeBalanceRepository
@@ -54,6 +56,8 @@ import az.tribe.lifeplanner.notification.NotificationSchedulerInterface
 import az.tribe.lifeplanner.notification.getNotificationScheduler
 import az.tribe.lifeplanner.util.NetworkConnectivityObserver
 import az.tribe.lifeplanner.widget.WidgetDataSyncService
+import az.tribe.lifeplanner.ui.ability.AbilityDetailViewModel
+import az.tribe.lifeplanner.ui.ability.AbilityViewModel
 import az.tribe.lifeplanner.ui.GoalViewModel
 import az.tribe.lifeplanner.ui.chat.ChatViewModel
 import az.tribe.lifeplanner.ui.dependency.GoalDependencyViewModel
@@ -74,6 +78,7 @@ import az.tribe.lifeplanner.usecases.journal.GetAllJournalEntriesUseCase
 import az.tribe.lifeplanner.usecases.journal.GetJournalEntriesByGoalUseCase
 import az.tribe.lifeplanner.usecases.journal.GetRecentJournalEntriesUseCase
 import az.tribe.lifeplanner.usecases.journal.UpdateJournalEntryUseCase
+import az.tribe.lifeplanner.usecases.ability.AwardAbilityXpUseCase
 import az.tribe.lifeplanner.usecases.habit.CheckInHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.CreateHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.DeleteHabitUseCase
@@ -112,6 +117,7 @@ import az.tribe.lifeplanner.usecases.UpdateGoalUseCase
 import az.tribe.lifeplanner.usecases.UpdateMilestoneUseCase
 import com.russhwolf.settings.Settings
 import io.github.jan.supabase.auth.auth
+import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 
@@ -209,6 +215,7 @@ val appModule = module {
     single<AiUsageRepository> { AiUsageRepositoryImpl(get()) }
     single<RetrospectiveRepository> { RetrospectiveRepositoryImpl(get()) }
     single<BeginnerObjectiveRepository> { BeginnerObjectiveRepositoryImpl(get(), get()) }
+    single<AbilityRepository> { AbilityRepositoryImpl(get()) }
 
     // Existing Use Cases
     factory { GetAllGoalsUseCase(get()) }
@@ -248,6 +255,9 @@ val appModule = module {
 
     factory { GenerateAiQuestionnaireUseCase(get()) }
     factory { GenerateAiGoalsUseCase(get()) }
+
+    // Ability Use Cases
+    factory { AwardAbilityXpUseCase(get()) }
 
     // Habit Use Cases
     factory { GetAllHabitsUseCase(get()) }
@@ -291,4 +301,6 @@ val appModule = module {
     viewModelOf(::FocusViewModel)
     viewModelOf(::RetrospectiveViewModel)
     viewModelOf(::BeginnerObjectiveViewModel)
+    viewModelOf(::AbilityViewModel)
+    viewModel { params -> AbilityDetailViewModel(params.get(), get(), get(), get()) }
 }

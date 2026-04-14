@@ -9,7 +9,7 @@ import az.tribe.lifeplanner.domain.model.Badge
 import az.tribe.lifeplanner.domain.model.Challenge
 import az.tribe.lifeplanner.domain.model.ChallengeTargets
 import az.tribe.lifeplanner.domain.model.UserProgress
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone

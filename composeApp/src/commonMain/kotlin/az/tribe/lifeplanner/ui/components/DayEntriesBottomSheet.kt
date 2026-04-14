@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import az.tribe.lifeplanner.domain.model.JournalEntry
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.number
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -224,5 +225,5 @@ private fun formatFullDate(date: LocalDate): String {
         "July", "August", "September", "October", "November", "December"
     )
     val dayIndex = (date.dayOfWeek.ordinal) % 7
-    return "${dayOfWeek[dayIndex]}, ${months[date.monthNumber - 1]} ${date.dayOfMonth}"
+    return "${dayOfWeek[dayIndex]}, ${months[date.month.number - 1]} ${date.day}"
 }

@@ -1,7 +1,7 @@
 package az.tribe.lifeplanner.usecases
 
 import az.tribe.lifeplanner.domain.repository.GoalHistoryRepository
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 
 class LogGoalChangeUseCase(private val repository: GoalHistoryRepository) {
     suspend operator fun invoke(

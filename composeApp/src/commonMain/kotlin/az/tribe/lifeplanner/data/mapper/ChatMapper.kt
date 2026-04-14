@@ -6,7 +6,7 @@ import az.tribe.lifeplanner.domain.model.ChatMessage
 import az.tribe.lifeplanner.domain.model.ChatMessageMetadata
 import az.tribe.lifeplanner.domain.model.ChatSession
 import az.tribe.lifeplanner.domain.model.MessageRole
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime

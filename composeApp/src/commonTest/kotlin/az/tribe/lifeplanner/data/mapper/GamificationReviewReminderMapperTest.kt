@@ -1460,8 +1460,8 @@ class GamificationReviewReminderMapperTest {
     fun `parseLocalDateTime parses LocalDateTime with fractional seconds`() {
         val result = parseLocalDateTime("2026-03-06T10:00:00.429")
         assertEquals(2026, result.year)
-        assertEquals(3, result.monthNumber)
-        assertEquals(6, result.dayOfMonth)
+        assertEquals(3, result.month.number)
+        assertEquals(6, result.day)
         assertEquals(10, result.hour)
     }
 
@@ -1481,8 +1481,8 @@ class GamificationReviewReminderMapperTest {
     fun `parseLocalDateTime parses Instant with fractional seconds and Z`() {
         val result = parseLocalDateTime("2026-03-06T13:06:35.429Z")
         assertEquals(2026, result.year)
-        assertEquals(3, result.monthNumber)
-        assertEquals(6, result.dayOfMonth)
+        assertEquals(3, result.month.number)
+        assertEquals(6, result.day)
         assertEquals(13, result.hour)
         assertEquals(6, result.minute)
         assertEquals(35, result.second)

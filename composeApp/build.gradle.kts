@@ -165,7 +165,7 @@ sqldelight {
         create("LifePlannerDB") {
             packageName.set("az.tribe.lifeplanner.database")
             schemaOutputDirectory = file("src/commonMain/sqldelight/databases")
-            version = 18 // v2.3: Add HealthMetricEntity (migrations 14–17 applied)
+            version = 19 // v2.4: Add HabitEntity.type, AbilityEntity, AbilityHabitLinkEntity
             generateAsync.set(true)
         }
     }

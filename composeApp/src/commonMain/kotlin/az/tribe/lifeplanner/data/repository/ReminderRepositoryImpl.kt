@@ -17,7 +17,7 @@ import az.tribe.lifeplanner.domain.repository.ReminderRepository
 import az.tribe.lifeplanner.data.sync.SyncManager
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
 import az.tribe.lifeplanner.notification.NotificationSchedulerInterface
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime

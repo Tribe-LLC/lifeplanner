@@ -82,6 +82,7 @@ import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
 import az.tribe.lifeplanner.ui.theme.gradientColors
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.number
 import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -728,7 +729,7 @@ private fun formatDate(date: LocalDate): String {
         "Jan", "Feb", "Mar", "Apr", "May", "Jun",
         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
     )
-    return "${months[date.monthNumber - 1]} ${date.dayOfMonth}, ${date.year}"
+    return "${months[date.month.number - 1]} ${date.day}, ${date.year}"
 }
 
 @Composable

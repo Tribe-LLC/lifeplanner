@@ -8,7 +8,7 @@ import com.russhwolf.settings.Settings
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import co.touchlab.kermit.Logger
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 
 class HabitTableSyncer(
     supabase: SupabaseClient,
@@ -47,6 +47,7 @@ class HabitTableSyncer(
         isActive = local.isActive != 0L,
         createdAt = local.createdAt,
         reminderTime = local.reminderTime,
+        type = local.type,
         updatedAt = local.sync_updated_at ?: Clock.System.now().toString(),
         isDeleted = local.is_deleted != 0L,
         syncVersion = local.sync_version
@@ -69,6 +70,7 @@ class HabitTableSyncer(
             isActive = if (remote.isActive) 1L else 0L,
             createdAt = remote.createdAt,
             reminderTime = remote.reminderTime,
+            type = remote.type,
             sync_updated_at = remote.updatedAt,
             is_deleted = if (remote.isDeleted) 1L else 0L,
             sync_version = remote.syncVersion,
@@ -93,6 +95,7 @@ class HabitTableSyncer(
             isActive = entity.isActive,
             createdAt = entity.createdAt,
             reminderTime = entity.reminderTime,
+            type = entity.type,
             sync_updated_at = entity.sync_updated_at,
             is_deleted = entity.is_deleted,
             sync_version = entity.sync_version,

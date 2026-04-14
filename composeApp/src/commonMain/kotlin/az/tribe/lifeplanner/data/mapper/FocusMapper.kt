@@ -5,7 +5,7 @@ import az.tribe.lifeplanner.domain.enum.AmbientSound
 import az.tribe.lifeplanner.domain.enum.FocusTheme
 import az.tribe.lifeplanner.domain.enum.Mood
 import az.tribe.lifeplanner.domain.model.FocusSession
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.LocalDateTime
 
 fun FocusSessionEntity.toDomain(): FocusSession = FocusSession(

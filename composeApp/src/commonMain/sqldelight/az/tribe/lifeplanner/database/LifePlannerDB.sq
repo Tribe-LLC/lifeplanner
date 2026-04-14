@@ -364,6 +364,7 @@ CREATE TABLE IF NOT EXISTS HabitEntity (
     is_deleted INTEGER NOT NULL DEFAULT 0,
     sync_version INTEGER NOT NULL DEFAULT 0,
     last_synced_at TEXT,
+    type TEXT NOT NULL DEFAULT 'BUILD',
     FOREIGN KEY (linkedGoalId) REFERENCES GoalEntity(id) ON DELETE SET NULL
 );
 
@@ -382,8 +383,8 @@ CREATE TABLE IF NOT EXISTS HabitCheckInEntity (
 
 -- Habit queries
 insertHabit:
-INSERT OR REPLACE INTO HabitEntity(id, title, description, category, frequency, targetCount, currentStreak, longestStreak, totalCompletions, lastCompletedDate, linkedGoalId, correlationScore, isActive, createdAt, reminderTime, sync_updated_at, is_deleted, sync_version, last_synced_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO HabitEntity(id, title, description, category, frequency, targetCount, currentStreak, longestStreak, totalCompletions, lastCompletedDate, linkedGoalId, correlationScore, isActive, createdAt, reminderTime, sync_updated_at, is_deleted, sync_version, last_synced_at, type)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getAllHabits:
 SELECT * FROM HabitEntity WHERE isActive = 1 AND is_deleted = 0 ORDER BY createdAt DESC;
@@ -399,7 +400,7 @@ SELECT * FROM HabitEntity WHERE linkedGoalId = ? AND isActive = 1 AND is_deleted
 
 updateHabit:
 UPDATE HabitEntity
-SET title = ?, description = ?, category = ?, frequency = ?, targetCount = ?, linkedGoalId = ?, reminderTime = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+SET title = ?, description = ?, category = ?, frequency = ?, targetCount = ?, linkedGoalId = ?, reminderTime = ?, type = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = ?;
 
 updateHabitStreak:
@@ -1707,8 +1708,8 @@ INSERT OR REPLACE INTO UserEntity(id, firebaseUid, email, displayName, isGuest, 
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 upsertHabitFromSync:
-INSERT OR REPLACE INTO HabitEntity(id, title, description, category, frequency, targetCount, currentStreak, longestStreak, totalCompletions, lastCompletedDate, linkedGoalId, correlationScore, isActive, createdAt, reminderTime, sync_updated_at, is_deleted, sync_version, last_synced_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO HabitEntity(id, title, description, category, frequency, targetCount, currentStreak, longestStreak, totalCompletions, lastCompletedDate, linkedGoalId, correlationScore, isActive, createdAt, reminderTime, sync_updated_at, is_deleted, sync_version, last_synced_at, type)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 upsertHabitCheckInFromSync:
 INSERT OR REPLACE INTO HabitCheckInEntity(id, habitId, date, completed, notes, sync_updated_at, is_deleted, sync_version, last_synced_at)
@@ -1952,3 +1953,79 @@ SELECT * FROM HealthMetricEntity WHERE metricType = ? AND is_deleted = 0 ORDER B
 
 deleteHealthMetric:
 UPDATE HealthMetricEntity SET is_deleted = 1, sync_updated_at = datetime('now') WHERE id = ?;
+
+-- ===== Abilities =====
+CREATE TABLE IF NOT EXISTS AbilityEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    iconEmoji TEXT NOT NULL DEFAULT '⚡',
+    totalXp INTEGER NOT NULL DEFAULT 0,
+    currentLevel INTEGER NOT NULL DEFAULT 1,
+    isActive INTEGER NOT NULL DEFAULT 1,
+    createdAt TEXT NOT NULL,
+    lastActivityDate TEXT,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS AbilityHabitLinkEntity (
+    id TEXT PRIMARY KEY NOT NULL,
+    abilityId TEXT NOT NULL,
+    habitId TEXT NOT NULL,
+    xpWeight REAL NOT NULL DEFAULT 1.0,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (abilityId) REFERENCES AbilityEntity(id) ON DELETE CASCADE,
+    FOREIGN KEY (habitId) REFERENCES HabitEntity(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ability_habit_unique ON AbilityHabitLinkEntity(abilityId, habitId);
+
+-- Ability queries
+insertAbility:
+INSERT OR REPLACE INTO AbilityEntity(id, title, description, iconEmoji, totalXp, currentLevel, isActive, createdAt, lastActivityDate, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getAllAbilities:
+SELECT * FROM AbilityEntity WHERE isActive = 1 AND is_deleted = 0 ORDER BY currentLevel DESC, totalXp DESC;
+
+getAbilityById:
+SELECT * FROM AbilityEntity WHERE id = ? AND is_deleted = 0;
+
+updateAbility:
+UPDATE AbilityEntity
+SET title = ?, description = ?, iconEmoji = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE id = ?;
+
+updateAbilityXpAndLevel:
+UPDATE AbilityEntity
+SET totalXp = ?, currentLevel = ?, lastActivityDate = ?, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE id = ?;
+
+deleteAbility:
+UPDATE AbilityEntity SET is_deleted = 1, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?;
+
+-- AbilityHabitLink queries
+insertAbilityHabitLink:
+INSERT OR IGNORE INTO AbilityHabitLinkEntity(id, abilityId, habitId, xpWeight, createdAt)
+VALUES (?, ?, ?, ?, ?);
+
+getLinksForAbility:
+SELECT * FROM AbilityHabitLinkEntity WHERE abilityId = ?;
+
+getLinksForHabit:
+SELECT * FROM AbilityHabitLinkEntity WHERE habitId = ?;
+
+deleteAbilityHabitLink:
+DELETE FROM AbilityHabitLinkEntity WHERE abilityId = ? AND habitId = ?;
+
+deleteAllLinksForAbility:
+DELETE FROM AbilityHabitLinkEntity WHERE abilityId = ?;
+
+-- Clear all
+deleteAllAbilities:
+DELETE FROM AbilityEntity;
+
+deleteAllAbilityHabitLinks:
+DELETE FROM AbilityHabitLinkEntity;

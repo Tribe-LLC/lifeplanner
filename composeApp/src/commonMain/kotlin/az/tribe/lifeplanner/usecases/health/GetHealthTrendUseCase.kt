@@ -3,7 +3,7 @@ package az.tribe.lifeplanner.usecases.health
 import az.tribe.lifeplanner.domain.enum.HealthMetricType
 import az.tribe.lifeplanner.domain.model.HealthMetric
 import az.tribe.lifeplanner.domain.repository.HealthRepository
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.minus

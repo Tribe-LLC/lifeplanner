@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.HabitFrequency
+import az.tribe.lifeplanner.domain.enum.HabitType
 import az.tribe.lifeplanner.ui.habit.HabitViewModel
 import az.tribe.lifeplanner.ui.theme.modernColors
 import org.koin.compose.viewmodel.koinViewModel
@@ -36,6 +37,7 @@ fun AddHabitScreen(
     var description by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf(GoalCategory.PHYSICAL) }
     var selectedFrequency by remember { mutableStateOf(HabitFrequency.DAILY) }
+    var selectedHabitType by remember { mutableStateOf(HabitType.BUILD) }
     var selectedTemplateCategory by remember { mutableStateOf<GoalCategory?>(null) }
     var expandedCategory by remember { mutableStateOf(false) }
     var expandedFrequency by remember { mutableStateOf(false) }
@@ -89,7 +91,8 @@ fun AddHabitScreen(
                             title = title.trim(),
                             description = description.trim(),
                             category = selectedCategory,
-                            frequency = selectedFrequency
+                            frequency = selectedFrequency,
+                            type = selectedHabitType
                         )
                         onHabitSaved()
                     }
@@ -259,6 +262,40 @@ fun AddHabitScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
+            }
+
+            // Habit type toggle
+            item {
+                Text(
+                    "Habit Type",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    HabitType.entries.forEach { type ->
+                        val isSelected = selectedHabitType == type
+                        val color = if (type == HabitType.BUILD) Color(0xFF4CAF50) else Color(0xFFF44336)
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { selectedHabitType = type },
+                            label = {
+                                Text(
+                                    if (type == HabitType.BUILD) "Build Habit" else "Break Bad Habit",
+                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = color.copy(alpha = 0.12f),
+                                selectedLabelColor = color
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
             }
 
             // Category dropdown

@@ -4,7 +4,7 @@ import androidx.compose.ui.graphics.Color
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.GoalTimeline
 import az.tribe.lifeplanner.domain.model.GoalAnalytics
-import kotlinx.datetime.Instant
+import kotlin.time.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 
@@ -14,7 +14,7 @@ fun Instant.formatAsReadableDate(): String {
         val localDateTime = this.toLocalDateTime(TimeZone.currentSystemDefault())
         val hour = localDateTime.time.hour.toString().padStart(2, '0')
         val minute = localDateTime.time.minute.toString().padStart(2, '0')
-        val day = localDateTime.date.dayOfMonth.toString().padStart(2, '0')
+        val day = localDateTime.date.day.toString().padStart(2, '0')
         val month = localDateTime.date.month.name.lowercase().replaceFirstChar(Char::uppercase)
         val year = localDateTime.date.year
         "$hour:$minute $day $month $year"

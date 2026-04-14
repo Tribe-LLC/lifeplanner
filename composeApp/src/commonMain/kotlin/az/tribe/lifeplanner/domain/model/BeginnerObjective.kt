@@ -26,18 +26,19 @@ enum class ObjectiveType(
         xpReward = 40,
         sortOrder = 1
     ),
-    WRITE_JOURNAL(
-        title = "Write a journal entry",
-        description = "Reflect on your day with a journal entry",
-        xpReward = 40,
-        sortOrder = 3
-    ),
     COMPLETE_HABIT_CHECKIN(
         title = "Complete a habit check-in",
         description = "Mark a habit as done for today",
         xpReward = 35,
         sortOrder = 2
     ),
+    WRITE_JOURNAL(
+        title = "Write a journal entry",
+        description = "Reflect on your day with a journal entry",
+        xpReward = 40,
+        sortOrder = 3
+    ),
+
     START_FOCUS_SESSION(
         title = "Mindfulness Minutes",
         description = "Complete a 1+ minute focus session",

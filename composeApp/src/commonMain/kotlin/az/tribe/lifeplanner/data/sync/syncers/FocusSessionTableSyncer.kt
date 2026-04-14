@@ -8,7 +8,7 @@ import com.russhwolf.settings.Settings
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import co.touchlab.kermit.Logger
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 
 class FocusSessionTableSyncer(
     supabase: SupabaseClient,

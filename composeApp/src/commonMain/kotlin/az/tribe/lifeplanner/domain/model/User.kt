@@ -1,6 +1,6 @@
 package az.tribe.lifeplanner.domain.model
 
-import kotlinx.datetime.Instant
+import kotlin.time.Instant
 
 /**
  * User domain model representing a user profile

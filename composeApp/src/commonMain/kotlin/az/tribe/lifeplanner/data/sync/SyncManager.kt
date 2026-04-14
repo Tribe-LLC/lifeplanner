@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import io.github.jan.supabase.exceptions.HttpRequestException
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlin.math.min
 
 class SyncManager private constructor(

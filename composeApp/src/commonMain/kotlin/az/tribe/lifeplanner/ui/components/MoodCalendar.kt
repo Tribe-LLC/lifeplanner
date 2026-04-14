@@ -50,7 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import az.tribe.lifeplanner.domain.enum.Mood
 import az.tribe.lifeplanner.domain.model.JournalEntry
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
@@ -58,6 +58,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
+import kotlinx.datetime.number
 
 @Composable
 fun MoodCalendar(
@@ -82,7 +83,7 @@ fun MoodCalendar(
     val monthEntryCount = remember(entries, selectedMonth) {
         entries.count {
             it.date.year == selectedMonth.year &&
-            it.date.monthNumber == selectedMonth.monthNumber
+            it.date.month.number == selectedMonth.month.number
         }
     }
 
@@ -289,7 +290,7 @@ private fun CalendarHeader(
         }
 
         Text(
-            text = "${monthNames[selectedMonth.monthNumber - 1]} ${selectedMonth.year}",
+            text = "${monthNames[selectedMonth.month.number - 1]} ${selectedMonth.year}",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold
         )
@@ -356,7 +357,7 @@ private fun CalendarGrid(
                         if (day != null) {
                             val entriesForDay = entriesByDate[day] ?: emptyList()
                             val isToday = day == today
-                            val isCurrentMonth = day.monthNumber == currentMonth.monthNumber
+                            val isCurrentMonth = day.month.number == currentMonth.month.number
 
                             DayCell(
                                 date = day,
@@ -431,7 +432,7 @@ private fun DayCell(
             }
         } else {
             Text(
-                text = date.dayOfMonth.toString(),
+                text = date.day.toString(),
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
                 color = if (isCurrentMonth) {
@@ -447,15 +448,15 @@ private fun DayCell(
 }
 
 private fun getDaysForMonth(date: LocalDate): List<LocalDate?> {
-    val firstDayOfMonth = LocalDate(date.year, date.monthNumber, 1)
-    val lastDayOfMonth = when (date.monthNumber) {
-        1, 3, 5, 7, 8, 10, 12 -> LocalDate(date.year, date.monthNumber, 31)
-        4, 6, 9, 11 -> LocalDate(date.year, date.monthNumber, 30)
+    val firstDayOfMonth = LocalDate(date.year, date.month.number, 1)
+    val lastDayOfMonth = when (date.month.number) {
+        1, 3, 5, 7, 8, 10, 12 -> LocalDate(date.year, date.month.number, 31)
+        4, 6, 9, 11 -> LocalDate(date.year, date.month.number, 30)
         2 -> {
             val isLeapYear = (date.year % 4 == 0 && date.year % 100 != 0) || (date.year % 400 == 0)
-            LocalDate(date.year, date.monthNumber, if (isLeapYear) 29 else 28)
+            LocalDate(date.year, date.month.number, if (isLeapYear) 29 else 28)
         }
-        else -> LocalDate(date.year, date.monthNumber, 28)
+        else -> LocalDate(date.year, date.month.number, 28)
     }
 
     val days = mutableListOf<LocalDate?>()
@@ -472,7 +473,7 @@ private fun getDaysForMonth(date: LocalDate): List<LocalDate?> {
     }
 
     val previousMonth = date.minus(1, DateTimeUnit.MONTH)
-    val daysInPreviousMonth = when (previousMonth.monthNumber) {
+    val daysInPreviousMonth = when (previousMonth.month.number) {
         1, 3, 5, 7, 8, 10, 12 -> 31
         4, 6, 9, 11 -> 30
         2 -> {
@@ -483,17 +484,17 @@ private fun getDaysForMonth(date: LocalDate): List<LocalDate?> {
     }
 
     for (i in (daysInPreviousMonth - firstDayOfWeek + 1)..daysInPreviousMonth) {
-        days.add(LocalDate(previousMonth.year, previousMonth.monthNumber, i))
+        days.add(LocalDate(previousMonth.year, previousMonth.month.number, i))
     }
 
-    for (day in 1..lastDayOfMonth.dayOfMonth) {
-        days.add(LocalDate(date.year, date.monthNumber, day))
+    for (day in 1..lastDayOfMonth.day) {
+        days.add(LocalDate(date.year, date.month.number, day))
     }
 
     val nextMonth = date.plus(1, DateTimeUnit.MONTH)
     val remainingDays = (7 - (days.size % 7)) % 7
     for (day in 1..remainingDays) {
-        days.add(LocalDate(nextMonth.year, nextMonth.monthNumber, day))
+        days.add(LocalDate(nextMonth.year, nextMonth.month.number, day))
     }
 
     return days

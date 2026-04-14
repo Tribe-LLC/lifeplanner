@@ -73,7 +73,7 @@ import az.tribe.lifeplanner.ui.components.getIcon
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
 import az.tribe.lifeplanner.ui.theme.backgroundColor
 import kotlinx.datetime.DatePeriod
-import kotlinx.datetime.Instant
+import kotlin.time.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
@@ -255,7 +255,7 @@ private fun DateNavigator(
         else -> {
             val month = selectedDate.month.name.take(3).lowercase()
                 .replaceFirstChar { it.uppercase() }
-            "$month ${selectedDate.dayOfMonth}, ${selectedDate.year}"
+            "$month ${selectedDate.day}, ${selectedDate.year}"
         }
     }
     val dayOfWeek = selectedDate.dayOfWeek.name.take(3).lowercase()

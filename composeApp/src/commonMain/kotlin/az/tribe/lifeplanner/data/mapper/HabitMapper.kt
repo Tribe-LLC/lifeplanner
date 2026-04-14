@@ -4,9 +4,10 @@ import az.tribe.lifeplanner.database.HabitCheckInEntity
 import az.tribe.lifeplanner.database.HabitEntity
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.HabitFrequency
+import az.tribe.lifeplanner.domain.enum.HabitType
 import az.tribe.lifeplanner.domain.model.Habit
 import az.tribe.lifeplanner.domain.model.HabitCheckIn
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -30,7 +31,8 @@ fun HabitEntity.toDomain(): Habit {
         correlationScore = correlationScore.toFloat(),
         isActive = isActive == 1L,
         createdAt = parseLocalDateTime(createdAt),
-        reminderTime = reminderTime
+        reminderTime = reminderTime,
+        type = try { HabitType.valueOf(type) } catch (_: Exception) { HabitType.BUILD }
     )
 }
 
@@ -54,7 +56,8 @@ fun Habit.toEntity(): HabitEntity {
         sync_updated_at = Clock.System.now().toString(),
         is_deleted = 0L,
         sync_version = 0L,
-        last_synced_at = null
+        last_synced_at = null,
+        type = type.name
     )
 }
 
@@ -98,7 +101,8 @@ fun createNewHabit(
     frequency: HabitFrequency,
     targetCount: Int = 1,
     linkedGoalId: String? = null,
-    reminderTime: String? = null
+    reminderTime: String? = null,
+    type: HabitType = HabitType.BUILD
 ): Habit {
     return Habit(
         id = Uuid.random().toString(),
@@ -115,7 +119,8 @@ fun createNewHabit(
         correlationScore = 0f,
         isActive = true,
         createdAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()),
-        reminderTime = reminderTime
+        reminderTime = reminderTime,
+        type = type
     )
 }
 

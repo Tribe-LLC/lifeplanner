@@ -37,4 +37,7 @@ sealed class Screen(val route: String) {
     object Health : Screen("health")
     object Feedback : Screen("feedback")
     object StoryReader : Screen("story_reader")
+    object Abilities : Screen("abilities")
+    object AbilityDetail : Screen("ability_detail/{abilityId}")
+    object CreateAbility : Screen("create_ability")
 }

@@ -42,6 +42,7 @@ actual class DatabaseDriverFactory {
                     migrateToVersion13(db)
                     migrateToVersion14(db)
                     migrateToVersion15(db)
+                    migrateToVersion16(db)
                 }
 
                 override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -569,6 +570,49 @@ actual class DatabaseDriverFactory {
 
                 private fun migrateToVersion14(db: SupportSQLiteDatabase) {
                     addColumnSafe(db, "GoalEntity", "aiReasoning", "TEXT")
+                }
+
+                private fun migrateToVersion16(db: SupportSQLiteDatabase) {
+                    // Add type column to HabitEntity (matches migration 18.sqm)
+                    addColumnSafe(db, "HabitEntity", "type", "TEXT NOT NULL DEFAULT 'BUILD'")
+
+                    // Create AbilityEntity table
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS AbilityEntity (
+                            id TEXT PRIMARY KEY NOT NULL,
+                            title TEXT NOT NULL,
+                            description TEXT NOT NULL DEFAULT '',
+                            iconEmoji TEXT NOT NULL DEFAULT '⚡',
+                            totalXp INTEGER NOT NULL DEFAULT 0,
+                            currentLevel INTEGER NOT NULL DEFAULT 1,
+                            isActive INTEGER NOT NULL DEFAULT 1,
+                            createdAt TEXT NOT NULL,
+                            lastActivityDate TEXT,
+                            sync_updated_at TEXT,
+                            is_deleted INTEGER NOT NULL DEFAULT 0,
+                            sync_version INTEGER NOT NULL DEFAULT 0,
+                            last_synced_at TEXT
+                        )
+                        """.trimIndent()
+                    )
+
+                    // Create AbilityHabitLinkEntity table
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS AbilityHabitLinkEntity (
+                            id TEXT PRIMARY KEY NOT NULL,
+                            abilityId TEXT NOT NULL,
+                            habitId TEXT NOT NULL,
+                            xpWeight REAL NOT NULL DEFAULT 1.0,
+                            createdAt TEXT NOT NULL,
+                            FOREIGN KEY (abilityId) REFERENCES AbilityEntity(id) ON DELETE CASCADE,
+                            FOREIGN KEY (habitId) REFERENCES HabitEntity(id) ON DELETE CASCADE
+                        )
+                        """.trimIndent()
+                    )
+
+                    db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_ability_habit_unique ON AbilityHabitLinkEntity(abilityId, habitId)")
                 }
 
                 private fun migrateToVersion15(db: SupportSQLiteDatabase) {

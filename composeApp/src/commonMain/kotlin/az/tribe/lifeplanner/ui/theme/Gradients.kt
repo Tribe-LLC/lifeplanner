@@ -228,6 +228,17 @@ object LifePlannerGradients {
                 Color.White.copy(alpha = 0.05f)
             )
         )
+    /**
+     * Subtle glass overlay gradient
+     * Use for: Glass card backgrounds
+     */
+    val glassOverlayHigh: Brush
+        @Composable get() = Brush.verticalGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.5f),
+                Color.White.copy(alpha = 0.75f)
+            )
+        )
 
     /**
      * Border gradient for glass cards

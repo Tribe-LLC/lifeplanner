@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.HabitFrequency
+import az.tribe.lifeplanner.domain.enum.HabitType
 import az.tribe.lifeplanner.domain.model.Habit
 import az.tribe.lifeplanner.ui.habit.HabitWithStatus
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
@@ -447,6 +448,8 @@ fun HabitCard(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    HabitTypePill(type = habit.type)
+
                     if (habit.currentStreak > 0) {
                         StreakBadge(streak = habit.currentStreak)
                     }
@@ -649,6 +652,23 @@ private fun StreakBadge(
                 fontWeight = FontWeight.SemiBold
             ),
             color = Color(0xFFFF6B35)
+        )
+    }
+}
+
+@Composable
+private fun HabitTypePill(type: HabitType) {
+    val color = if (type == HabitType.BUILD) Color(0xFF4CAF50) else Color(0xFFF44336)
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = color.copy(alpha = 0.12f),
+        modifier = Modifier.height(20.dp)
+    ) {
+        Text(
+            text = type.displayName,
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
         )
     }
 }

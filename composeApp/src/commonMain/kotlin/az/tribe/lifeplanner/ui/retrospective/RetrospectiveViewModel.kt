@@ -11,13 +11,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.launch
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
+import kotlinx.datetime.number
 
 data class RetrospectiveUiState(
     val selectedDate: LocalDate = Clock.System.now()
@@ -83,11 +84,11 @@ class RetrospectiveViewModel(
 
     fun loadActiveDatesForMonth(date: LocalDate) {
         viewModelScope.launch {
-            val monthStart = LocalDate(date.year, date.monthNumber, 1)
-            val monthEnd = if (date.monthNumber == 12) {
+            val monthStart = LocalDate(date.year, date.month.number, 1)
+            val monthEnd = if (date.month.number == 12) {
                 LocalDate(date.year + 1, 1, 1).minus(DatePeriod(days = 1))
             } else {
-                LocalDate(date.year, date.monthNumber + 1, 1).minus(DatePeriod(days = 1))
+                LocalDate(date.year, date.month.number + 1, 1).minus(DatePeriod(days = 1))
             }
             val dates = repository.getDatesWithActivity(monthStart, monthEnd)
             _uiState.update { it.copy(activeDates = dates) }

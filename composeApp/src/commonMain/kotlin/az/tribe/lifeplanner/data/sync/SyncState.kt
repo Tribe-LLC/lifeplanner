@@ -1,6 +1,6 @@
 package az.tribe.lifeplanner.data.sync
 
-import kotlinx.datetime.Instant
+import kotlin.time.Instant
 
 enum class SyncState {
     IDLE,

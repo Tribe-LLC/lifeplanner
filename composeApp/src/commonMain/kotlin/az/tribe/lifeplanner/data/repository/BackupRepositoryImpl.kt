@@ -6,7 +6,7 @@ import az.tribe.lifeplanner.domain.repository.MergeStrategy
 import az.tribe.lifeplanner.domain.repository.ValidationResult
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
 import com.russhwolf.settings.Settings
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import co.touchlab.kermit.Logger
@@ -266,6 +266,7 @@ class BackupRepositoryImpl(
                             isActive = if (habitBackup.isActive) 1L else 0L,
                             createdAt = habitBackup.createdAt,
                             reminderTime = habitBackup.reminderTime,
+                            type = "BUILD",
                             sync_updated_at = Clock.System.now().toString(),
                             is_deleted = 0L,
                             sync_version = 0L,

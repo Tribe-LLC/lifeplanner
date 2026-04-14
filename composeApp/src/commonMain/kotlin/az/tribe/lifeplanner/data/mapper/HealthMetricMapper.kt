@@ -4,7 +4,7 @@ import az.tribe.lifeplanner.database.HealthMetricEntity
 import az.tribe.lifeplanner.domain.enum.HealthMetricType
 import az.tribe.lifeplanner.domain.model.HealthMetric
 import az.tribe.lifeplanner.domain.model.HealthMetricSource
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime

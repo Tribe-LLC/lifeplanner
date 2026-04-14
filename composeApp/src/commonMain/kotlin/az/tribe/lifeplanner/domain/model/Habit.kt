@@ -2,6 +2,7 @@ package az.tribe.lifeplanner.domain.model
 
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.HabitFrequency
+import az.tribe.lifeplanner.domain.enum.HabitType
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 
@@ -20,7 +21,8 @@ data class Habit(
     val correlationScore: Float = 0f,
     val isActive: Boolean = true,
     val createdAt: LocalDateTime,
-    val reminderTime: String? = null
+    val reminderTime: String? = null,
+    val type: HabitType = HabitType.BUILD
 )
 
 data class HabitCheckIn(

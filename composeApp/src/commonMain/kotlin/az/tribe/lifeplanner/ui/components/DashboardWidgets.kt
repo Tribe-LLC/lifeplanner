@@ -65,7 +65,7 @@ import az.tribe.lifeplanner.ui.theme.gradientColors
 import az.tribe.lifeplanner.ui.theme.backgroundColor
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.text.style.TextAlign
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 

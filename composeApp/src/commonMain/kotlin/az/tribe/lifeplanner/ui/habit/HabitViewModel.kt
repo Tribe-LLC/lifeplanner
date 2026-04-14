@@ -6,12 +6,14 @@ import az.tribe.lifeplanner.data.analytics.Analytics
 import az.tribe.lifeplanner.data.mapper.createNewHabit
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.HabitFrequency
+import az.tribe.lifeplanner.domain.enum.HabitType
 import az.tribe.lifeplanner.domain.model.Habit
 import az.tribe.lifeplanner.domain.repository.HabitRepository
 import az.tribe.lifeplanner.domain.service.SmartReminderManager
 import az.tribe.lifeplanner.usecases.habit.CheckInHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.CreateHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.DeleteHabitUseCase
+import az.tribe.lifeplanner.usecases.ability.AwardAbilityXpUseCase
 import az.tribe.lifeplanner.usecases.habit.UncheckHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.UpdateHabitUseCase
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -26,7 +28,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.TimeZone
@@ -54,7 +56,8 @@ class HabitViewModel(
     private val deleteHabitUseCase: DeleteHabitUseCase,
     private val checkInHabitUseCase: CheckInHabitUseCase,
     private val uncheckHabitUseCase: UncheckHabitUseCase,
-    private val smartReminderManager: SmartReminderManager
+    private val smartReminderManager: SmartReminderManager,
+    private val awardAbilityXpUseCase: AwardAbilityXpUseCase
 ) : ViewModel() {
 
     // Smart reminder events (one-shot, collected by UI for snackbar)
@@ -119,7 +122,8 @@ class HabitViewModel(
         frequency: HabitFrequency,
         targetCount: Int = 1,
         linkedGoalId: String? = null,
-        reminderTime: String? = null
+        reminderTime: String? = null,
+        type: HabitType = HabitType.BUILD
     ) {
         if (isCreatingHabit) return
 
@@ -136,7 +140,8 @@ class HabitViewModel(
                     frequency = frequency,
                     targetCount = targetCount,
                     linkedGoalId = linkedGoalId,
-                    reminderTime = reminderTime
+                    reminderTime = reminderTime,
+                    type = type
                 )
                 createHabitUseCase(habit)
                 Analytics.habitCreated(frequency.name, linkedGoalId != null)
@@ -158,6 +163,7 @@ class HabitViewModel(
             try {
                 val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
                 checkInHabitUseCase(habitId, today, notes)
+                awardAbilityXpUseCase(habitId)
 
                 // Track check-in
                 val streak = habitRepository.getHabitById(habitId)?.currentStreak ?: 0

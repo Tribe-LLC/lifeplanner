@@ -18,10 +18,11 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlinx.datetime.number
 
 class JournalViewModel(
     private val journalRepository: JournalRepository,
@@ -144,7 +145,7 @@ class JournalViewModel(
         for (entry in sortedEntries.distinctBy { it.date }) {
             if (entry.date == currentDate) {
                 streak++
-                currentDate = LocalDate(currentDate.year, currentDate.monthNumber, currentDate.dayOfMonth - 1)
+                currentDate = LocalDate(currentDate.year, currentDate.month.number, currentDate.day - 1)
             } else {
                 break
             }

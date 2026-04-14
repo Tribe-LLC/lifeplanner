@@ -61,6 +61,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontWeight
 import az.tribe.lifeplanner.domain.enum.GoalStatus
@@ -92,7 +93,7 @@ import az.tribe.lifeplanner.domain.model.Story
 import az.tribe.lifeplanner.domain.repository.StoryRepository
 import az.tribe.lifeplanner.ui.viewmodel.AuthState
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.coroutines.launch
@@ -314,19 +315,18 @@ fun HomeScreen(
         }
     ) { innerPadding ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues = PaddingValues(top = innerPadding.calculateTopPadding())),
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
-                top = LifePlannerDesign.Padding.screenHorizontal,
-                start = LifePlannerDesign.Padding.screenHorizontal,
-                end = LifePlannerDesign.Padding.screenHorizontal,
-                bottom = innerPadding.calculateBottomPadding() + 112.dp
+                top = innerPadding.calculateTopPadding() + 12.dp,
+                bottom = innerPadding.calculateBottomPadding() + 24.dp
             ),
             verticalArrangement = Arrangement.spacedBy(LifePlannerDesign.Spacing.sm)
         ) {
+
+
             // 1. Hero Banner
             item(key = "hero_banner") {
+                Box(Modifier.padding(horizontal = LifePlannerDesign.Padding.screenHorizontal)) {
                 HeroBanner(
                     greeting = greetingLine,
                     subtitle = motivationLine,
@@ -336,14 +336,9 @@ fun HomeScreen(
                     isSignedIn = authState is AuthState.Authenticated && currentUser?.email != null,
                     onProfileClick = onNavigateToProfile
                 )
-            }
-
-            // Update reminder banner (shown after user skips soft update)
-            if (showUpdateReminder) {
-                item(key = "update_reminder") {
-                    UpdateReminderBanner(onUpdateClick = onUpdateClick)
                 }
             }
+
 
             // Stories carousel
             if (allStories.isNotEmpty()) {
@@ -351,43 +346,26 @@ fun HomeScreen(
                     StoriesCarousel(
                         stories = allStories,
                         onStoryAction = { action -> handleStoryAction(action) },
-                        onOpenReader = { onNavigateToStoryReader() },
-                        modifier = Modifier.layout { measurable, constraints ->
-                            val extraWidth = LifePlannerDesign.Padding.screenHorizontal.roundToPx() * 2
-                            val placeable = measurable.measure(
-                                constraints.copy(maxWidth = constraints.maxWidth + extraWidth)
-                            )
-                            layout(placeable.width, placeable.height) {
-                                placeable.place(-LifePlannerDesign.Padding.screenHorizontal.roundToPx(), 0)
-                            }
-                        }
+                        onOpenReader = { onNavigateToStoryReader() }
                     )
                 }
             }
 
-            // 2. Smart Actions — contextual based on user state
-            item {
-                QuickActionsPillRow(
-                    onAddGoal = { showAddGoalSheet = true },
-                    onAiSuggest = goToAiGeneration,
-                    onNewHabit = onNavigateToAddHabit,
-                    onHabitCheckIn = onNavigateToHabits,
-                    onJournal = onNavigateToJournal,
-                    onFocus = onNavigateToFocus,
-                    onCoach = onNavigateToChat,
-                    isCoachLocked = level < 3,
-                    hasGoals = goals.isNotEmpty(),
-                    hasHabits = habits.isNotEmpty(),
-                    pendingHabits = habits.count { !it.isCompletedToday },
-                    streak = streak,
-                    goalsDueToday = goalsDueToday.size
-                )
+            // Update reminder banner (shown after user skips soft update)
+            if (showUpdateReminder) {
+                item(key = "update_reminder") {
+                    Box(Modifier.padding(horizontal = LifePlannerDesign.Padding.screenHorizontal)) {
+                        UpdateReminderBanner(onUpdateClick = onUpdateClick)
+                    }
+                }
             }
+
 
 
             // 3. Beginner Objectives — getting started checklist (hidden permanently once all done)
             if (!objectivesDismissed && beginnerObjectives.isNotEmpty()) {
                 item(key = "beginner_objectives") {
+                    Box(Modifier.padding(horizontal = LifePlannerDesign.Padding.screenHorizontal)) {
                     BeginnerObjectivesCard(
                         objectives = beginnerObjectives,
                         isExpanded = objectivesExpanded,
@@ -409,16 +387,19 @@ fun HomeScreen(
                             }
                         }
                     )
+                    }
                 }
             }
 
             // New Badges quick action — tap to view on Achievements screen
             if (newBadges.isNotEmpty()) {
                 item(key = "new_badges") {
-                    NewBadgesCard(
-                        badges = newBadges,
-                        onClick = onNavigateToAchievements
-                    )
+                    Box(Modifier.padding(horizontal = LifePlannerDesign.Padding.screenHorizontal)) {
+                        NewBadgesCard(
+                            badges = newBadges,
+                            onClick = onNavigateToAchievements
+                        )
+                    }
                 }
             }
 
@@ -426,22 +407,26 @@ fun HomeScreen(
             if (pendingVerifyEmail != null) {
                 // Email linked but not yet verified — show verification status
                 item(key = "verify_email_banner") {
-                    VerifyEmailBanner(
-                        email = pendingVerifyEmail!!,
-                        onResend = { authViewModel.resendVerificationEmail(pendingVerifyEmail!!) }
-                    )
+                    Box(Modifier.padding(horizontal = LifePlannerDesign.Padding.screenHorizontal)) {
+                        VerifyEmailBanner(
+                            email = pendingVerifyEmail!!,
+                            onResend = { authViewModel.resendVerificationEmail(pendingVerifyEmail!!) }
+                        )
+                    }
                 }
             } else if (currentUser?.email == null) {
                 // Pure guest — show secure account CTA
                 item {
-                    SecureAccountCTABanner(onClick = { showAccountSheet = true })
+                    Box(Modifier.padding(horizontal = LifePlannerDesign.Padding.screenHorizontal)) {
+                        SecureAccountCTABanner(onClick = { showAccountSheet = true })
+                    }
                 }
             }
 
             // 4. Priority Goals — horizontal LazyRow
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = LifePlannerDesign.Padding.screenHorizontal),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -477,10 +462,13 @@ fun HomeScreen(
                 }
             }
 
+
+
             item {
                 if (upcomingGoals.isEmpty()) {
                     GlassCard(
                         modifier = Modifier
+                            .padding(horizontal = LifePlannerDesign.Padding.screenHorizontal)
                             .fillMaxWidth()
                             .clickable(onClick = { showAddGoalSheet = true }),
                         cornerRadius = 16.dp
@@ -527,17 +515,11 @@ fun HomeScreen(
                     }
                 } else {
                     LazyRow(
-                        modifier = Modifier.layout { measurable, constraints ->
-                            val extraWidth = LifePlannerDesign.Padding.screenHorizontal.roundToPx() * 2
-                            val placeable = measurable.measure(
-                                constraints.copy(maxWidth = constraints.maxWidth + extraWidth)
-                            )
-                            layout(placeable.width, placeable.height) {
-                                placeable.place(-LifePlannerDesign.Padding.screenHorizontal.roundToPx(), 0)
-                            }
-                        },
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(start = 32.dp, end = 16.dp)
+                        contentPadding = PaddingValues(
+                            start = LifePlannerDesign.Padding.screenHorizontal,
+                            end = LifePlannerDesign.Padding.screenHorizontal
+                        )
                     ) {
                         items(upcomingGoals.size) { index ->
                             CompactGoalTile(
@@ -549,19 +531,23 @@ fun HomeScreen(
                 }
             }
 
+
+
+
             // 5. Next Steps (first incomplete milestone per active goal)
             if (nextMilestones.isNotEmpty()) {
                 item(key = "milestones_header") {
                     Text(
                         "Next Steps (${nextMilestones.size})",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = LifePlannerDesign.Padding.screenHorizontal)
                     )
                 }
 
                 item(key = "milestones_list") {
                     GlassCard(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.padding(horizontal = LifePlannerDesign.Padding.screenHorizontal).fillMaxWidth(),
                         cornerRadius = 16.dp
                     ) {
                         Column(modifier = Modifier.padding(vertical = 4.dp)) {
@@ -595,7 +581,7 @@ fun HomeScreen(
 
                 item(key = "habits_header") {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = LifePlannerDesign.Padding.screenHorizontal),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -636,6 +622,7 @@ fun HomeScreen(
                     item(key = "habits_empty_cta") {
                         GlassCard(
                             modifier = Modifier
+                                .padding(horizontal = LifePlannerDesign.Padding.screenHorizontal)
                                 .fillMaxWidth()
                                 .clickable(onClick = onNavigateToHabits),
                             cornerRadius = 16.dp
@@ -682,16 +669,18 @@ fun HomeScreen(
                     }
                 } else if (allDone) {
                     item(key = "habits_all_done") {
-                        AllHabitsDoneCard(
-                            totalCompleted = habits.size,
-                            currentStreak = userProgress?.currentStreak ?: 0,
-                            currentLevel = userProgress?.currentLevel ?: 1
-                        )
+                        Box(Modifier.padding(horizontal = LifePlannerDesign.Padding.screenHorizontal)) {
+                            AllHabitsDoneCard(
+                                totalCompleted = habits.size,
+                                currentStreak = userProgress?.currentStreak ?: 0,
+                                currentLevel = userProgress?.currentLevel ?: 1
+                            )
+                        }
                     }
                 } else {
                     item(key = "habits_list") {
                         GlassCard(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.padding(horizontal = LifePlannerDesign.Padding.screenHorizontal).fillMaxWidth(),
                             cornerRadius = 16.dp
                         ) {
                             Column(modifier = Modifier.padding(vertical = 4.dp)) {
@@ -721,7 +710,8 @@ fun HomeScreen(
                 Text(
                     "Explore",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = LifePlannerDesign.Padding.screenHorizontal)
                 )
             }
 
@@ -729,6 +719,7 @@ fun HomeScreen(
             item(key = "retrospective_card") {
                 GlassCard(
                     modifier = Modifier
+                        .padding(horizontal = LifePlannerDesign.Padding.screenHorizontal)
                         .fillMaxWidth()
                         .clickable(onClick = onNavigateToRetrospective),
                     cornerRadius = 16.dp
@@ -778,6 +769,7 @@ fun HomeScreen(
             item(key = "flow_focus_card") {
                 GlassCard(
                     modifier = Modifier
+                        .padding(horizontal = LifePlannerDesign.Padding.screenHorizontal)
                         .fillMaxWidth()
                         .clickable(onClick = onNavigateToFocus),
                     cornerRadius = 16.dp
@@ -831,6 +823,7 @@ fun HomeScreen(
 
                 GlassCard(
                     modifier = Modifier
+                        .padding(horizontal = LifePlannerDesign.Padding.screenHorizontal)
                         .fillMaxWidth()
                         .clickable(onClick = {
                             if (coachUnlocked) {
@@ -921,13 +914,15 @@ fun HomeScreen(
             // 8. Next Action Card — only show when there's something actionable
             if (nextAction !is NextAction.AllCaughtUp || goals.isNotEmpty() || habits.isNotEmpty()) {
                 item {
-                    NextActionCard(
-                        nextAction = nextAction,
-                        onGoalClick = onGoalClick,
-                        onHabitCheckIn = { habitId ->
-                            habitViewModel.toggleCheckIn(habitId)
-                        }
-                    )
+                    Box(Modifier.padding(horizontal = LifePlannerDesign.Padding.screenHorizontal)) {
+                        NextActionCard(
+                            nextAction = nextAction,
+                            onGoalClick = onGoalClick,
+                            onHabitCheckIn = { habitId ->
+                                habitViewModel.toggleCheckIn(habitId)
+                            }
+                        )
+                    }
                 }
             }
         }

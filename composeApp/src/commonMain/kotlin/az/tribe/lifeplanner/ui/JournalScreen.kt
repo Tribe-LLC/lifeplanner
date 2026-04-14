@@ -43,6 +43,7 @@ import az.tribe.lifeplanner.ui.habit.HabitViewModel
 import az.tribe.lifeplanner.data.network.AiProxyService
 import az.tribe.lifeplanner.ui.journal.JournalViewModel
 import kotlinx.coroutines.launch
+import kotlinx.datetime.number
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -85,7 +86,7 @@ fun JournalScreen(
     Scaffold(
         floatingActionButton = {
             // Wrapped in Box with bottom padding to stay above bottom nav
-            Box(modifier = Modifier.padding(bottom = 96.dp)) {
+            Box(modifier = Modifier.padding(bottom = 72.dp)) {
                 ExtendedFloatingActionButton(
                     onClick = onNavigateToWizard,
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -1170,7 +1171,7 @@ private fun formatJournalDate(date: kotlinx.datetime.LocalDate): String {
         "Jan", "Feb", "Mar", "Apr", "May", "Jun",
         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
     )
-    return "${months[date.monthNumber - 1]} ${date.dayOfMonth}, ${date.year}"
+    return "${months[date.month.number - 1]} ${date.day}, ${date.year}"
 }
 
 @Composable

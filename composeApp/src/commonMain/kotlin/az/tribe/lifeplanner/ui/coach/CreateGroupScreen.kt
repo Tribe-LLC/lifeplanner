@@ -71,7 +71,7 @@ import az.tribe.lifeplanner.domain.model.CoachIcons
 import az.tribe.lifeplanner.domain.model.CoachPersona
 import az.tribe.lifeplanner.domain.model.CoachType
 import az.tribe.lifeplanner.domain.model.CustomCoach
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 

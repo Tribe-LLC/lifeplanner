@@ -90,6 +90,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import kotlinx.datetime.number
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -827,5 +828,5 @@ private fun formatDetailDate(date: kotlinx.datetime.LocalDate): String {
         "July", "August", "September", "October", "November", "December"
     )
     val dayIndex = (date.dayOfWeek.ordinal) % 7
-    return "${dayOfWeek[dayIndex]}, ${months[date.monthNumber - 1]} ${date.dayOfMonth}, ${date.year}"
+    return "${dayOfWeek[dayIndex]}, ${months[date.month.number - 1]} ${date.day}, ${date.year}"
 }

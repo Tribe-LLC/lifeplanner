@@ -1,11 +1,13 @@
 package az.tribe.lifeplanner.ui.navigation
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
@@ -47,6 +49,13 @@ sealed class BottomNavItem(
         unselectedIcon = Icons.AutoMirrored.Outlined.MenuBook
     )
 
+    data object Abilities : BottomNavItem(
+        route = Screen.Abilities.route,
+        title = "Abilities",
+        selectedIcon = Icons.Filled.AutoAwesome,
+        unselectedIcon = Icons.Outlined.AutoAwesome
+    )
+
     data object Profile : BottomNavItem(
         route = Screen.Profile.route,
         title = "Profile",
@@ -55,6 +64,6 @@ sealed class BottomNavItem(
     )
 
     companion object {
-        val items = listOf(Home, Journal, Profile)
+        val items = listOf(Home, Journal, Abilities, Profile)
     }
 }

@@ -3,14 +3,16 @@ package az.tribe.lifeplanner.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -76,7 +78,10 @@ fun StoriesCarousel(
     LazyRow(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(start = 32.dp, end = 16.dp)
+        contentPadding = PaddingValues(
+            start = LifePlannerDesign.Padding.screenHorizontal,
+            end = LifePlannerDesign.Padding.screenHorizontal
+        )
     ) {
         sortedStories.forEachIndexed { index, story ->
             item(key = story.id) {
@@ -196,22 +201,43 @@ internal fun StoryFullReader(
                     }
                 }
             }
-            .pointerInput(currentIndex) {
-                detectTapGestures { offset ->
-                    val isRightHalf = offset.x > size.width / 2
-                    if (isRightHalf) {
+    ) {
+        // Left / right tap zones — only the upper 65% so they never overlap the CTA button
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.65f)
+                .align(Alignment.TopCenter)
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        if (currentIndex > 0) currentIndex--
+                    }
+            )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {
                         if (currentIndex < stories.lastIndex) {
                             currentIndex++
                             onMarkSeen(stories[currentIndex].id)
                         } else {
                             onDismiss()
                         }
-                    } else {
-                        if (currentIndex > 0) currentIndex--
                     }
-                }
-            }
-    ) {
+            )
+        }
+
         // Gradient background glow
         Box(
             modifier = Modifier
@@ -314,7 +340,7 @@ internal fun StoryFullReader(
 
             Spacer(Modifier.weight(1f))
 
-            // CTA button + nav hint
+            // CTA button + nav hint — sits outside the tap zones, no interference
             Column(
                 modifier = Modifier
                     .fillMaxWidth()

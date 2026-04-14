@@ -1,7 +1,7 @@
 package az.tribe.lifeplanner.data.review
 
 import com.russhwolf.settings.MapSettings
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

@@ -3,7 +3,7 @@ package az.tribe.lifeplanner.data.mapper
 import az.tribe.lifeplanner.database.GoalDependencyEntity
 import az.tribe.lifeplanner.domain.enum.DependencyType
 import az.tribe.lifeplanner.domain.model.GoalDependency
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime

@@ -2,7 +2,7 @@ package az.tribe.lifeplanner.data.sync
 
 import co.touchlab.kermit.Logger
 import io.github.jan.supabase.SupabaseClient
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 
 /**
  * Abstract syncer for a single table. Handles push (local → remote) and pull (remote → local)

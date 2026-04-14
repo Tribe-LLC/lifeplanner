@@ -27,6 +27,8 @@ import az.tribe.lifeplanner.database.BeginnerObjectiveEntity
 import az.tribe.lifeplanner.database.CoachGroupMemberEntity
 import az.tribe.lifeplanner.database.FocusSessionEntity
 import az.tribe.lifeplanner.database.HealthMetricEntity
+import az.tribe.lifeplanner.database.AbilityEntity
+import az.tribe.lifeplanner.database.AbilityHabitLinkEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
@@ -34,7 +36,7 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 
 class SharedDatabase(
     private val driverProvider: DatabaseDriverFactory,
@@ -85,6 +87,8 @@ class SharedDatabase(
             q.deleteAllUserProgress()
             q.deleteAllBeginnerObjectives()
             // Tier 1 (no deps)
+            q.deleteAllAbilityHabitLinks()
+            q.deleteAllAbilities()
             q.deleteAllGoals()
             q.deleteAllHabits()
             q.deleteAllBadges()
@@ -460,7 +464,8 @@ class SharedDatabase(
                 sync_updated_at = nowTimestamp(),
                 is_deleted = 0L,
                 sync_version = 0L,
-                last_synced_at = null
+                last_synced_at = null,
+                type = habit.type
             )
         }
     }
@@ -473,7 +478,8 @@ class SharedDatabase(
         frequency: String,
         targetCount: Long,
         linkedGoalId: String?,
-        reminderTime: String?
+        reminderTime: String?,
+        type: String
     ) {
         this { db ->
             db.lifePlannerDBQueries.updateHabit(
@@ -484,6 +490,7 @@ class SharedDatabase(
                 targetCount = targetCount,
                 linkedGoalId = linkedGoalId,
                 reminderTime = reminderTime,
+                type = type,
                 id = id
             )
         }
@@ -1815,5 +1822,90 @@ class SharedDatabase(
                 createdAt = createdAt
             )
         }
+    }
+
+    // --- Ability operations ---
+
+    fun observeAllAbilities(): Flow<List<AbilityEntity>> = flow {
+        initDatabase()
+        emitAll(
+            database!!.lifePlannerDBQueries.getAllAbilities()
+                .asFlow()
+                .mapToList(Dispatchers.IO)
+        )
+    }
+
+    suspend fun getAbilityById(id: String): AbilityEntity? {
+        return this { db -> db.lifePlannerDBQueries.getAbilityById(id).executeAsOneOrNull() }
+    }
+
+    suspend fun insertAbility(ability: AbilityEntity) {
+        this { db ->
+            db.lifePlannerDBQueries.insertAbility(
+                id = ability.id,
+                title = ability.title,
+                description = ability.description,
+                iconEmoji = ability.iconEmoji,
+                totalXp = ability.totalXp,
+                currentLevel = ability.currentLevel,
+                isActive = ability.isActive,
+                createdAt = ability.createdAt,
+                lastActivityDate = ability.lastActivityDate,
+                sync_updated_at = nowTimestamp(),
+                is_deleted = 0L,
+                sync_version = 0L,
+                last_synced_at = null
+            )
+        }
+    }
+
+    suspend fun updateAbility(id: String, title: String, description: String, iconEmoji: String) {
+        this { db ->
+            db.lifePlannerDBQueries.updateAbility(
+                title = title,
+                description = description,
+                iconEmoji = iconEmoji,
+                id = id
+            )
+        }
+    }
+
+    suspend fun updateAbilityXpAndLevel(id: String, totalXp: Long, currentLevel: Long, lastActivityDate: String) {
+        this { db ->
+            db.lifePlannerDBQueries.updateAbilityXpAndLevel(
+                totalXp = totalXp,
+                currentLevel = currentLevel,
+                lastActivityDate = lastActivityDate,
+                id = id
+            )
+        }
+    }
+
+    suspend fun deleteAbility(id: String) {
+        this { db -> db.lifePlannerDBQueries.deleteAbility(id) }
+    }
+
+    suspend fun insertAbilityHabitLink(link: AbilityHabitLinkEntity) {
+        this { db ->
+            db.lifePlannerDBQueries.insertAbilityHabitLink(
+                id = link.id,
+                abilityId = link.abilityId,
+                habitId = link.habitId,
+                xpWeight = link.xpWeight,
+                createdAt = link.createdAt
+            )
+        }
+    }
+
+    suspend fun getLinksForAbility(abilityId: String): List<AbilityHabitLinkEntity> {
+        return this { db -> db.lifePlannerDBQueries.getLinksForAbility(abilityId).executeAsList() }
+    }
+
+    suspend fun getLinksForHabit(habitId: String): List<AbilityHabitLinkEntity> {
+        return this { db -> db.lifePlannerDBQueries.getLinksForHabit(habitId).executeAsList() }
+    }
+
+    suspend fun deleteAbilityHabitLink(abilityId: String, habitId: String) {
+        this { db -> db.lifePlannerDBQueries.deleteAbilityHabitLink(abilityId, habitId) }
     }
 }

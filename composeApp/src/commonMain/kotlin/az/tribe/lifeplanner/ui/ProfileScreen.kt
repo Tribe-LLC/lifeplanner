@@ -97,8 +97,8 @@ import az.tribe.lifeplanner.domain.model.AiUsageStats
 import az.tribe.lifeplanner.domain.repository.AiUsageRepository
 import com.russhwolf.settings.Settings
 import kotlinx.coroutines.launch
-import kotlinx.datetime.Clock
-import kotlinx.datetime.Instant
+import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
@@ -175,7 +175,8 @@ fun ProfileScreen(
                     userProgress = userProgress,
                     syncStatus = syncStatus,
                     onRetrySync = { scope.launch { syncManager.performFullSync(resetRetry = true) } },
-                    onEditName = { showEditNameDialog = true }
+                    onEditName = { showEditNameDialog = true },
+                    onSignIn = { showAccountSheet = true }
                 )
             }
 
@@ -217,13 +218,6 @@ fun ProfileScreen(
                             }
                         }
                     }
-                }
-            }
-
-            // Secure Account CTA — show for anyone without a verified email account
-            if (currentUser?.email == null) {
-                item {
-                    SecureAccountCTABanner(onClick = { showAccountSheet = true })
                 }
             }
 
@@ -823,7 +817,8 @@ private fun UserProfileHeaderCard(
     userProgress: UserProgress?,
     syncStatus: SyncStatus,
     onRetrySync: () -> Unit,
-    onEditName: () -> Unit = {}
+    onEditName: () -> Unit = {},
+    onSignIn: (() -> Unit)? = null
 ) {
     // Gradient colors shift based on sync state
     val gradientStart by animateColorAsState(
@@ -1002,6 +997,51 @@ private fun UserProfileHeaderCard(
                     modifier = Modifier.size(24.dp).alpha(iconAlpha),
                     tint = iconColor
                 )
+            }
+        }
+
+        // Guest sign-in CTA — merged into header card
+        if (onSignIn != null && user?.email == null) {
+            Spacer(Modifier.height(16.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.White.copy(alpha = 0.15f))
+                    .clickable(onClick = onSignIn)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.Shield,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Secure your account",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                        Text(
+                            "Sync across devices with a magic link",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.8f)
+                        )
+                    }
+                    Icon(
+                        Icons.Rounded.ChevronRight,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.8f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
     }

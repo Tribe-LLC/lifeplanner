@@ -108,6 +108,7 @@ data class HabitSyncDto(
     @SerialName("is_active") val isActive: Boolean = true,
     @SerialName("created_at") val createdAt: String,
     @SerialName("reminder_time") val reminderTime: String? = null,
+    @SerialName("type") val type: String = "BUILD",
     @SerialName("updated_at") val updatedAt: String? = null,
     @SerialName("is_deleted") val isDeleted: Boolean = false,
     @SerialName("sync_version") val syncVersion: Long = 0

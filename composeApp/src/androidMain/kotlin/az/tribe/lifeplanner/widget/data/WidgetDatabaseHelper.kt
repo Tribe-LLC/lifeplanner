@@ -6,7 +6,7 @@ import az.tribe.lifeplanner.di.DB_NAME
 import az.tribe.lifeplanner.widget.WidgetDashboardData
 import az.tribe.lifeplanner.widget.WidgetHabitData
 import co.touchlab.kermit.Logger
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 

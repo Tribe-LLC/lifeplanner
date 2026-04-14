@@ -15,7 +15,7 @@ import az.tribe.lifeplanner.widget.WidgetDataSyncService
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -84,7 +84,8 @@ class HabitRepositoryImpl(
             frequency = habit.frequency.name,
             targetCount = habit.targetCount.toLong(),
             linkedGoalId = habit.linkedGoalId,
-            reminderTime = habit.reminderTime
+            reminderTime = habit.reminderTime,
+            type = habit.type.name
         )
         syncManager.requestSync()
     }

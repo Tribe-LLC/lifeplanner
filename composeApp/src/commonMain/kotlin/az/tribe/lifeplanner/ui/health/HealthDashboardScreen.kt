@@ -92,6 +92,7 @@ import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlinx.datetime.number
 import org.koin.compose.viewmodel.koinViewModel
 import kotlin.math.roundToInt
 
@@ -378,7 +379,7 @@ private fun StepsDetailView(data: List<HealthMetric>, stepsGoal: Long = 10_000L)
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "${dayLabel(metric.date)} ${metric.date.dayOfMonth}",
+                    text = "${dayLabel(metric.date)} ${metric.date.day}",
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = if (todayHighlight) FontWeight.Bold else FontWeight.Normal,
                     modifier = Modifier.width(52.dp)
@@ -652,7 +653,7 @@ private fun SleepDetailView(data: List<HealthMetric>, sleepGoal: Double = 8.0) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "${dayLabel(metric.date)} ${metric.date.dayOfMonth}",
+                    text = "${dayLabel(metric.date)} ${metric.date.day}",
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.width(52.dp)
                 )
@@ -886,7 +887,7 @@ private fun WeightDetailView(data: List<HealthMetric>) {
             ) {
                 data.forEach { metric ->
                     Text(
-                        text = "${metric.date.dayOfMonth}/${metric.date.monthNumber}",
+                        text = "${metric.date.day}/${metric.date.month.number}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

@@ -46,6 +46,7 @@ import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
 import az.tribe.lifeplanner.ui.theme.gradientColors
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.number
 
 /**
  * Hero header with gradient background, circular progress, and key stats
@@ -346,5 +347,5 @@ private fun formatShortDate(date: LocalDate): String {
         "Jan", "Feb", "Mar", "Apr", "May", "Jun",
         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
     )
-    return "${months[date.monthNumber - 1]} ${date.dayOfMonth}"
+    return "${months[date.month.number - 1]} ${date.day}"
 }

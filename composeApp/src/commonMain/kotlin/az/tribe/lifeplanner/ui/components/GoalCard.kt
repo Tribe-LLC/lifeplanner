@@ -26,10 +26,11 @@ import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.model.Goal
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlinx.datetime.number
 
 @Composable
 fun GoalCard(
@@ -348,5 +349,5 @@ private fun formatDate(date: LocalDate): String {
         "Jan", "Feb", "Mar", "Apr", "May", "Jun",
         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
     )
-    return "${months[date.monthNumber - 1]} ${date.dayOfMonth}, ${date.year}"
+    return "${months[date.month.number - 1]} ${date.day}, ${date.year}"
 }

@@ -87,7 +87,7 @@ import az.tribe.lifeplanner.domain.model.ReminderType
 import az.tribe.lifeplanner.ui.reminder.ReminderViewModel
 import az.tribe.lifeplanner.ui.theme.modernColors
 import com.mmk.kmpnotifier.notification.NotifierManager
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime

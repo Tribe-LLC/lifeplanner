@@ -8,7 +8,7 @@ import com.russhwolf.settings.Settings
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import co.touchlab.kermit.Logger
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 
 private const val GETTING_STARTED_GOAL_ID = "getting_started_goal"
 

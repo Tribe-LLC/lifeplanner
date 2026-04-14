@@ -15,13 +15,14 @@ import az.tribe.lifeplanner.widget.WidgetDataSyncService
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
+import kotlinx.datetime.number
 
 class GoalRepositoryImpl(
     private val localGoalStore: SharedDatabase,
@@ -200,7 +201,7 @@ class GoalRepositoryImpl(
         // Calculate actual this-week and this-month completions from goal history
         val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
         val weekStart = today.minus(DatePeriod(days = today.dayOfWeek.ordinal))
-        val monthStart = LocalDate(today.year, today.monthNumber, 1)
+        val monthStart = LocalDate(today.year, today.month.number, 1)
         val allGoals = localGoalStore.getAllGoals()
         val weekCompletedCount = allGoals.count { goal ->
             goal.status == "COMPLETED" && goal.createdAt >= weekStart.toString()

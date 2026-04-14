@@ -4,6 +4,7 @@ import az.tribe.lifeplanner.database.ReviewReportEntity
 import az.tribe.lifeplanner.domain.model.*
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.number
 import kotlinx.serialization.json.Json
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -99,8 +100,8 @@ fun generateRecommendationId(): String = "rec_${Uuid.random()}"
 fun ReviewReport.toSummaryCard(): ReviewSummaryCard {
     val periodLabel = when (type) {
         ReviewType.WEEKLY -> "Week of ${formatDateShort(periodStart)}"
-        ReviewType.MONTHLY -> "${getMonthName(periodStart.monthNumber)} ${periodStart.year}"
-        ReviewType.QUARTERLY -> "Q${getQuarter(periodStart.monthNumber)} ${periodStart.year}"
+        ReviewType.MONTHLY -> "${getMonthName(periodStart.month.number)} ${periodStart.year}"
+        ReviewType.QUARTERLY -> "Q${getQuarter(periodStart.month.number)} ${periodStart.year}"
         ReviewType.YEARLY -> "${periodStart.year} Year in Review"
     }
 
@@ -138,7 +139,7 @@ fun ReviewReport.toSummaryCard(): ReviewSummaryCard {
 
 private fun formatDateShort(date: LocalDate): String {
     val months = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-    return "${months[date.monthNumber - 1]} ${date.dayOfMonth}"
+    return "${months[date.month.number - 1]} ${date.day}"
 }
 
 private fun getMonthName(month: Int): String {

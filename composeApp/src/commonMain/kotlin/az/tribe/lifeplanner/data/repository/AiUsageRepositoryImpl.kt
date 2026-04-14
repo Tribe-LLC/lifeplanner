@@ -7,8 +7,9 @@ import az.tribe.lifeplanner.domain.repository.AiUsageRepository
 import co.touchlab.kermit.Logger
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.number
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -31,7 +32,7 @@ class AiUsageRepositoryImpl(
     override suspend fun getMonthlyStats(): AiUsageStats {
         return try {
             val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
-            val startOfMonth = "${now.year}-${now.monthNumber.toString().padStart(2, '0')}-01T00:00:00"
+            val startOfMonth = "${now.year}-${now.month.number.toString().padStart(2, '0')}-01T00:00:00"
 
             val logs = supabase.postgrest["ai_usage_logs"]
                 .select {

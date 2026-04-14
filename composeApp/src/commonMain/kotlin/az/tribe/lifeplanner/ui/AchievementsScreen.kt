@@ -485,5 +485,5 @@ private fun getBadgeHint(badgeType: BadgeType): String {
  */
 private fun formatEarnedDate(dateTime: kotlinx.datetime.LocalDateTime): String {
     val month = dateTime.month.name.lowercase().replaceFirstChar { it.uppercase() }
-    return "${month.take(3)} ${dateTime.dayOfMonth}, ${dateTime.year}"
+    return "${month.take(3)} ${dateTime.day}, ${dateTime.year}"
 }

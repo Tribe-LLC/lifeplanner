@@ -13,7 +13,7 @@ import az.tribe.lifeplanner.R
 import az.tribe.lifeplanner.domain.model.DayOfWeek
 import az.tribe.lifeplanner.domain.model.ReminderFrequency
 import co.touchlab.kermit.Logger
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
