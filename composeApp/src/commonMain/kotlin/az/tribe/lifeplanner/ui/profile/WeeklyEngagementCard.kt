@@ -22,11 +22,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.ui.components.GlassCard
 import az.tribe.lifeplanner.ui.theme.LifePlannerDesign
@@ -37,6 +38,7 @@ import com.adamglin.phosphoricons.regular.ArrowsClockwise
 import com.adamglin.phosphoricons.regular.Brain
 import com.adamglin.phosphoricons.regular.Flag
 import com.adamglin.phosphoricons.regular.Note
+import com.adamglin.phosphoricons.regular.Rocket
 import com.adamglin.phosphoricons.regular.Timer
 
 private val COLOR_HABITS  = Color(0xFF4CAF50)
@@ -54,6 +56,12 @@ internal fun WeeklyEngagementCard(
     LaunchedEffect(engagement) {
         alpha.animateTo(1f, tween(400, easing = FastOutSlowInEasing))
     }
+
+    val isEmpty = engagement.habitCheckIns == 0 &&
+            engagement.goalsCreated == 0 &&
+            engagement.journalEntries == 0 &&
+            engagement.focusSessionsCompleted == 0 &&
+            engagement.aiCoachMessages == 0
 
     GlassCard(
         modifier = modifier.fillMaxWidth().alpha(alpha.value),
@@ -74,52 +82,88 @@ internal fun WeeklyEngagementCard(
                 )
                 Spacer(Modifier.height(16.dp))
 
-                // Row 1: habits · goals · journal
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    EngagementStat(
-                        icon = PhosphorIcons.Regular.ArrowsClockwise,
-                        color = COLOR_HABITS,
-                        value = engagement.habitCheckIns,
-                        label = "Check-ins"
-                    )
-                    EngagementStat(
-                        icon = PhosphorIcons.Regular.Flag,
-                        color = COLOR_GOALS,
-                        value = engagement.goalsCreated,
-                        label = "Goals"
-                    )
-                    EngagementStat(
-                        icon = PhosphorIcons.Regular.Note,
-                        color = COLOR_JOURNAL,
-                        value = engagement.journalEntries,
-                        label = "Journal"
-                    )
-                }
+                if (isEmpty) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(CircleShape)
+                                .background(COLOR_GOALS.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = PhosphorIcons.Regular.Rocket,
+                                contentDescription = null,
+                                tint = COLOR_GOALS,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "Start your week strong!",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Check in on habits, write in your journal, or set a new goal — your weekly stats will appear here.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                } else {
+                    // Row 1: habits · goals · journal
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        EngagementStat(
+                            icon = PhosphorIcons.Regular.ArrowsClockwise,
+                            color = COLOR_HABITS,
+                            value = engagement.habitCheckIns,
+                            label = "Check-ins"
+                        )
+                        EngagementStat(
+                            icon = PhosphorIcons.Regular.Flag,
+                            color = COLOR_GOALS,
+                            value = engagement.goalsCreated,
+                            label = "Goals"
+                        )
+                        EngagementStat(
+                            icon = PhosphorIcons.Regular.Note,
+                            color = COLOR_JOURNAL,
+                            value = engagement.journalEntries,
+                            label = "Journal"
+                        )
+                    }
 
-                Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(16.dp))
 
-                // Row 2: focus · ai
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    EngagementStat(
-                        icon = PhosphorIcons.Regular.Timer,
-                        color = COLOR_FOCUS,
-                        value = engagement.focusSessionsCompleted,
-                        label = "Focus sessions"
-                    )
-                    EngagementStat(
-                        icon = PhosphorIcons.Regular.Brain,
-                        color = COLOR_AI,
-                        value = engagement.aiCoachMessages,
-                        label = "AI messages"
-                    )
-                    // Spacer to balance the row visually
-                    Box(modifier = Modifier.weight(1f))
+                    // Row 2: focus · ai
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        EngagementStat(
+                            icon = PhosphorIcons.Regular.Timer,
+                            color = COLOR_FOCUS,
+                            value = engagement.focusSessionsCompleted,
+                            label = "Focus sessions"
+                        )
+                        EngagementStat(
+                            icon = PhosphorIcons.Regular.Brain,
+                            color = COLOR_AI,
+                            value = engagement.aiCoachMessages,
+                            label = "AI messages"
+                        )
+                        // Spacer to balance the row visually
+                        Box(modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }
