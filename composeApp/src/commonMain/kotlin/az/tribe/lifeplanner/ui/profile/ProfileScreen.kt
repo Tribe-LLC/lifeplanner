@@ -133,11 +133,7 @@ fun ProfileScreen(
                 }
             }
 
-            item { userProgress?.let { progress -> ProfileStatsCard(progress) } }
-
-            weeklyEngagement?.let { engagement ->
-                item { WeeklyEngagementCard(engagement) }
-            }
+            item { userProgress?.let { progress -> ProfileStatsCard(progress, weeklyEngagement) } }
 
             item { ProfileSectionHeader("AI Coach & Achievements") }
             item { PersonalCoachCard(lastMessage = null, onChatClick = onNavigateToAICoach) }
