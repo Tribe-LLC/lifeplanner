@@ -40,4 +40,7 @@ sealed class Screen(val route: String) {
     object Abilities : Screen("abilities")
     object AbilityDetail : Screen("ability_detail/{abilityId}")
     object CreateAbility : Screen("create_ability")
+    object Search : Screen("search?filter={filter}")
+    object GoalWizard : Screen("goal_wizard")
+    object SmartHabitGenerator : Screen("smart_habit_generator")
 }

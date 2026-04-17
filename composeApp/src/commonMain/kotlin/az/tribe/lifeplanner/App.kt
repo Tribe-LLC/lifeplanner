@@ -58,6 +58,7 @@ import com.adamglin.phosphoricons.regular.Flag
 import com.adamglin.phosphoricons.regular.MagnifyingGlass
 import com.adamglin.phosphoricons.regular.PencilSimple
 import com.adamglin.phosphoricons.regular.Plus
+import com.adamglin.phosphoricons.regular.Sparkle
 import com.adamglin.phosphoricons.regular.Star
 import com.mmk.kmpnotifier.notification.NotifierManager
 import kotlinx.coroutines.flow.firstOrNull
@@ -377,10 +378,10 @@ fun App(
                     navController.navigate(Screen.GoalWizard.route) { launchSingleTop = true }
                 }
                 2 -> NavContextAction(
-                    icon = PhosphorIcons.Regular.Plus,
+                    icon = PhosphorIcons.Regular.Sparkle,
                     contentDescription = "New Habit"
                 ) {
-                    navController.navigate(Screen.AddHabit.route) { launchSingleTop = true }
+                    navController.navigate(Screen.SmartHabitGenerator.route) { launchSingleTop = true }
                 }
                 3 -> if (FeatureFlags.ABILITIES_ENABLED) NavContextAction(
                     icon = PhosphorIcons.Regular.Star,

@@ -79,6 +79,7 @@ import az.tribe.lifeplanner.ui.reminder.ReminderViewModel
 import az.tribe.lifeplanner.ui.objectives.BeginnerObjectiveViewModel
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
 import az.tribe.lifeplanner.ui.home.HomeViewModel
+import az.tribe.lifeplanner.ui.habit.SmartHabitGeneratorViewModel
 import az.tribe.lifeplanner.ui.profile.WeeklyEngagementViewModel
 import az.tribe.lifeplanner.ui.search.SearchViewModel
 import az.tribe.lifeplanner.usecases.journal.CreateJournalEntryUseCase
@@ -324,4 +325,5 @@ val appModule = module {
     viewModelOf(::HomeViewModel)
     viewModelOf(::WeeklyEngagementViewModel)
     viewModelOf(::SearchViewModel)
+    viewModelOf(::SmartHabitGeneratorViewModel)
 }
