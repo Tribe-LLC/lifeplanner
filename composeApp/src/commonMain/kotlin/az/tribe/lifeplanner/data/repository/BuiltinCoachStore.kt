@@ -4,7 +4,7 @@ import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.model.CoachPersona
 
 object BuiltinCoachStore {
-    @Volatile private var _coaches: List<CoachPersona> = emptyList()
+    private var _coaches: List<CoachPersona> = emptyList()
 
     fun update(coaches: List<CoachPersona>) { _coaches = coaches }
 
