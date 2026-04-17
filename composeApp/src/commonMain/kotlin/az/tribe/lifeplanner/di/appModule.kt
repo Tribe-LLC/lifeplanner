@@ -5,6 +5,7 @@ import az.tribe.lifeplanner.data.auth.SupabaseAuthService
 import az.tribe.lifeplanner.data.network.AiProxyService
 import az.tribe.lifeplanner.data.network.AiProxyServiceImpl
 import az.tribe.lifeplanner.data.network.AuthTokenProvider
+import az.tribe.lifeplanner.data.network.BuiltinCoachFetcher
 import az.tribe.lifeplanner.data.network.GeminiService
 import az.tribe.lifeplanner.data.network.GeminiServiceImpl
 import az.tribe.lifeplanner.data.repository.AiUsageRepositoryImpl
@@ -24,6 +25,7 @@ import az.tribe.lifeplanner.data.repository.FocusRepositoryImpl
 import az.tribe.lifeplanner.data.repository.RetrospectiveRepositoryImpl
 import az.tribe.lifeplanner.data.repository.GoalRepositoryImpl
 import az.tribe.lifeplanner.data.repository.AbilityRepositoryImpl
+import az.tribe.lifeplanner.data.repository.HealthRepositoryImpl
 import az.tribe.lifeplanner.data.repository.HabitRepositoryImpl
 import az.tribe.lifeplanner.data.repository.JournalRepositoryImpl
 import az.tribe.lifeplanner.data.repository.LifeBalanceRepositoryImpl
@@ -46,6 +48,7 @@ import az.tribe.lifeplanner.domain.repository.FocusRepository
 import az.tribe.lifeplanner.domain.repository.RetrospectiveRepository
 import az.tribe.lifeplanner.domain.repository.GoalRepository
 import az.tribe.lifeplanner.domain.repository.AbilityRepository
+import az.tribe.lifeplanner.domain.repository.HealthRepository
 import az.tribe.lifeplanner.domain.repository.HabitRepository
 import az.tribe.lifeplanner.domain.repository.JournalRepository
 import az.tribe.lifeplanner.domain.repository.LifeBalanceRepository
@@ -56,9 +59,11 @@ import az.tribe.lifeplanner.notification.NotificationSchedulerInterface
 import az.tribe.lifeplanner.notification.getNotificationScheduler
 import az.tribe.lifeplanner.util.NetworkConnectivityObserver
 import az.tribe.lifeplanner.widget.WidgetDataSyncService
+import az.tribe.lifeplanner.data.health.HealthDataManager
 import az.tribe.lifeplanner.ui.ability.AbilityDetailViewModel
 import az.tribe.lifeplanner.ui.ability.AbilityViewModel
-import az.tribe.lifeplanner.ui.GoalViewModel
+import az.tribe.lifeplanner.ui.health.HealthViewModel
+import az.tribe.lifeplanner.ui.goal.GoalViewModel
 import az.tribe.lifeplanner.ui.chat.ChatViewModel
 import az.tribe.lifeplanner.ui.dependency.GoalDependencyViewModel
 import az.tribe.lifeplanner.ui.gamification.GamificationViewModel
@@ -72,6 +77,8 @@ import az.tribe.lifeplanner.ui.coach.CoachViewModel
 import az.tribe.lifeplanner.ui.reminder.ReminderViewModel
 import az.tribe.lifeplanner.ui.objectives.BeginnerObjectiveViewModel
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
+import az.tribe.lifeplanner.ui.home.HomeViewModel
+import az.tribe.lifeplanner.ui.search.SearchViewModel
 import az.tribe.lifeplanner.usecases.journal.CreateJournalEntryUseCase
 import az.tribe.lifeplanner.usecases.journal.DeleteJournalEntryUseCase
 import az.tribe.lifeplanner.usecases.journal.GetAllJournalEntriesUseCase
@@ -79,6 +86,7 @@ import az.tribe.lifeplanner.usecases.journal.GetJournalEntriesByGoalUseCase
 import az.tribe.lifeplanner.usecases.journal.GetRecentJournalEntriesUseCase
 import az.tribe.lifeplanner.usecases.journal.UpdateJournalEntryUseCase
 import az.tribe.lifeplanner.usecases.ability.AwardAbilityXpUseCase
+import az.tribe.lifeplanner.usecases.health.SyncHealthDataUseCase
 import az.tribe.lifeplanner.usecases.habit.CheckInHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.CreateHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.DeleteHabitUseCase
@@ -193,6 +201,7 @@ val appModule = module {
 
     // AI Proxy Service
     single<AiProxyService> { AiProxyServiceImpl(get(), get(), get()) }
+    single { BuiltinCoachFetcher(get()) }
 
     // Repositories
     single<GeminiService> { GeminiServiceImpl(get<AiProxyService>()) }
@@ -216,6 +225,8 @@ val appModule = module {
     single<RetrospectiveRepository> { RetrospectiveRepositoryImpl(get()) }
     single<BeginnerObjectiveRepository> { BeginnerObjectiveRepositoryImpl(get(), get()) }
     single<AbilityRepository> { AbilityRepositoryImpl(get()) }
+    single { HealthDataManager() }
+    single<HealthRepository> { HealthRepositoryImpl(get(), get(), get()) }
 
     // Existing Use Cases
     factory { GetAllGoalsUseCase(get()) }
@@ -259,6 +270,9 @@ val appModule = module {
     // Ability Use Cases
     factory { AwardAbilityXpUseCase(get()) }
 
+    // Health Use Cases
+    factory { SyncHealthDataUseCase(get()) }
+
     // Habit Use Cases
     factory { GetAllHabitsUseCase(get()) }
     factory { CreateHabitUseCase(get()) }
@@ -278,7 +292,7 @@ val appModule = module {
     factory { GetJournalEntriesByGoalUseCase(get()) }
 
     // Life Balance Repository
-    single<LifeBalanceRepository> { LifeBalanceRepositoryImpl(get(), get(), get<AiProxyService>()) }
+    single<LifeBalanceRepository> { LifeBalanceRepositoryImpl(get(), get(), get<AiProxyService>(), get()) }
 
     // Backup Repository
     single<BackupRepository> { BackupRepositoryImpl(get(), get()) }
@@ -302,5 +316,8 @@ val appModule = module {
     viewModelOf(::RetrospectiveViewModel)
     viewModelOf(::BeginnerObjectiveViewModel)
     viewModelOf(::AbilityViewModel)
-    viewModel { params -> AbilityDetailViewModel(params.get(), get(), get(), get()) }
+    viewModel { params -> AbilityDetailViewModel(params.get(), get(), get(), get(), get()) }
+    viewModelOf(::HealthViewModel)
+    viewModelOf(::HomeViewModel)
+    viewModelOf(::SearchViewModel)
 }
