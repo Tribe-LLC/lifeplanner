@@ -8,8 +8,9 @@ import { supabase } from '@/lib/supabase';
 const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL ?? 'admin@lifeplanner.app';
 
 const NAV = [
-  { href: '/admin', label: 'Analytics' },
+  { href: '/admin', label: 'Overview' },
   { href: '/admin/coaches', label: 'Coaches' },
+  { href: '/admin/prompts', label: 'Prompts' },
 ];
 
 type AuthState = 'checking' | 'unauthenticated' | 'wrong_user' | 'authorized';

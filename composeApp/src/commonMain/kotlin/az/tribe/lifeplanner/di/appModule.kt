@@ -6,6 +6,7 @@ import az.tribe.lifeplanner.data.network.AiProxyService
 import az.tribe.lifeplanner.data.network.AiProxyServiceImpl
 import az.tribe.lifeplanner.data.network.AuthTokenProvider
 import az.tribe.lifeplanner.data.network.BuiltinCoachFetcher
+import az.tribe.lifeplanner.data.network.SystemPromptFetcher
 import az.tribe.lifeplanner.data.network.GeminiService
 import az.tribe.lifeplanner.data.network.GeminiServiceImpl
 import az.tribe.lifeplanner.data.repository.AiUsageRepositoryImpl
@@ -202,6 +203,7 @@ val appModule = module {
     // AI Proxy Service
     single<AiProxyService> { AiProxyServiceImpl(get(), get(), get()) }
     single { BuiltinCoachFetcher(get()) }
+    single { SystemPromptFetcher(get()) }
 
     // Repositories
     single<GeminiService> { GeminiServiceImpl(get<AiProxyService>()) }

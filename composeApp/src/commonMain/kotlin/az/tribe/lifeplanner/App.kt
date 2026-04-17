@@ -100,10 +100,11 @@ fun App(
             connectivityObserver.observe().collect { /* keeps StateFlow primed */ }
         }
 
-        // Fetch latest built-in coach data from Supabase (falls back to hardcoded on error)
         val builtinCoachFetcher: az.tribe.lifeplanner.data.network.BuiltinCoachFetcher = koinInject()
+        val systemPromptFetcher: az.tribe.lifeplanner.data.network.SystemPromptFetcher = koinInject()
         LaunchedEffect(Unit) {
             builtinCoachFetcher.fetch()
+            systemPromptFetcher.fetch()
         }
 
         // Sync widget data on every app resume (processes pending widget check-ins)
