@@ -75,6 +75,11 @@ fun AuthViewModel.signUpWithEmail(email: String, password: String, displayName: 
                 }
                 is AuthResult.EmailVerificationPending -> {
                     Logger.d("AuthViewModel") { "Email verification pending for ${result.email}" }
+                    // Most email sign-ups land here rather than on Success, and this branch used to
+                    // report nothing at all, which is why signup_started ran ~60x signup_completed.
+                    // The pair of events makes the gap readable: how many reach the inbox step, and
+                    // how many come back from it.
+                    Analytics.signUpVerificationPending("email")
                     settings.putString(PENDING_VERIFY_EMAIL_KEY, result.email)
                     _authState.value = AuthState.EmailVerificationPending(result.email)
                 }

@@ -58,12 +58,37 @@ object Analytics {
     fun onboardingSkipped(atStep: String) =
         PostHogAnalytics.capture("onboarding_skipped", mapOf("at_step" to atStep))
 
+    /**
+     * Going backwards is the clearest signal a step is confusing: the user read it, could not
+     * answer it, and went to look for something they had already passed.
+     */
+    fun onboardingStepBack(step: String, stepIndex: Int) =
+        PostHogAnalytics.capture("onboarding_step_back", mapOf(
+            "step" to step,
+            "step_index" to stepIndex
+        ))
+
+    /**
+     * Onboarding is resumable, so a second appearance is not a second start. Separating the two
+     * keeps the denominator of the funnel honest.
+     */
+    fun onboardingResumed(atStep: String) =
+        PostHogAnalytics.capture("onboarding_resumed", mapOf("at_step" to atStep))
+
     // ── Auth funnel ──────────────────────────────────────────────────
     fun signUpStarted(method: String) =
         PostHogAnalytics.capture("signup_started", mapOf("method" to method))
 
     fun signUpCompleted(method: String) =
         PostHogAnalytics.capture("signup_completed", mapOf("method" to method))
+
+    /**
+     * Sign-up returned without a session because the address has to be confirmed first. This is
+     * the single largest hole the funnel had: most people who start an email sign-up land here,
+     * and nothing recorded it, so they were indistinguishable from people who simply gave up.
+     */
+    fun signUpVerificationPending(method: String) =
+        PostHogAnalytics.capture("signup_verification_pending", mapOf("method" to method))
 
     fun signInStarted() = PostHogAnalytics.capture("signin_started")
 
