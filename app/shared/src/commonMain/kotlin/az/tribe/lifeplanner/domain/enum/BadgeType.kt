@@ -57,6 +57,14 @@ enum class BadgeType(
     LEARN_MIND("Clear Mind", "Clear the Focus and the mind path", 0xFF26A69A),
     LEARN_REST("Well Rested", "Clear the Rest and recovery path", 0xFF5C6BC0),
 
+    // Decision Badges. Deliberately not volume-based, unlike the journal tier above: these reward
+    // answering for a call and thinking soundly, never logging more of them.
+    DECISION_FIRST("First Call", "Log your first decision", 0xFF4A6FFF),
+    DECISION_REVIEW_FIRST("Answered For It", "Come back and review a decision", 0xFF3B5BE5),
+    DECISION_REVIEW_10("Hindsight", "Review 10 decisions", 0xFF2C42B0),
+    DECISION_SOUND_10("Sound Judgment", "Reach 10 decisions graded as sound process", 0xFF7A5AF8),
+    DECISION_CALIBRATED("Well Calibrated", "Land within 10 points of your own confidence across 10 reviews", 0xFF26A69A),
+
     // Focus Badges
     FOCUS_FIRST("First Focus", "Complete your first focus session", 0xFFFF6B35),
     FOCUS_HOUR("Hour Power", "Complete a 60-minute focus session", 0xFFE65100),

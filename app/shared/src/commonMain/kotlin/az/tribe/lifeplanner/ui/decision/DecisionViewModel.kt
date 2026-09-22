@@ -10,6 +10,7 @@ import az.tribe.lifeplanner.domain.repository.DecisionRepository
 import az.tribe.lifeplanner.domain.repository.GoalRepository
 import az.tribe.lifeplanner.domain.repository.HabitRepository
 import az.tribe.lifeplanner.domain.service.ChoicePointDetector
+import az.tribe.lifeplanner.domain.service.DecisionScorecard
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -56,6 +57,15 @@ class DecisionViewModel(
         allDecisions
             .map { list -> list.filter { it.status == DecisionStatus.CONFIRMED } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /**
+     * The track record behind the log: how many calls were made, how many were reviewed, the
+     * process hit rate, and the gap between stated confidence and what actually happened.
+     */
+    val scorecard: StateFlow<DecisionScorecard> =
+        decisions
+            .map { DecisionScorecard.from(it) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DecisionScorecard())
 
     /** AI-detected journal decisions awaiting the user's confirmation, most recent first. */
     val pendingDecisions: StateFlow<List<Decision>> =

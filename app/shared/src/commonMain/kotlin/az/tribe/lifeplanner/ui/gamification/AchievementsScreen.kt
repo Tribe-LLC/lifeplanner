@@ -437,6 +437,12 @@ private fun getBadgeProgress(
  */
 private fun getBadgeHint(badgeType: BadgeType): String {
     return when (badgeType) {
+        BadgeType.DECISION_FIRST -> "Log a decision you actually had to think about"
+        BadgeType.DECISION_REVIEW_FIRST -> "Go back to a logged decision and say how it went"
+        BadgeType.DECISION_REVIEW_10 -> "Review 10 decisions, however they turned out"
+        BadgeType.DECISION_SOUND_10 -> "Reach 10 calls you judged sound, luck aside"
+        BadgeType.DECISION_CALIBRATED -> "Across 10 reviews, land within 10 points of your own confidence"
+
         BadgeType.FIRST_STEP -> "Complete your first goal to earn this badge!"
         BadgeType.STREAK_3 -> "Check in for 3 days in a row"
         BadgeType.STREAK_7 -> "Keep your streak going for a full week"

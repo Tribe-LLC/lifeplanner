@@ -68,6 +68,13 @@ import com.adamglin.phosphoricons.regular.Trophy
  * sharing six icons.
  */
 fun badgeIcon(type: BadgeType): ImageVector = when (type) {
+    // Decisions
+    BadgeType.DECISION_FIRST -> PhosphorIcons.Regular.Lightbulb
+    BadgeType.DECISION_REVIEW_FIRST -> PhosphorIcons.Regular.ArrowCounterClockwise
+    BadgeType.DECISION_REVIEW_10 -> PhosphorIcons.Regular.Brain
+    BadgeType.DECISION_SOUND_10 -> PhosphorIcons.Regular.Scales
+    BadgeType.DECISION_CALIBRATED -> PhosphorIcons.Regular.Crosshair
+
     // Goals
     BadgeType.FIRST_STEP -> PhosphorIcons.Regular.Sparkle
     BadgeType.GOAL_1 -> PhosphorIcons.Regular.Target

@@ -1,10 +1,11 @@
 # LifePlanner v3.0.0 — Release Runbook
 
 App id `az.tribe.lifeplanner` · versionName **3.0.0** · Android versionCode **11** · iOS build **8**
-Supabase project `rkdggdfabwgukspylybu`. Prepared 2026-07-25, **re-verified 2026-08-04**.
+Supabase project `rkdggdfabwgukspylybu`. Prepared 2026-07-25, **re-verified 2026-08-20**.
 
-Two things stand between this and an upload, both yours: the **keystore passwords** (blocker 1)
-and the **merge to `main`** (blocker 3). Everything else below is done.
+One thing stands between this and an upload, and it is yours: the **keystore passwords**
+(blocker 1). The merge to `main` (old blocker 3) is **done**. Everything else below is done.
+After the upload, the Play Console submission itself is a console action, not a build step.
 
 Version numbers now live in one place: `gradle/libs.versions.toml` (`app-versionName` /
 `app-versionCode`). Android's `versionName`/`versionCode` and `BuildKonfig.APP_VERSION` all read
@@ -23,9 +24,9 @@ seconds as a first-class habit duration.
 
 ## ✅ Verified 2026-08-03 (code + backend ready)
 - **Release AAB builds clean** — `:app:androidApp:bundleRelease` succeeds (R8 + resource shrink + lint-vital). ~50 MB. Unsigned locally (see signing below).
-- **Unit tests green** — 976 host tests pass.
+- **Unit tests green** — 1167 host tests pass, 0 failures (`:app:shared:testAndroidHostTest`, 2026-08-20).
 - **The 21→39 migration chain is covered** — `DatabaseMigrationsTest` runs the real chain against a hand-written v21-era database (the shape 2.3 shipped) and asserts on the resulting schema, since `addColumnSafe` swallows exceptions and a failed step is otherwise silent until a user hits `no such column`. Covers the columns current queries read, the create-before-alter ordering for `DecisionEntity`, the Learn hub tables, idempotency (the chain runs on *every* open), and row preservation. Still a JVM schema test, not a 2.3-install-upgraded-on-device run.
-- **DB schema v39** (was v36 when this doc was written; the Learn hub content cache, journal-detected decisions, and habit `completionSource` landed since). Runtime Android migrations `migrateToVersion37/38/39` exist in `DatabaseMigrations.kt` and are wired into `DatabaseDriverFactory.onOpen()`; `.sqm` files 37–39 present for iOS + compile-time verification. 2.3 shipped at schema v21, so upgraders run 21→39 with every step present.
+- **DB schema v42** (v36 when this doc was written, v39 at the 2026-08-04 pass; the Learn hub content cache, journal-detected decisions, habit `completionSource`, then the Wheel of Life tables landed since). Runtime Android migrations exist through `migrateToVersion42` in `DatabaseMigrations.kt` and every one of them is wired into the `runAndroidMigrations` chain called from `DatabaseDriverFactory.onOpen()` (re-verified 2026-08-20); `.sqm` files through 42 present for iOS + compile-time verification. 2.3 shipped at schema v21, so upgraders run 21→42 with every step present.
 - **Learn content degrades safely** — `KnowledgeFetcher` publishes bundled lessons first, then the local cache, then Supabase, and refuses to publish an empty remote result. The Learn hub is never blank, even if `knowledge_lessons` is unseeded.
 - **iOS `GoogleService-Info.plist` is present** in the checkout (was a blocker; resolved).
 - **Illustration licensing cleared** — Kamran confirmed on the UI8 account (2026-08-03) that the Dotion tier covers use in a store-distributed app. 24 of the 30 shipped illustrations come from that pack; the 5 `illus_learn_*` are hand-authored. Worth filing the licence PDF in `../lifeplanner-assets` so the next release does not have to re-establish this.
@@ -64,9 +65,9 @@ seconds as a first-class habit duration.
    `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`.
 
 
-3. **The release lives on a feature branch.** `com3run/tri-20-possibility-mode` is ~155 commits
-   ahead of `main` and unmerged. Merge to `main` before tagging, so the shipped commit is
-   reachable.
+3. ~~**The release lives on a feature branch.**~~ **RESOLVED 2026-08-20.** The v3 work is
+   merged: `main` is at `843856a` (merge of `com3run/learning-in-the-present`, PR #23) and
+   carries everything in this runbook. Tag from `main`.
 
 ## Pre-submit checks (against the consoles)
 - Android **versionCode 11 > last published** code.
@@ -115,12 +116,11 @@ Post-launch, once v3 adoption looks healthy, bump the flag payload to
 - **Community journals.** Backend (`supabase/community_journals.sql`, `share-journal`,
   `report-content`) is written but not applied or deployed, and there is no client UI or
   feature flag. See `docs/SPEC-community-journals.md`.
-- **Wheel of Life.** A ten-area self-assessment replacing the Life Balance strip on Today, on
-  `com3run/wheel-of-life` and unmerged. Not in this build. Its Supabase tables (`wheel_scores`,
-  `wheel_snapshots`, both with RLS, both in `cleanup_tombstones`) **are already live** on
-  `rkdggdfabwgukspylybu`, applied 2026-08-04 — creating them early is harmless because nothing in
-  v3 reads or writes them, but do not be surprised to find them there. That branch also carries
-  schema v40 and v41, so the next release doc starts from v41, not v39.
+- ~~**Wheel of Life.**~~ **This shipped after all.** The ten-area self-assessment merged via
+  PRs #20 and #21, so it IS in this build, along with the Learn hub rework from PR #23. Its
+  Supabase tables (`wheel_scores`, `wheel_snapshots`, both with RLS, both in
+  `cleanup_tombstones`) went live on `rkdggdfabwgukspylybu` on 2026-08-04 and are now actually
+  read and written. It carried schema v40 and v41; v42 landed on top.
 
 ## Store copy
 `../lifeplanner-assets/docs/store/whatsnew-3.0.0.md` (Play ≤500 chars + Apple release notes).

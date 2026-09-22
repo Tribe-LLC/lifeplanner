@@ -6,6 +6,7 @@ import az.tribe.lifeplanner.database.AbilityHabitLinkEntity
 import az.tribe.lifeplanner.domain.model.Ability
 import az.tribe.lifeplanner.domain.model.AbilityGoalLink
 import az.tribe.lifeplanner.domain.model.AbilityHabitLink
+import az.tribe.lifeplanner.domain.model.XpAward
 import az.tribe.lifeplanner.domain.repository.AbilityRepository
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
 import az.tribe.lifeplanner.infrastructure.*
@@ -102,6 +103,29 @@ class AbilityRepositoryImpl(
                 lastActivityDate = now
             )
         }
+    }
+
+    override suspend fun awardXp(abilityId: String, xp: Int): XpAward? {
+        if (xp <= 0) return null
+        val before = database.getAbilityById(abilityId)?.toDomain() ?: return null
+        val newTotalXp = before.totalXp + xp
+        val newLevel = calculateLevel(newTotalXp)
+        val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date.toString()
+        database.updateAbilityXpAndLevel(
+            id = before.id,
+            totalXp = newTotalXp.toLong(),
+            currentLevel = newLevel.toLong(),
+            lastActivityDate = today
+        )
+        return XpAward(
+            ability = before.copy(
+                totalXp = newTotalXp,
+                currentLevel = newLevel,
+                lastActivityDate = today
+            ),
+            xpEarned = xp,
+            leveledUp = newLevel > before.currentLevel
+        )
     }
 
     private fun calculateLevel(totalXp: Int): Int {

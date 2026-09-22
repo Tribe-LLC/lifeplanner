@@ -21,6 +21,16 @@ data class Ability(
     val levelProgress: Float get() = xpIntoCurrentLevel.toFloat() / xpForNextLevel
 }
 
+/**
+ * Result of awarding XP to a single [Ability]. Carries enough for the UI to show the burst and,
+ * when [leveledUp], the level-up celebration, without re-reading the ability afterwards.
+ */
+data class XpAward(
+    val ability: Ability,
+    val xpEarned: Int,
+    val leveledUp: Boolean,
+)
+
 data class AbilityHabitLink(
     val id: String,
     val abilityId: String,

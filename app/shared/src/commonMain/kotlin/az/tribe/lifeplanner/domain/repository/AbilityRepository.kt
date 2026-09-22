@@ -3,6 +3,7 @@ package az.tribe.lifeplanner.domain.repository
 import az.tribe.lifeplanner.domain.model.Ability
 import az.tribe.lifeplanner.domain.model.AbilityGoalLink
 import az.tribe.lifeplanner.domain.model.AbilityHabitLink
+import az.tribe.lifeplanner.domain.model.XpAward
 import kotlinx.coroutines.flow.Flow
 
 interface AbilityRepository {
@@ -16,6 +17,13 @@ interface AbilityRepository {
     suspend fun getLinksForAbility(abilityId: String): List<AbilityHabitLink>
     suspend fun getLinksForHabit(habitId: String): List<AbilityHabitLink>
     suspend fun awardXpToAbilitiesForHabit(habitId: String, baseXp: Int = 10)
+
+    /**
+     * Award XP straight to one ability. Habits earn XP through their links; decisions, reviews and
+     * journal entries have no link table, so they award directly. Returns null when the ability is
+     * missing or [xp] is not positive.
+     */
+    suspend fun awardXp(abilityId: String, xp: Int): XpAward?
     // Goal linking
     suspend fun linkGoal(abilityId: String, goalId: String)
     suspend fun unlinkGoal(abilityId: String, goalId: String)

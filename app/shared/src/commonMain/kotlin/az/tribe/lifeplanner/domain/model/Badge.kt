@@ -21,6 +21,12 @@ data class Badge(
  */
 object BadgeRequirements {
     fun getRequirementValue(type: BadgeType): Int = when (type) {
+        BadgeType.DECISION_FIRST -> 1
+        BadgeType.DECISION_REVIEW_FIRST -> 1
+        BadgeType.DECISION_REVIEW_10 -> 10
+        BadgeType.DECISION_SOUND_10 -> 10
+        BadgeType.DECISION_CALIBRATED -> 10
+
         BadgeType.FIRST_STEP -> 1
         BadgeType.STREAK_3 -> 3
         BadgeType.STREAK_7 -> 7
@@ -62,6 +68,14 @@ object BadgeRequirements {
      * instead of burying it under starter badges.
      */
     fun getSignificance(type: BadgeType): Int = when (type) {
+        // Calibration is the hardest thing here: it cannot be farmed, only earned by knowing
+        // your own confidence. Logging a first call is the easiest.
+        BadgeType.DECISION_CALIBRATED -> 5
+        BadgeType.DECISION_SOUND_10 -> 4
+        BadgeType.DECISION_REVIEW_10 -> 3
+        BadgeType.DECISION_REVIEW_FIRST -> 2
+        BadgeType.DECISION_FIRST -> 1
+
         BadgeType.STREAK_100, BadgeType.GOAL_50,
         BadgeType.HABIT_PERFECT_MONTH, BadgeType.FOCUS_50 -> 5
 
@@ -86,6 +100,9 @@ object BadgeRequirements {
      * Get the category this badge applies to
      */
     fun getCategory(type: BadgeType): BadgeCategory = when (type) {
+        BadgeType.DECISION_FIRST, BadgeType.DECISION_REVIEW_FIRST, BadgeType.DECISION_REVIEW_10,
+        BadgeType.DECISION_SOUND_10, BadgeType.DECISION_CALIBRATED -> BadgeCategory.DECISIONS
+
         BadgeType.STREAK_3, BadgeType.STREAK_7, BadgeType.STREAK_14,
         BadgeType.STREAK_30, BadgeType.STREAK_100 -> BadgeCategory.STREAK
 
@@ -121,5 +138,6 @@ enum class BadgeCategory(val displayName: String) {
     JOURNAL("Journal"),
     LEARNING("Learning"),
     CATEGORY("Categories"),
+    DECISIONS("Decisions"),
     SPECIAL("Special")
 }

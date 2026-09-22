@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Badge background behind the launcher shortcut glyphs. The glyphs themselves are pure
+         white, which is correct where the system tints them (Quick Settings tiles) or where we
+         tint them ourselves (QuickActionsWidget), but the launcher draws shortcut icons
+         untinted on its own surface, so in light mode white-on-white vanished. Wrapping the
+         glyph in an adaptive icon over this background makes it legible on any launcher. -->
+    <color name="ic_shortcut_badge_bg">#FF4A6FFF</color>
+</resources>

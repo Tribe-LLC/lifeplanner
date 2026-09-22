@@ -11,7 +11,18 @@ enum class OutcomeQuality {
     GOOD_PROCESS_GOOD_RESULT,
     GOOD_PROCESS_BAD_RESULT,
     BAD_PROCESS_GOOD_RESULT,
-    BAD_PROCESS_BAD_RESULT
+    BAD_PROCESS_BAD_RESULT;
+
+    /**
+     * Was the thinking sound, regardless of how it landed? This is the axis worth rewarding: a
+     * sound call that went badly still deserves credit, and a lucky bad call does not.
+     */
+    val isGoodProcess: Boolean
+        get() = this == GOOD_PROCESS_GOOD_RESULT || this == GOOD_PROCESS_BAD_RESULT
+
+    /** Did it actually work out? Used for calibration, never for XP. */
+    val isGoodResult: Boolean
+        get() = this == GOOD_PROCESS_GOOD_RESULT || this == BAD_PROCESS_GOOD_RESULT
 }
 
 /**

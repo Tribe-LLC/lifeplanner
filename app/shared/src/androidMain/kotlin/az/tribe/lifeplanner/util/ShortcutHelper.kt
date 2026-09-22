@@ -11,12 +11,16 @@ import az.tribe.lifeplanner.shared.R
 
 object ShortcutHelper {
 
+    // Launcher shortcuts use the *_badge adaptive icons, not the bare glyphs. The launcher
+    // renders these untinted on its own surface, so a pure-white glyph disappeared in light
+    // mode. The badge carries its own brand background and reads on any launcher theme.
+
     fun register(context: Context) {
         val shortcuts = listOf(
-            build(context, "focus",       "Start Focus",     R.drawable.ic_shortcut_focus,  "lifeplanner://focus"),
-            build(context, "habits",      "Check In Habits", R.drawable.ic_shortcut_habits, "lifeplanner://habits"),
-            build(context, "goal_wizard", "New Goal",        R.drawable.ic_shortcut_goals,  "lifeplanner://goal_wizard"),
-            build(context, "ai_chat",     "Talk to Coach",   R.drawable.ic_shortcut_coach,  "lifeplanner://ai_chat"),
+            build(context, "focus",       "Start Focus",     R.drawable.ic_shortcut_focus_badge,  "lifeplanner://focus"),
+            build(context, "habits",      "Check In Habits", R.drawable.ic_shortcut_habits_badge, "lifeplanner://habits"),
+            build(context, "goal_wizard", "New Goal",        R.drawable.ic_shortcut_goals_badge,  "lifeplanner://goal_wizard"),
+            build(context, "ai_chat",     "Talk to Coach",   R.drawable.ic_shortcut_coach_badge,  "lifeplanner://ai_chat"),
         )
         ShortcutManagerCompat.setDynamicShortcuts(context, shortcuts)
     }

@@ -20,10 +20,16 @@ import androidx.compose.foundation.layout.Column
 import az.tribe.lifeplanner.domain.model.Badge
 import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.domain.model.Milestone
+import az.tribe.lifeplanner.domain.service.DecisionScorecard
 import az.tribe.lifeplanner.domain.service.LocalPossibilityFallback
 import az.tribe.lifeplanner.ui.possibility.PossibilityCard
 import az.tribe.lifeplanner.ui.components.BadgeCard
 import az.tribe.lifeplanner.ui.components.BadgeMedallion
+import az.tribe.lifeplanner.domain.model.Decision
+import az.tribe.lifeplanner.domain.model.OutcomeQuality
+import az.tribe.lifeplanner.ui.decision.DecisionGradeCard
+import az.tribe.lifeplanner.ui.decision.GradeStep
+import az.tribe.lifeplanner.ui.decision.ScorecardCard
 import az.tribe.lifeplanner.ui.goal.GoalJourneyCard
 import az.tribe.lifeplanner.ui.intro.FeatureIntroCatalog
 import az.tribe.lifeplanner.ui.intro.FeatureIntroSheet
@@ -71,6 +77,62 @@ class PreviewScreenshots {
         // (badge wobble) stay frozen because autoAdvance is off.
         compose.mainClock.advanceTimeBy(800)
         compose.onRoot().captureRoboImage("build/previews/$name.png")
+    }
+
+    // Decision journal track record, in the three states that actually differ: nothing reviewed
+    // yet, a badly calibrated record, and a well calibrated one. Rendered in both themes because
+    // this card sits on primaryContainer and needs to read on either.
+    private val freshScorecard = DecisionScorecard(logged = 4, reviewed = 0)
+    private val overconfidentScorecard =
+        DecisionScorecard(logged = 18, reviewed = 11, goodProcess = 8, goodResult = 7, averageConfidence = 84)
+    private val calibratedScorecard =
+        DecisionScorecard(logged = 30, reviewed = 30, goodProcess = 24, goodResult = 19, averageConfidence = 65)
+
+    @Test
+    fun scorecardFresh() = snap("scorecard_fresh", darkTheme = false) { ScorecardCard(freshScorecard) }
+
+    @Test
+    fun scorecardOverconfidentLight() =
+        snap("scorecard_overconfident_light", darkTheme = false) { ScorecardCard(overconfidentScorecard) }
+
+    @Test
+    fun scorecardOverconfidentDark() =
+        snap("scorecard_overconfident_dark", darkTheme = true) { ScorecardCard(overconfidentScorecard) }
+
+    @Test
+    fun scorecardCalibrated() =
+        snap("scorecard_calibrated", darkTheme = false) { ScorecardCard(calibratedScorecard) }
+
+    // Reviewing a call, as two plain questions rather than a four-way grid. Previewed at each
+    // step because only two buttons are ever on screen and the second question is the hard one.
+    private fun reviewable(quality: OutcomeQuality? = null) = Decision(
+        id = "preview-decision",
+        question = "Should I drop the Tuesday gym slot and move it to mornings?",
+        chosenOption = "Move to mornings",
+        confidence = 80,
+        decidedAt = LocalDateTime(2026, 8, 1, 9, 0),
+        outcomeQuality = quality,
+    )
+
+    @Test
+    fun gradeCardStepOne() = snap("grade_step1_light", darkTheme = false) { DecisionGradeCard(reviewable()) {} }
+
+    @Test
+    fun gradeCardStepOneDark() = snap("grade_step1_dark", darkTheme = true) { DecisionGradeCard(reviewable()) {} }
+
+    @Test
+    fun gradeCardStepTwo() = snap("grade_step2_light", darkTheme = false) {
+        GradeStep(
+            prompt = "Knowing only what you knew then, was it the right call?",
+            affirmative = "Right call",
+            negative = "Flawed call",
+            onAnswer = {},
+        )
+    }
+
+    @Test
+    fun gradeCardGraded() = snap("grade_done_light", darkTheme = false) {
+        DecisionGradeCard(reviewable(OutcomeQuality.GOOD_PROCESS_BAD_RESULT)) {}
     }
 
     private val earnedBadge = Badge(

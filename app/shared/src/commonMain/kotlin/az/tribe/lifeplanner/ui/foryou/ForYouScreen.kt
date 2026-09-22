@@ -50,8 +50,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -254,15 +252,13 @@ fun ForYouScreen(
         if (filter != null && filter !in offeredSections) filter = null
     }
 
-    // Confirm what an action was worth. Ticking a plan item or a habit used to award XP silently.
-    val snackbarHostState = remember { SnackbarHostState() }
-    LaunchedEffect(Unit) {
-        viewModel.xpEvent.collect { xp -> if (xp > 0) snackbarHostState.showSnackbar("+$xp XP") }
-    }
+    // No snackbar here. This screen has a floating bottom bar, and a Scaffold snackbar docks
+    // beneath it, so the "+XP" confirmation appeared half-covered and unreadable. XP still lands;
+    // it is visible on the You tab. If this ever needs confirming inline again, it wants to be
+    // part of the card that earned it, not a bar hidden under the navigation.
 
     Scaffold(
         containerColor = c.background,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Present", fontWeight = FontWeight.Bold) },

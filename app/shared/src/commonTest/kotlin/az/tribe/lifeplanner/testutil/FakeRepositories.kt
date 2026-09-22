@@ -484,16 +484,47 @@ class FakeAiProxyService : AiProxyService {
 // ─── AbilityRepository ───────────────────────────────────────────────────────
 
 class FakeAbilityRepository : az.tribe.lifeplanner.domain.repository.AbilityRepository {
-    override fun observeAllAbilities(): Flow<List<az.tribe.lifeplanner.domain.model.Ability>> = kotlinx.coroutines.flow.flowOf(emptyList())
-    override suspend fun getAbilityById(id: String): az.tribe.lifeplanner.domain.model.Ability? = null
-    override suspend fun createAbility(ability: az.tribe.lifeplanner.domain.model.Ability) {}
-    override suspend fun updateAbility(ability: az.tribe.lifeplanner.domain.model.Ability) {}
-    override suspend fun deleteAbility(id: String) {}
+    /** Abilities this fake holds, keyed by id. Tests seed these and assert on them afterwards. */
+    val abilities = mutableMapOf<String, az.tribe.lifeplanner.domain.model.Ability>()
+
+    /** Every awardXp call in order, so a test can assert what was credited and how much. */
+    val awards = mutableListOf<Pair<String, Int>>()
+
+    override fun observeAllAbilities(): Flow<List<az.tribe.lifeplanner.domain.model.Ability>> =
+        kotlinx.coroutines.flow.flowOf(abilities.values.toList())
+    override suspend fun getAbilityById(id: String) = abilities[id]
+    override suspend fun createAbility(ability: az.tribe.lifeplanner.domain.model.Ability) { abilities[ability.id] = ability }
+    override suspend fun updateAbility(ability: az.tribe.lifeplanner.domain.model.Ability) { abilities[ability.id] = ability }
+    override suspend fun deleteAbility(id: String) { abilities.remove(id) }
     override suspend fun linkHabit(abilityId: String, habitId: String, xpWeight: Float) {}
     override suspend fun unlinkHabit(abilityId: String, habitId: String) {}
     override suspend fun getLinksForAbility(abilityId: String) = emptyList<az.tribe.lifeplanner.domain.model.AbilityHabitLink>()
     override suspend fun getLinksForHabit(habitId: String) = emptyList<az.tribe.lifeplanner.domain.model.AbilityHabitLink>()
     override suspend fun awardXpToAbilitiesForHabit(habitId: String, baseXp: Int) {}
+
+    override suspend fun awardXp(abilityId: String, xp: Int): az.tribe.lifeplanner.domain.model.XpAward? {
+        if (xp <= 0) return null
+        val before = abilities[abilityId] ?: return null
+        awards += abilityId to xp
+        val newTotal = before.totalXp + xp
+        val newLevel = levelFor(newTotal)
+        val after = before.copy(totalXp = newTotal, currentLevel = newLevel)
+        abilities[abilityId] = after
+        return az.tribe.lifeplanner.domain.model.XpAward(after, xp, newLevel > before.currentLevel)
+    }
+
+    // Mirrors AbilityRepositoryImpl.calculateLevel: each level costs level*50 XP.
+    private fun levelFor(totalXp: Int): Int {
+        var level = 1
+        var acc = 0
+        while (true) {
+            acc += level * 50
+            if (acc > totalXp) break
+            level++
+        }
+        return maxOf(1, level)
+    }
+
     override suspend fun linkGoal(abilityId: String, goalId: String) {}
     override suspend fun unlinkGoal(abilityId: String, goalId: String) {}
     override suspend fun getGoalLinksForAbility(abilityId: String) = emptyList<az.tribe.lifeplanner.domain.model.AbilityGoalLink>()
@@ -546,4 +577,130 @@ class FakeKnowledgeRepository : KnowledgeRepository {
     override fun readIds(): Flow<Set<String>> = _flow
     override suspend fun markRead(id: String) { read.add(id); _flow.value = read.toSet() }
     override suspend fun markUnread(id: String) { read.remove(id); _flow.value = read.toSet() }
+}
+
+// ─── DecisionRepository ──────────────────────────────────────────────────────
+
+/** In-memory decision log. Seed via [setDecisions]; mutations are reflected in the flow. */
+class FakeDecisionRepository(
+    initial: List<az.tribe.lifeplanner.domain.model.Decision> = emptyList(),
+) : az.tribe.lifeplanner.domain.repository.DecisionRepository {
+    private val _flow = MutableStateFlow(initial)
+
+    fun setDecisions(list: List<az.tribe.lifeplanner.domain.model.Decision>) { _flow.value = list }
+
+    override fun observeAllDecisions(): Flow<List<az.tribe.lifeplanner.domain.model.Decision>> = _flow
+    override suspend fun getAllDecisions() = _flow.value
+    override suspend fun getDecisionById(id: String) = _flow.value.firstOrNull { it.id == id }
+    override suspend fun getDecisionsForGoal(goalId: String) = _flow.value.filter { it.relatedGoalId == goalId }
+    override suspend fun insertDecision(decision: az.tribe.lifeplanner.domain.model.Decision) {
+        _flow.value = _flow.value + decision
+    }
+    override suspend fun updateDecision(decision: az.tribe.lifeplanner.domain.model.Decision) {
+        _flow.value = _flow.value.map { if (it.id == decision.id) decision else it }
+    }
+    override suspend fun deleteDecisionById(id: String) {
+        _flow.value = _flow.value.filterNot { it.id == id }
+    }
+}
+
+// ─── DecisionProfileRepository ───────────────────────────────────────────────
+
+class FakeDecisionProfileRepository(
+    initial: az.tribe.lifeplanner.domain.model.DecisionProfile? = null,
+) : az.tribe.lifeplanner.domain.repository.DecisionProfileRepository {
+    private val _flow = MutableStateFlow(initial)
+    override fun observeProfile(): Flow<az.tribe.lifeplanner.domain.model.DecisionProfile?> = _flow
+    override suspend fun getProfile() = _flow.value
+    override suspend fun upsertProfile(profile: az.tribe.lifeplanner.domain.model.DecisionProfile) {
+        _flow.value = profile
+    }
+}
+
+// ─── Fakes added for whole-screen previews ───────────────────────────────────
+// These back the Present feed, whose builder reaches through a deep graph of services. They are
+// deliberately inert: previews want a screen that renders, not a simulation of the app.
+
+class FakeHealthRepository : az.tribe.lifeplanner.domain.repository.HealthRepository {
+    var todaySteps: Long? = 6420
+    override fun observeMetricsByType(type: az.tribe.lifeplanner.domain.enum.HealthMetricType): Flow<List<az.tribe.lifeplanner.domain.model.HealthMetric>> =
+        kotlinx.coroutines.flow.flowOf(emptyList())
+    override suspend fun getMetricsInRange(
+        type: az.tribe.lifeplanner.domain.enum.HealthMetricType,
+        startDate: kotlinx.datetime.LocalDate,
+        endDate: kotlinx.datetime.LocalDate
+    ) = emptyList<az.tribe.lifeplanner.domain.model.HealthMetric>()
+    override suspend fun getLatestMetric(type: az.tribe.lifeplanner.domain.enum.HealthMetricType) = null
+    override suspend fun insertMetric(metric: az.tribe.lifeplanner.domain.model.HealthMetric) {}
+    override suspend fun insertMetrics(metrics: List<az.tribe.lifeplanner.domain.model.HealthMetric>) {}
+    override suspend fun syncFromPlatform() {}
+    override suspend fun getTodaySteps() = todaySteps
+    override suspend fun getLatestWeight(): Double? = null
+}
+
+class FakeBehaviorRepository : az.tribe.lifeplanner.domain.repository.BehaviorRepository {
+    override suspend fun recordScreenEnter(screen: String) {}
+    override suspend fun recordScreenExit(screen: String, durationMs: Long) {}
+    override suspend fun getPattern() = null
+    override suspend fun refreshPattern() {}
+    override suspend fun pruneOldEvents(keepDays: Int) {}
+}
+
+class FakeIdentityStatementRepository : az.tribe.lifeplanner.domain.repository.IdentityStatementRepository {
+    override fun observeAll(): Flow<List<az.tribe.lifeplanner.domain.model.IdentityStatement>> =
+        kotlinx.coroutines.flow.flowOf(emptyList())
+    override suspend fun getAll() = emptyList<az.tribe.lifeplanner.domain.model.IdentityStatement>()
+    override suspend fun getById(id: String) = null
+    override suspend fun getByValue(valueId: String) = emptyList<az.tribe.lifeplanner.domain.model.IdentityStatement>()
+    override suspend fun insert(statement: az.tribe.lifeplanner.domain.model.IdentityStatement) {}
+    override suspend fun update(statement: az.tribe.lifeplanner.domain.model.IdentityStatement) {}
+    override suspend fun deleteById(id: String) {}
+}
+
+class FakeUserSituationRepository : az.tribe.lifeplanner.domain.repository.UserSituationRepository {
+    private val situation = az.tribe.lifeplanner.domain.model.UserSituation()
+    override fun observe(): Flow<az.tribe.lifeplanner.domain.model.UserSituation?> =
+        kotlinx.coroutines.flow.flowOf(situation)
+    override suspend fun getOrCreate(userId: String) = situation
+    override suspend fun upsert(userId: String, situation: az.tribe.lifeplanner.domain.model.UserSituation) {}
+    override suspend fun updateMeta(userId: String, meta: az.tribe.lifeplanner.domain.model.MetaSlice) {}
+    override suspend fun updateCareer(userId: String, career: az.tribe.lifeplanner.domain.model.CareerSlice) {}
+    override suspend fun updateMoney(userId: String, money: az.tribe.lifeplanner.domain.model.MoneySlice) {}
+    override suspend fun updateBody(userId: String, body: az.tribe.lifeplanner.domain.model.BodySlice) {}
+    override suspend fun updatePeople(userId: String, people: az.tribe.lifeplanner.domain.model.PeopleSlice) {}
+    override suspend fun updatePurpose(userId: String, purpose: az.tribe.lifeplanner.domain.model.PurposeSlice) {}
+}
+
+/** A populated wheel, so Present renders the chart rather than the "set up your wheel" prompt. */
+class FakeWheelRepository(
+    private val report: az.tribe.lifeplanner.domain.model.WheelReport = defaultWheel(),
+) : az.tribe.lifeplanner.domain.repository.WheelRepository {
+    override fun observeWheel(): Flow<az.tribe.lifeplanner.domain.model.WheelReport> =
+        kotlinx.coroutines.flow.flowOf(report)
+    override suspend fun getWheel() = report
+    override suspend fun setScore(area: az.tribe.lifeplanner.domain.model.WheelArea, score: Double, note: String?) {}
+    override suspend fun clearScore(area: az.tribe.lifeplanner.domain.model.WheelArea) {}
+    override suspend fun captureSnapshot() {}
+    override suspend fun compareTo(period: az.tribe.lifeplanner.domain.model.ComparisonPeriod) = null
+    override suspend fun compareToDate(date: kotlinx.datetime.LocalDate) = null
+    override suspend fun snapshots() = emptyList<az.tribe.lifeplanner.domain.model.WheelSnapshot>()
+
+    companion object {
+        private val SCORES = listOf(8.0, 8.0, 9.0, 10.0, 4.0, 7.0, 3.0, 10.0, 7.0, 7.5)
+
+        fun defaultWheel(): az.tribe.lifeplanner.domain.model.WheelReport =
+            az.tribe.lifeplanner.domain.model.WheelReport(
+                id = "preview-wheel",
+                scores = az.tribe.lifeplanner.domain.model.WheelArea.entries.mapIndexed { i, area ->
+                    az.tribe.lifeplanner.domain.model.WheelScore(
+                        area = area,
+                        score = SCORES[i % SCORES.size],
+                        source = az.tribe.lifeplanner.domain.model.ScoreSource.USER,
+                        confidence = 1.0,
+                        basis = "Set by you",
+                    )
+                },
+                generatedAt = kotlinx.datetime.LocalDateTime(2026, 8, 21, 9, 0),
+            )
+    }
 }
