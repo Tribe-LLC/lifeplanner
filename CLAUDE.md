@@ -88,7 +88,7 @@ Source sets are wired in `app/shared/build.gradle.kts`. The `com.android.kotlin.
 ### Database — SQLDelight
 
 - Schema in `app/shared/src/commonMain/sqldelight/az/tribe/lifeplanner/database/` (`.sq` files). Generated package: `az.tribe.lifeplanner.database`. Async generation is enabled (`generateAsync = true`).
-- **The current schema version is the `version = NN` line in `app/shared/build.gradle.kts`** — read it there, it is the source of truth. Every schema bump must:
+- **The schema version the app actually runs is the highest `.sqm` file plus one**, which SQLDelight generates into `LifePlannerDBImpl.Schema.version`. The `version = NN` line in `app/shared/build.gradle.kts` does not set it and is currently one behind (42 declared, 43 generated). Read the generated value when it matters, because each migration step is guarded by `oldVersion <= N && newVersion > N`, so an off-by-one here silently skips the last migration for every upgrader. Keep the declared number and its comment in step anyway, since the comment log is how the schema history stays readable. Every schema bump must:
   1. Increment the `version` number,
   2. Add a migration `.sqm` file in `app/shared/src/commonMain/sqldelight/migrations/`,
   3. Append a one-line comment after the version number summarizing the change — the project already follows this convention (e.g. `// 28: ScreenTimeEventEntity + UserActivityPattern behavioral columns`),
@@ -96,7 +96,7 @@ Source sets are wired in `app/shared/build.gradle.kts`. The `com.android.kotlin.
   5. Add or update mapper(s) under `data/mapper/`,
   6. Add a corresponding `TableSyncer` in `data/sync/syncers/` and register it in `SyncerFactory` if the table needs cloud sync.
 
-> **Migrations gotcha (read this).** The `.sqm` files are **not** applied at runtime on Android. Android runs idempotent migrations manually in `DatabaseDriverFactory.onOpen()` (the `migrateToVersionNN(db)` chain, using `CREATE TABLE IF NOT EXISTS` / `addColumnSafe`); the `.sqm` files only drive **iOS** (via `DefensiveSchema` wrapping the generated `Schema`) and SQLDelight's **compile-time** migration verification. So a build can pass while the running Android app crashes with `no such column: …`. Skipping step 4 is exactly that trap. (Function names in `DatabaseMigrations.kt` are loosely numbered and decoupled from `.sqm` numbers; match the `.sqm` version number for new ones and keep them idempotent.)
+> **Migrations gotcha (read this).** The `.sqm` files are **not** applied at runtime on Android. Android runs idempotent migrations manually in `DatabaseDriverFactory.onOpen()` (the `migrateToVersionNN(db)` chain, using `CREATE TABLE IF NOT EXISTS` / `addColumnSafe`); the `.sqm` files only drive **iOS**, via `DefensiveSchema` wrapping the generated `Schema`. There is **no compile-time verification of them**: `verifyMigrations` is off and no schema snapshots are committed to `schemaOutputDirectory`, so nothing checks a `.sqm` file against the schema. `SqmMigrationTest` is what checks them now, by running the chain over a 2.3-shaped database and comparing against `Schema.create`; `DatabaseMigrationsTest` does the same for the Android chain and asserts the two routes agree. So a build can pass while the running Android app crashes with `no such column: …`. Skipping step 4 is exactly that trap. (Function names in `DatabaseMigrations.kt` are loosely numbered and decoupled from `.sqm` numbers; match the `.sqm` version number for new ones and keep them idempotent.)
 
 ### Cloud sync
 
