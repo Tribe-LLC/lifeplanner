@@ -141,6 +141,28 @@ class DatabaseMigrationsTest {
         }
     }
 
+    @Test
+    fun `an upgrader ends up with every table and column a fresh install has`() {
+        val upgraded = legacyDatabase()
+        runAndroidMigrations(upgraded)
+
+        // The one assertion that does not need maintaining. Every test above names the columns it
+        // cares about, which only catches what someone remembered to add; this one asks the
+        // schema itself. A new table or column that lands in the `.sq` files without a matching
+        // step in the Android chain is invisible until it reaches a device, because fresh
+        // installs get it from Schema.create and only upgraders go through the chain.
+        val expected = schemaSnapshot(freshInstallDatabase())
+        val actual = schemaSnapshot(upgraded).toSet()
+
+        val missing = expected.filterNot { it in actual }
+        assertTrue(
+            missing.isEmpty(),
+            "a 2.3 upgrader never receives ${missing.size} of the ${expected.size} columns a " +
+                "fresh install has, so every query that reads one crashes: " +
+                missing.joinToString()
+        )
+    }
+
     // -- fixture ---------------------------------------------------------------------------
 
     /**
@@ -221,6 +243,85 @@ class DatabaseMigrationsTest {
                     )
                     """.trimIndent()
                 )
+                // Verbatim from the `.sq` schema as it stood at v21 (commit bcd19c4), so the
+                // fixture holds what a real 2.3 install held rather than a convenient subset.
+                // MilestoneEntity.estimatedEffort is deliberately absent: it arrives at v32 and
+                // the chain has to add it.
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS MilestoneEntity (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        goalId TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        isCompleted INTEGER NOT NULL DEFAULT 0,
+                        dueDate TEXT,
+                        createdAt TEXT NOT NULL,
+                        sync_updated_at TEXT,
+                        is_deleted INTEGER NOT NULL DEFAULT 0,
+                        sync_version INTEGER NOT NULL DEFAULT 0,
+                        last_synced_at TEXT
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS GoalHistoryEntity (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        goalId TEXT NOT NULL,
+                        field TEXT NOT NULL,
+                        oldValue TEXT,
+                        newValue TEXT,
+                        changedAt TEXT NOT NULL,
+                        sync_updated_at TEXT,
+                        is_deleted INTEGER NOT NULL DEFAULT 0,
+                        sync_version INTEGER NOT NULL DEFAULT 0,
+                        last_synced_at TEXT
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS UserEntity (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        firebaseUid TEXT UNIQUE,
+                        email TEXT,
+                        displayName TEXT,
+                        isGuest INTEGER NOT NULL DEFAULT 0,
+                        selectedSymbol TEXT,
+                        priorities TEXT,
+                        ageRange TEXT,
+                        profession TEXT,
+                        relationshipStatus TEXT,
+                        mindset TEXT,
+                        hasCompletedOnboarding INTEGER NOT NULL DEFAULT 0,
+                        createdAt TEXT NOT NULL,
+                        lastSyncedAt TEXT,
+                        sync_updated_at TEXT,
+                        is_deleted INTEGER NOT NULL DEFAULT 0,
+                        sync_version INTEGER NOT NULL DEFAULT 0
+                    )
+                    """.trimIndent()
+                )
+                // Health landed at v17, so 2.3 already carried this table. It is the one the
+                // health work writes to, and nothing in the chain would recreate it.
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS HealthMetricEntity (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        metricType TEXT NOT NULL,
+                        value_ REAL NOT NULL,
+                        unit TEXT NOT NULL,
+                        date TEXT NOT NULL,
+                        source TEXT NOT NULL DEFAULT 'PLATFORM',
+                        recordedAt TEXT NOT NULL,
+                        createdAt TEXT NOT NULL,
+                        sync_updated_at TEXT,
+                        is_deleted INTEGER NOT NULL DEFAULT 0,
+                        sync_version INTEGER NOT NULL DEFAULT 0,
+                        last_synced_at TEXT
+                    )
+                    """.trimIndent()
+                )
                 db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS UserProgressEntity (
@@ -248,27 +349,5 @@ class DatabaseMigrationsTest {
             .build()
 
         return FrameworkSQLiteOpenHelperFactory().create(configuration).writableDatabase
-    }
-
-    private fun tableExists(db: SupportSQLiteDatabase, table: String): Boolean =
-        db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='$table'")
-            .use { it.moveToFirst() }
-
-    /** Every table and column, so an idempotency break shows up as a diff rather than a guess. */
-    private fun schemaSnapshot(db: SupportSQLiteDatabase): List<String> {
-        val tables = buildList {
-            db.query(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' " +
-                    "AND name != 'android_metadata' ORDER BY name"
-            ).use { while (it.moveToNext()) add(it.getString(0)) }
-        }
-        return tables.flatMap { table ->
-            buildList {
-                db.query("PRAGMA table_info($table)").use { cursor ->
-                    val nameIndex = cursor.getColumnIndex("name")
-                    while (cursor.moveToNext()) add("$table.${cursor.getString(nameIndex)}")
-                }
-            }.sorted()
-        }
     }
 }
