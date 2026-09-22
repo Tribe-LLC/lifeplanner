@@ -10,6 +10,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.domain.enum.BadgeType
@@ -19,12 +21,18 @@ import az.tribe.lifeplanner.domain.enum.GoalTimeline
 import androidx.compose.foundation.layout.Column
 import az.tribe.lifeplanner.domain.model.Badge
 import az.tribe.lifeplanner.domain.model.Goal
+import az.tribe.lifeplanner.domain.model.CoachGroup
+import az.tribe.lifeplanner.domain.model.CustomCoach
 import az.tribe.lifeplanner.domain.model.Milestone
 import az.tribe.lifeplanner.domain.service.LocalPossibilityFallback
 import az.tribe.lifeplanner.ui.possibility.PossibilityCard
 import az.tribe.lifeplanner.ui.components.BadgeCard
 import az.tribe.lifeplanner.ui.components.BadgeMedallion
+import az.tribe.lifeplanner.ui.health.HealthPermissionState
+import az.tribe.lifeplanner.ui.coach.CreateCoachScreen
+import az.tribe.lifeplanner.ui.coach.CreateGroupScreen
 import az.tribe.lifeplanner.ui.goal.GoalJourneyCard
+import az.tribe.lifeplanner.ui.profile.HealthConnectionCard
 import az.tribe.lifeplanner.ui.intro.FeatureIntroCatalog
 import az.tribe.lifeplanner.ui.intro.FeatureIntroSheet
 import az.tribe.lifeplanner.ui.theme.LifePlannerTheme
@@ -344,4 +352,102 @@ class PreviewScreenshots {
 
     @Test
     fun featureIntroMyPatterns() = snapIntro(FeatureIntroCatalog.MY_PATTERNS)
+
+    /**
+     * A coach you made could be edited but never removed: deleteCoach existed on the view model
+     * with no caller anywhere. These two render the same screen with and without the way out, so
+     * the affordance is checked rather than assumed.
+     */
+    @Test
+    fun `editing a coach offers a way to delete it`() {
+        snap("coach-edit-with-delete") {
+            CreateCoachScreen(
+                coachToEdit = previewCoach,
+                onNavigateBack = {},
+                onCoachSaved = {},
+                onDeleteCoach = {},
+            )
+        }
+
+        compose.onNodeWithContentDescription("Delete coach").assertIsDisplayed()
+    }
+
+    @Test
+    fun `creating a coach offers no delete`() {
+        snap("coach-create-no-delete") {
+            CreateCoachScreen(
+                onNavigateBack = {},
+                onCoachSaved = {},
+            )
+        }
+
+        // Nothing to delete yet, and an enabled delete on a coach that does not exist would be
+        // the kind of button that only fails once someone presses it.
+        compose.onNodeWithContentDescription("Delete coach").assertDoesNotExist()
+    }
+
+    private val previewCoach = CustomCoach(
+        id = "preview-coach",
+        name = "Nadia",
+        icon = "\uD83E\uDDED",
+        systemPrompt = "You are a calm, direct navigator who helps me choose between options.",
+        characteristics = listOf("Direct", "Calm"),
+        createdAt = LocalDateTime(2026, 7, 20, 8, 0),
+    )
+
+
+    @Test
+    fun `editing a group offers a way to delete it`() {
+        snap("group-edit-with-delete") {
+            CreateGroupScreen(
+                groupToEdit = CoachGroup(
+                    id = "preview-group",
+                    name = "Morning council",
+                    icon = "\uD83D\uDC65",
+                    createdAt = LocalDateTime(2026, 7, 20, 8, 0),
+                ),
+                customCoaches = listOf(previewCoach),
+                onNavigateBack = {},
+                onGroupSaved = {},
+                onDeleteGroup = {},
+            )
+        }
+
+        compose.onNodeWithContentDescription("Delete group").assertIsDisplayed()
+    }
+
+
+    /**
+     * Connecting health used to remove this card, which was the only signposted route to the
+     * dashboard. Both states render here so the connected one is never again the state with no
+     * way forward.
+     */
+    @Test
+    fun `a connected health card leads to the dashboard`() {
+        snap("health-card-connected") {
+            HealthConnectionCard(
+                permissionState = HealthPermissionState.GRANTED,
+                onConnect = {},
+                onSync = {},
+                onOpenDashboard = {},
+            )
+        }
+
+        compose.onNodeWithContentDescription("Open health dashboard").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a disconnected health card offers to connect`() {
+        snap("health-card-disconnected") {
+            HealthConnectionCard(
+                permissionState = HealthPermissionState.DENIED,
+                onConnect = {},
+                onSync = {},
+                onOpenDashboard = {},
+            )
+        }
+
+        compose.onNodeWithContentDescription("Open health dashboard").assertDoesNotExist()
+    }
+
 }

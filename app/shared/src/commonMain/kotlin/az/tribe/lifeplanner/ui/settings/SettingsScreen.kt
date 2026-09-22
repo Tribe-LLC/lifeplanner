@@ -150,16 +150,18 @@ fun SettingsScreen(
                     onClick = { showAiProviderDialog = true },
                 )
             }
-            // Health only needs a home here until it's connected, once it is, the dashboard owns it
-            // (including manual sync), so the card would just be a duplicate entry point.
-            if (healthPermissionState != HealthPermissionState.GRANTED) {
-                item {
-                    HealthConnectionCard(
-                        permissionState = healthPermissionState,
-                        onConnect = onNavigateToHealth,
-                        onSync = { healthViewModel.syncHealth() },
-                    )
-                }
+            // This card used to hide itself once health was connected, on the reasoning that the
+            // dashboard owned health from then on and the card would be a duplicate entry point.
+            // It was not a duplicate, it was the only one: nothing on Home links to the dashboard,
+            // so connecting health made the dashboard reachable only by searching for "health".
+            // It stays, and when connected it leads there.
+            item {
+                HealthConnectionCard(
+                    permissionState = healthPermissionState,
+                    onConnect = onNavigateToHealth,
+                    onSync = { healthViewModel.syncHealth() },
+                    onOpenDashboard = onNavigateToHealth,
+                )
             }
             item {
                 CalendarIntegrationCard(

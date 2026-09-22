@@ -137,10 +137,23 @@ internal fun HealthConnectionCard(
     permissionState: HealthPermissionState,
     onConnect: () -> Unit,
     onSync: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /**
+     * Where "syncing to dashboard" actually goes. Once health is connected this card is the only
+     * signposted way to the dashboard: nothing on Home links to it, and the only other route is
+     * typing "health" into search.
+     */
+    onOpenDashboard: (() -> Unit)? = null
 ) {
+    val isConnected = permissionState == HealthPermissionState.GRANTED
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                if (isConnected && onOpenDashboard != null) {
+                    Modifier.clickable(onClick = onOpenDashboard)
+                } else Modifier
+            ),
         shape = RoundedCornerShape(LifePlannerDesign.CornerRadius.large),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
     ) {
@@ -160,7 +173,7 @@ internal fun HealthConnectionCard(
                 Text("Health", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Text(
                     when (permissionState) {
-                        HealthPermissionState.GRANTED -> "Connected, data syncing to dashboard"
+                        HealthPermissionState.GRANTED -> "Connected. Tap to open your dashboard"
                         HealthPermissionState.DENIED -> "Connect to see steps, sleep & more on your dashboard"
                         HealthPermissionState.NOT_AVAILABLE -> "Health not available on this device"
                         HealthPermissionState.UNKNOWN -> "Checking health access..."
@@ -170,8 +183,18 @@ internal fun HealthConnectionCard(
                 )
             }
             when (permissionState) {
-                HealthPermissionState.GRANTED -> IconButton(onClick = onSync) {
-                    Icon(PhosphorIcons.Regular.ArrowsClockwise, contentDescription = "Sync", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                HealthPermissionState.GRANTED -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onSync) {
+                        Icon(PhosphorIcons.Regular.ArrowsClockwise, contentDescription = "Sync", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    }
+                    if (onOpenDashboard != null) {
+                        Icon(
+                            PhosphorIcons.Regular.CaretRight,
+                            contentDescription = "Open health dashboard",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
                 HealthPermissionState.DENIED -> TextButton(onClick = onConnect) {
                     Text("Connect", style = MaterialTheme.typography.labelMedium)

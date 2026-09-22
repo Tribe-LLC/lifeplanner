@@ -66,17 +66,6 @@ class JournalViewModel(
     private val _currentPrompt = MutableStateFlow(JournalPrompts.getRandomPrompt())
     val currentPrompt: StateFlow<String> = _currentPrompt.asStateFlow()
 
-    private val _selectedMood = MutableStateFlow(Mood.NEUTRAL)
-    val selectedMood: StateFlow<Mood> = _selectedMood.asStateFlow()
-
-    // Calendar state
-    private val _selectedMonth = MutableStateFlow(
-        Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
-    )
-    val selectedMonth: StateFlow<LocalDate> = _selectedMonth.asStateFlow()
-
-    private val _selectedDay = MutableStateFlow<LocalDate?>(null)
-    val selectedDay: StateFlow<LocalDate?> = _selectedDay.asStateFlow()
 
     fun createEntry(
         title: String,
@@ -164,17 +153,11 @@ class JournalViewModel(
         _showNewEntryDialog.value = false
     }
 
-    fun setSelectedMood(mood: Mood) {
-        _selectedMood.value = mood
-    }
 
     fun refreshPrompt() {
         _currentPrompt.value = JournalPrompts.getRandomPrompt()
     }
 
-    fun getPromptsForCurrentMood(): List<String> {
-        return JournalPrompts.getPromptsForMood(_selectedMood.value)
-    }
 
     fun clearError() {
         _error.value = null
@@ -235,22 +218,6 @@ class JournalViewModel(
         }
     }
 
-    // Calendar functions
-    fun setSelectedMonth(date: LocalDate) {
-        _selectedMonth.value = date
-    }
-
-    fun selectDay(date: LocalDate) {
-        _selectedDay.value = date
-    }
-
-    fun clearSelectedDay() {
-        _selectedDay.value = null
-    }
-
-    fun getEntriesForDay(date: LocalDate): List<JournalEntry> {
-        return entries.value.filter { it.date == date }
-    }
 
     // ── AI generation ─────────────────────────────────────────────────────────
 
