@@ -149,6 +149,10 @@ internal fun NavGraphBuilder.appNavCoach(navController: NavController) {
             onCoachSaved = { coach ->
                 coachViewModel.updateCoach(coach)
                 navController.popBackStack()
+            },
+            onDeleteCoach = {
+                coachViewModel.deleteCoach(coachId)
+                navController.popBackStack()
             }
         )
     }
@@ -183,6 +187,10 @@ internal fun NavGraphBuilder.appNavCoach(navController: NavController) {
             onNavigateBack = { navController.popBackStack() },
             onGroupSaved = { group ->
                 coachViewModel.updateGroup(group)
+                navController.popBackStack()
+            },
+            onDeleteGroup = {
+                coachViewModel.deleteGroup(groupId)
                 navController.popBackStack()
             }
         )

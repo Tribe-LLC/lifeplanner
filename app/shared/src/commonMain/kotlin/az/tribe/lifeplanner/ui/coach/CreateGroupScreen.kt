@@ -56,6 +56,10 @@ import az.tribe.lifeplanner.domain.model.CustomCoach
 import kotlin.time.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import com.adamglin.phosphoricons.regular.Trash
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 
 /**
  * Screen for creating or editing a coach group
@@ -66,8 +70,11 @@ fun CreateGroupScreen(
     groupToEdit: CoachGroup? = null,
     customCoaches: List<CustomCoach>,
     onNavigateBack: () -> Unit,
+    /** Only supplied when editing, since there is nothing to delete while creating. */
+    onDeleteGroup: (() -> Unit)? = null,
     onGroupSaved: (CoachGroup) -> Unit
 ) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     val isEditing = groupToEdit != null
     val builtinCoaches by BuiltinCoachStore.coaches.collectAsState()
     val allBuiltinCoaches = builtinCoaches.ifEmpty { CoachPersona.ALL_COACHES }
@@ -108,6 +115,17 @@ fun CreateGroupScreen(
                             PhosphorIcons.Regular.ArrowLeft,
                             contentDescription = "Back"
                         )
+                    }
+                },
+                actions = {
+                    if (isEditing && onDeleteGroup != null) {
+                        IconButton(onClick = { showDeleteConfirm = true }) {
+                            Icon(
+                                PhosphorIcons.Regular.Trash,
+                                contentDescription = "Delete group",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -384,4 +402,31 @@ fun CreateGroupScreen(
             onDismiss = { showIconPicker = false }
         )
     }
+
+    if (showDeleteConfirm && onDeleteGroup != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete this group?") },
+            text = { Text("This cannot be undone. The coaches in the group are not deleted, only the group itself.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirm = false
+                        onDeleteGroup()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                FilledTonalButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
 }
