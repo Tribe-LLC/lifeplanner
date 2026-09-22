@@ -3,9 +3,6 @@ package az.tribe.lifeplanner.di
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.android.AndroidSqliteDriver
-import az.tribe.lifeplanner.database.LifePlannerDB
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -353,51 +350,4 @@ class DatabaseMigrationsTest {
 
         return FrameworkSQLiteOpenHelperFactory().create(configuration).writableDatabase
     }
-
-    private fun tableExists(db: SupportSQLiteDatabase, table: String): Boolean =
-        db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='$table'")
-            .use { it.moveToFirst() }
-
-    /** Every table and column, so an idempotency break shows up as a diff rather than a guess. */
-    private fun schemaSnapshot(db: SupportSQLiteDatabase): List<String> {
-        val tables = buildList {
-            db.query(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' " +
-                    "AND name != 'android_metadata' ORDER BY name"
-            ).use { while (it.moveToNext()) add(it.getString(0)) }
-        }
-        return tables.flatMap { table ->
-            buildList {
-                db.query("PRAGMA table_info($table)").use { cursor ->
-                    val nameIndex = cursor.getColumnIndex("name")
-                    while (cursor.moveToNext()) add("$table.${cursor.getString(nameIndex)}")
-                }
-            }.sorted()
-        }
-    }
-
-    /**
-     * What a clean 3.0 install gets: SQLDelight's own `Schema.create`, which is the only definition
-     * of the current schema that cannot drift from the `.sq` files.
-     */
-    private fun freshInstallDatabase(): SupportSQLiteDatabase {
-        val db = emptyDatabase()
-        LifePlannerDB.Schema.synchronous().create(AndroidSqliteDriver(db))
-        return db
-    }
-
-    /** An open, table-less database to build a schema into. */
-    private fun emptyDatabase(): SupportSQLiteDatabase {
-        val callback = object : SupportSQLiteOpenHelper.Callback(1) {
-            override fun onCreate(db: SupportSQLiteDatabase) = Unit
-            override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
-        }
-        val configuration = SupportSQLiteOpenHelper.Configuration
-            .builder(RuntimeEnvironment.getApplication())
-            .name(null)
-            .callback(callback)
-            .build()
-        return FrameworkSQLiteOpenHelperFactory().create(configuration).writableDatabase
-    }
-
 }
