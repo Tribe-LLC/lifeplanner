@@ -79,6 +79,9 @@ enum class OnboardingPhase {
     HABIT_SUGGEST
 }
 
+/** Stable, lower-case event names, so a rename of the enum constant does not silently split a funnel. */
+internal fun OnboardingPhase.stepName(): String = name.lowercase()
+
 data class GoalInterpretation(
     val summary: String,
     val goalTitle: String,
@@ -266,7 +269,11 @@ class CoachOnboardingViewModel(
         }
 
     init {
-        restoreFromSettings()
+        val resumedAt = restoreFromSettings()
+        // The entry event used to live on WelcomeScreen, which nothing has navigated to since
+        // CoachOnboardingScreen replaced it, so every v3 funnel had no denominator. It belongs
+        // here, where the flow actually begins.
+        if (resumedAt == null) Analytics.onboardingStarted() else Analytics.onboardingResumed(resumedAt.stepName())
     }
 
     fun togglePriority(category: GoalCategory) {
@@ -291,16 +298,28 @@ class CoachOnboardingViewModel(
         return (filled.toFloat() / total).coerceIn(0f, 1f)
     }
 
-    fun advance() {
-        val next = nextPhase(_phase.value)
-        _phase.value = next
-        saveToSettings(next)
-    }
+    fun advance() = moveTo(nextPhase(_phase.value))
 
     fun back() {
-        val prev = previousPhase(_phase.value)
+        val from = _phase.value
+        val prev = previousPhase(from)
         _phase.value = prev
         settings.putString(KEY_PHASE, prev.name)
+        if (prev != from) Analytics.onboardingStepBack(from.stepName(), from.ordinal)
+    }
+
+    /**
+     * Every forward move in the flow, so the funnel cannot go stale by someone adding a phase and
+     * forgetting to report it. Sixteen phases had one event between them before this existed, which
+     * is why the flow could only be described as "hard" rather than measured.
+     *
+     * The step reported is the one being left, since that is the one the user just finished.
+     */
+    private fun moveTo(next: OnboardingPhase) {
+        val from = _phase.value
+        _phase.value = next
+        saveToSettings(next)
+        if (next != from) Analytics.onboardingStepCompleted(from.stepName(), from.ordinal)
     }
 
     private fun nextPhase(current: OnboardingPhase): OnboardingPhase = when (current) {
@@ -378,9 +397,10 @@ class CoachOnboardingViewModel(
         settings.putString(KEY_FAMILY_VISION, familyVision)
     }
 
-    private fun restoreFromSettings() {
-        val phaseName = settings.getStringOrNull(KEY_PHASE) ?: return
-        _phase.value = runCatching { OnboardingPhase.valueOf(phaseName) }.getOrElse { return }
+    /** The phase restored from a previous session, or null when this is a fresh start. */
+    private fun restoreFromSettings(): OnboardingPhase? {
+        val phaseName = settings.getStringOrNull(KEY_PHASE) ?: return null
+        _phase.value = runCatching { OnboardingPhase.valueOf(phaseName) }.getOrElse { return null }
         userName = settings.getString(KEY_USER_NAME, "")
         userAge = settings.getIntOrNull(KEY_USER_AGE)
         topPriority = settings.getStringOrNull(KEY_TOP_PRIORITY)?.let { runCatching { GoalCategory.valueOf(it) }.getOrNull() }
@@ -416,6 +436,7 @@ class CoachOnboardingViewModel(
         familyRole = settings.getString(KEY_FAMILY_ROLE, "")
         familyChallenge = settings.getString(KEY_FAMILY_CHALLENGE, "")
         familyVision = settings.getString(KEY_FAMILY_VISION, "")
+        return _phase.value
     }
 
     private fun clearInProgressState() {
@@ -452,7 +473,7 @@ class CoachOnboardingViewModel(
                     if (goal != null) {
                         generatedGoal = goal
                         habitSuggestions = buildHabitSuggestions(goal.category)
-                        _phase.value = OnboardingPhase.GOAL_PREVIEW
+                        moveTo(OnboardingPhase.GOAL_PREVIEW)
                         return@launch
                     }
                 }
@@ -508,8 +529,8 @@ class CoachOnboardingViewModel(
     // ── Mind analysis flow ────────────────────────────────────────────────────
 
     fun skipMindDump() {
-        _phase.value = OnboardingPhase.COMPLETE
-        saveToSettings(OnboardingPhase.COMPLETE)
+        Analytics.onboardingSkipped(OnboardingPhase.MIND_DUMP.stepName())
+        moveTo(OnboardingPhase.COMPLETE)
     }
 
     fun startMindAnalysis() {
@@ -521,13 +542,10 @@ class CoachOnboardingViewModel(
                 analysisQuestions = questions
                 analysisAnswers = List(questions.size) { "" }
                 currentQuestionIndex = 0
-                _phase.value = OnboardingPhase.MIND_QUESTIONS
-                saveToSettings(OnboardingPhase.MIND_QUESTIONS)
-                Analytics.onboardingStepCompleted("mind_dump", 9)
+                moveTo(OnboardingPhase.MIND_QUESTIONS)
             } catch (e: Exception) {
                 Logger.e("CoachOnboarding", e) { "Failed to generate questions: ${e.message}" }
-                _phase.value = OnboardingPhase.COMPLETE
-                saveToSettings(OnboardingPhase.COMPLETE)
+                moveTo(OnboardingPhase.COMPLETE)
             } finally {
                 _isAnalyzing.value = false
             }
@@ -558,8 +576,7 @@ class CoachOnboardingViewModel(
                     goalDescription = "",
                     category = topPriorities.firstOrNull() ?: GoalCategory.PURPOSE
                 )
-                _phase.value = OnboardingPhase.MIND_VALIDATION
-                saveToSettings(OnboardingPhase.MIND_VALIDATION)
+                moveTo(OnboardingPhase.MIND_VALIDATION)
             } finally {
                 _isAnalyzing.value = false
             }
@@ -588,7 +605,7 @@ class CoachOnboardingViewModel(
                 if (goal != null) {
                     generatedGoal = goal
                     habitSuggestions = buildHabitSuggestions(goal.category)
-                    _phase.value = OnboardingPhase.GOAL_PREVIEW
+                    moveTo(OnboardingPhase.GOAL_PREVIEW)
                 } else {
                     clearInProgressState()
                     settings.putBoolean(COACH_ONBOARDING_KEY, true)
@@ -606,6 +623,11 @@ class CoachOnboardingViewModel(
         currentQuestionIndex = 0
         analysisAnswers = List(analysisQuestions.size) { "" }
         goalInterpretation = null
+        // Rejecting the interpretation is a backwards move, not progress, so it reports as one.
+        Analytics.onboardingStepBack(
+            OnboardingPhase.MIND_VALIDATION.stepName(),
+            OnboardingPhase.MIND_VALIDATION.ordinal
+        )
         _phase.value = OnboardingPhase.MIND_QUESTIONS
         saveToSettings(OnboardingPhase.MIND_QUESTIONS)
     }

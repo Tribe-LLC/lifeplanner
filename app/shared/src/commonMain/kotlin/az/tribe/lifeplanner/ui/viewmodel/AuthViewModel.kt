@@ -2,6 +2,7 @@ package az.tribe.lifeplanner.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import az.tribe.lifeplanner.data.analytics.Analytics
 import az.tribe.lifeplanner.data.analytics.PostHogAnalytics
 import az.tribe.lifeplanner.di.getPlatform
 import az.tribe.lifeplanner.data.auth.AuthResult
@@ -274,6 +275,15 @@ class AuthViewModel(
      * This ensures sync runs AFTER findOrCreateLocalUser() completes (no race condition).
      */
     internal fun setAuthenticatedAndSync(user: User) {
+        // Arriving here with a pending address that matches is the moment a verified sign-up
+        // actually completes. It is reported here rather than at the sign-up call because the user
+        // can come back through a deep link, a magic link or a cold start, and only this path is
+        // common to all three. The address has to match, so signing in with Google while an
+        // unrelated verification is outstanding is not counted as completing it.
+        val pendingEmail = settings.getStringOrNull(PENDING_VERIFY_EMAIL_KEY)
+        if (pendingEmail != null && pendingEmail.equals(user.email, ignoreCase = true)) {
+            Analytics.signUpCompleted("email_verified")
+        }
         settings.remove(PENDING_VERIFY_EMAIL_KEY) // Clear pending verification
         _authState.value = AuthState.Authenticated(user)
         identifyInPostHog(user)
