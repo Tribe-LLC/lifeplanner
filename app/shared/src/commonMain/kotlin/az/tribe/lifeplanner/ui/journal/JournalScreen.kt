@@ -44,7 +44,6 @@ import az.tribe.lifeplanner.ui.calendar.CalendarDayEvents
 import az.tribe.lifeplanner.ui.components.CompactGoalRow
 import az.tribe.lifeplanner.ui.home.CompactHomeMilestoneRow
 import az.tribe.lifeplanner.ui.home.HomeViewModel
-import az.tribe.lifeplanner.ui.components.DayEntriesBottomSheet
 import az.tribe.lifeplanner.ui.components.GlassCard
 import az.tribe.lifeplanner.ui.components.InlineEmptyState
 import az.tribe.lifeplanner.ui.components.WeekStrip
@@ -111,7 +110,6 @@ fun JournalScreen(
     val entries by viewModel.entries.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val showNewEntryDialog by viewModel.showNewEntryDialog.collectAsState()
-    val selectedDay by viewModel.selectedDay.collectAsState()
 
     val goals by goalViewModel.goals.collectAsState()
     val habitsWithStatus by habitViewModel.habits.collectAsState()
@@ -581,23 +579,6 @@ fun JournalScreen(
                 goals = goals,
                 habits = habits,
                 viewModel = viewModel,
-            )
-        }
-
-        selectedDay?.let { date ->
-            DayEntriesBottomSheet(
-                date = date,
-                entries = viewModel.getEntriesForDay(date),
-                onDismiss = { viewModel.clearSelectedDay() },
-                onEntryClick = { entryId -> viewModel.clearSelectedDay(); onEntryClick(entryId) },
-                // Adding from a day's sheet means adding *to that day*, so move the day lens with
-                // it before the writer opens, otherwise the entry lands on whatever the week strip
-                // happened to be showing.
-                onAddEntry = {
-                    selectedEpochDay = date.toEpochDays()
-                    viewModel.clearSelectedDay()
-                    viewModel.showNewEntryDialog()
-                }
             )
         }
 

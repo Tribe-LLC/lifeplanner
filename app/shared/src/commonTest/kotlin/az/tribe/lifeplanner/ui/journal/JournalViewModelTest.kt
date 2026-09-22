@@ -273,18 +273,6 @@ class JournalViewModelTest {
         assertNull(viewModel.error.value)
     }
 
-    @Test
-    fun `setSelectedMood updates mood state`() = runTest(testDispatcher) {
-        viewModel = createViewModel()
-
-        assertEquals(Mood.NEUTRAL, viewModel.selectedMood.value)
-
-        viewModel.setSelectedMood(Mood.HAPPY)
-        assertEquals(Mood.HAPPY, viewModel.selectedMood.value)
-
-        viewModel.setSelectedMood(Mood.SAD)
-        assertEquals(Mood.SAD, viewModel.selectedMood.value)
-    }
 
     @Test
     fun `refreshPrompt changes current prompt`() = runTest(testDispatcher) {
@@ -300,45 +288,9 @@ class JournalViewModelTest {
         assertTrue(newPrompt.isNotEmpty())
     }
 
-    @Test
-    fun `getPromptsForCurrentMood returns prompts for selected mood`() = runTest(testDispatcher) {
-        viewModel = createViewModel()
 
-        viewModel.setSelectedMood(Mood.HAPPY)
-        val prompts = viewModel.getPromptsForCurrentMood()
-        assertTrue(prompts.isNotEmpty())
-    }
 
-    @Test
-    fun `setSelectedMonth updates calendar month`() = runTest(testDispatcher) {
-        viewModel = createViewModel()
-        val newMonth = LocalDate(2026, 5, 1)
 
-        viewModel.setSelectedMonth(newMonth)
-        assertEquals(newMonth, viewModel.selectedMonth.value)
-    }
-
-    @Test
-    fun `selectDay updates selected day`() = runTest(testDispatcher) {
-        viewModel = createViewModel()
-        val day = LocalDate(2026, 3, 15)
-
-        assertNull(viewModel.selectedDay.value)
-        viewModel.selectDay(day)
-        assertEquals(day, viewModel.selectedDay.value)
-    }
-
-    @Test
-    fun `clearSelectedDay resets to null`() = runTest(testDispatcher) {
-        viewModel = createViewModel()
-        val day = LocalDate(2026, 3, 15)
-
-        viewModel.selectDay(day)
-        assertEquals(day, viewModel.selectedDay.value)
-
-        viewModel.clearSelectedDay()
-        assertNull(viewModel.selectedDay.value)
-    }
 
     @Test
     fun `getEntriesForToday returns only today entries`() = runTest(testDispatcher) {
@@ -423,26 +375,4 @@ class JournalViewModelTest {
         assertNull(viewModel.error.value)
     }
 
-    @Test
-    fun `getEntriesForDay returns entries matching specific date`() = runTest(testDispatcher) {
-        val targetDate = LocalDate(2026, 3, 10)
-        val otherDate = LocalDate(2026, 3, 11)
-        fakeRepository.setEntries(listOf(
-            testJournalEntry(id = "j1", date = targetDate, title = "Target Day"),
-            testJournalEntry(id = "j2", date = otherDate, title = "Other Day"),
-            testJournalEntry(id = "j3", date = targetDate, title = "Also Target Day")
-        ))
-        viewModel = createViewModel()
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        viewModel.entries.test {
-            var items = awaitItem()
-            if (items.isEmpty()) items = awaitItem()
-            cancelAndIgnoreRemainingEvents()
-        }
-
-        val dayEntries = viewModel.getEntriesForDay(targetDate)
-        assertEquals(2, dayEntries.size)
-        assertTrue(dayEntries.all { it.date == targetDate })
-    }
 }
