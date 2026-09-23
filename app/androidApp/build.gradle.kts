@@ -43,13 +43,33 @@ android {
 
     signingConfigs {
         val keystoreFile = resolveKeystoreFile()
-        if (keystoreFile.exists()) {
+        val releaseStorePassword = localProp("RELEASE_STORE_PASSWORD")
+        val releaseKeyAlias = localProp("RELEASE_KEY_ALIAS")
+        val releaseKeyPassword = localProp("RELEASE_KEY_PASSWORD")
+        val credentialsPresent = !releaseStorePassword.isNullOrBlank() &&
+            !releaseKeyAlias.isNullOrBlank() &&
+            !releaseKeyPassword.isNullOrBlank()
+
+        // All four or none. A keystore with no passwords used to produce a signing config with
+        // null credentials, and that does not fail where you would look for it: the build runs for
+        // three minutes and then dies inside bundletool on signReleaseBundle with a bare
+        // NullPointerException and no message. Pointing RELEASE_STORE_FILE at the real keystore
+        // before setting the passwords is enough to hit it, and so is a CI run missing one secret.
+        // Without the credentials we fall back to the documented behaviour instead: the AAB still
+        // builds, unsigned, and says so.
+        if (keystoreFile.exists() && credentialsPresent) {
             create("release") {
                 storeFile = keystoreFile
-                storePassword = localProp("RELEASE_STORE_PASSWORD")
-                keyAlias = localProp("RELEASE_KEY_ALIAS")
-                keyPassword = localProp("RELEASE_KEY_PASSWORD")
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
             }
+        } else if (keystoreFile.exists()) {
+            logger.warn(
+                "Release signing skipped: found the keystore at ${keystoreFile.path} but " +
+                    "RELEASE_STORE_PASSWORD / RELEASE_KEY_ALIAS / RELEASE_KEY_PASSWORD are not all " +
+                    "set. The AAB will build UNSIGNED and cannot be uploaded to Play."
+            )
         }
     }
 
