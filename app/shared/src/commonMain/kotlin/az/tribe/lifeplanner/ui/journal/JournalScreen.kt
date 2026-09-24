@@ -116,12 +116,17 @@ fun JournalScreen(
     val habits = habitsWithStatus.map { it.habit }
     val abilities by abilityViewModel.abilities.collectAsState()
 
-    // Own tab state locally, the NavGraphBuilder closure captures selectedTab once at
-    // graph-build time, so the parent parameter is stale after first composition.
-    // We call onTabSelected as a side-effect so App.kt's navContextAction FAB stays in sync.
+    // Own tab state locally so a tap lands instantly, and mirror every change back out through
+    // onTabSelected so App.kt's navContextAction FAB stays in sync.
     // rememberSaveable so the chosen hub tab survives leaving to a detail screen and coming back
     // (Compose Navigation disposes the composition; plain remember would reset us to the first tab).
     var currentTab by rememberSaveable { mutableStateOf(selectedTab) }
+
+    // Something outside the hub can ask for a sub-tab after we are already composed: the "Check In
+    // Habits" shortcut and the check-in widget both mean "the hub, on Habits", and the goal screens
+    // ask for Goals. rememberSaveable reads its parameter only on the first composition, so without
+    // this the request silently lands on whichever tab was open last.
+    LaunchedEffect(selectedTab) { currentTab = selectedTab }
 
     // The hub is long-lived, so the view model's own init-time load would go stale. The week's output
     // now rides in the day-lens banner above every sub-tab, so recount on each tab change.

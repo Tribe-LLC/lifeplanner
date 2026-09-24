@@ -228,7 +228,7 @@ internal fun V4AppRoot(
                 // v3 graphs, unchanged. Their "home" is the v4 gate.
                 val noTabs = emptyMap<String, Int>()
                 val slide: (Int) -> Int = { it / 4 }
-                appNavJournal(navController, noTabs, slide, hubSelectedTab, { hubSelectedTab = it })
+                appNavJournal(navController, noTabs, slide, { hubSelectedTab }, { hubSelectedTab = it })
                 appNavProfile(navController, noTabs, slide)
                 appNavAbilities(navController, noTabs, slide)
                 appNavGoals(navController, goalViewModel, onHubTabSelected = { hubSelectedTab = it })

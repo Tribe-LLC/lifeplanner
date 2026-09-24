@@ -21,7 +21,8 @@ internal fun NavGraphBuilder.appNavJournal(
     navController: NavController,
     tabIndex: Map<String, Int>,
     slideOffset: (Int) -> Int,
-    hubSelectedTab: Int,
+    /** Read lazily: a `composable {}` body captures its arguments once, so an Int would go stale. */
+    hubSelectedTab: () -> Int,
     onTabSelected: (Int) -> Unit,
     onSelectedDateChanged: (kotlinx.datetime.LocalDate) -> Unit = {}
 ) {
@@ -81,7 +82,7 @@ internal fun NavGraphBuilder.appNavJournal(
                 }
             },
             isFromBottomNav = isBottomNavEntry,
-            selectedTab = hubSelectedTab,
+            selectedTab = hubSelectedTab(),
             onTabSelected = onTabSelected,
             onSelectedDateChanged = onSelectedDateChanged,
             onPracticeHabit = { id ->

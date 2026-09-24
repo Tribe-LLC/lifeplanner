@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -491,21 +492,35 @@ fun App(
             }
         }
 
-        // Track which tab is selected inside the Hub screen (Journal screen)
-        var hubSelectedTab by remember { mutableStateOf(0) }
+        // Track which tab is selected inside the Hub screen (Journal screen). Saveable so that it
+        // and the hub's own saved tab come back from process death agreeing with each other.
+        var hubSelectedTab by rememberSaveable { mutableStateOf(0) }
         // The hub's day lens, mirrored up here so the Write FAB (which lives outside the hub) can
         // file the new entry under the day the user is actually looking at.
         var hubSelectedDate by remember { mutableStateOf<kotlinx.datetime.LocalDate?>(null) }
 
+        // One resolver for every deep link, so the cold path (the promoRoute parameter, read once at
+        // launch) and the warm path (DeepLinkNavigator, fed by onNewIntent) cannot drift apart.
+        // "journal_habits" is a pseudo-route meaning "the hub, on its Habits sub-tab" rather than a
+        // destination, so handing it straight to the nav graph throws. Only the cold path used to
+        // translate it, which is why the "Check In Habits" shortcut crashed the app whenever it was
+        // tapped with the app already running.
+        val openDeepLink: (String) -> Unit = { route ->
+            if (route == "journal_habits") {
+                hubSelectedTab = 2
+                navController.navigate(Screen.Journal.route) { launchSingleTop = true }
+            } else {
+                // A shortcut, widget, tile or push payload can still name a route this build does not
+                // have. Losing the navigation is survivable; losing the process is not.
+                runCatching { navController.navigate(route) { launchSingleTop = true } }
+                    .onFailure { Logger.w("App", it) { "Deep link route is not in the nav graph: $route" } }
+            }
+        }
+
         // Handle marketing deep link (e.g. lifeplanner://promo/chat)
         LaunchedEffect(promoRoute, authState) {
             if (promoRoute != null && (authState is AuthState.Authenticated || authState is AuthState.Guest)) {
-                if (promoRoute == "journal_habits") {
-                    hubSelectedTab = 2
-                    navController.navigate(Screen.Journal.route) { launchSingleTop = true }
-                } else {
-                    navController.navigate(promoRoute) { launchSingleTop = true }
-                }
+                openDeepLink(promoRoute)
             }
         }
 
@@ -513,9 +528,7 @@ fun App(
         LaunchedEffect(Unit) {
             az.tribe.lifeplanner.util.DeepLinkNavigator.navEvents.collect { route ->
                 if (authState is AuthState.Authenticated || authState is AuthState.Guest) {
-                    navController.navigate(route) {
-                        launchSingleTop = true
-                    }
+                    openDeepLink(route)
                 }
             }
         }
@@ -656,7 +669,7 @@ fun App(
                             navController = navController,
                             tabIndex = tabIndex,
                             slideOffset = slideOffset,
-                            hubSelectedTab = hubSelectedTab,
+                            hubSelectedTab = { hubSelectedTab },
                             onTabSelected = { hubSelectedTab = it },
                             onSelectedDateChanged = { hubSelectedDate = it }
                         )
