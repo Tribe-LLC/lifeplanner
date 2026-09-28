@@ -80,6 +80,7 @@ val v4Module = module {
     single { az.tribe.lifeplanner.data.money.BillService(get()) }
     single { az.tribe.lifeplanner.ui.v4.today.TodayMoney(get(), get(), get(), get()) }
     single { az.tribe.lifeplanner.data.travel.BookingReader(get()) }
+    single { az.tribe.lifeplanner.data.mind.MoodNudges(get(), get()) }
 
     viewModelOf(::V4FirstRunViewModel)
     // 23 dependencies, one more than viewModelOf takes.

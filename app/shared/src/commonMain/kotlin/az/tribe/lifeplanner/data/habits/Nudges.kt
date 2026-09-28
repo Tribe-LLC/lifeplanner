@@ -34,12 +34,17 @@ data class Nudge(val id: String, val title: String, val body: String, val at: Lo
  * - Slipped habits, Saturday 10:00, at most once a week, only when something slipped.
  *
  * Replanned whenever habits change, so today's count is current whenever the app has been used.
+ *
+ * A third one is opt-in, on the Sleep and mind page: a daily mood check-in, at a set time or a
+ * surprise time, planned by MoodNudges.
  */
 object NudgePlan {
     const val CHECK_IN = "checkin"
     const val REVIEW = "review"
     /** The Study timer's "your minutes are up" notice, and its running notification. Opens Study. */
     const val STUDY = "study"
+    /** The daily mood check-in reminder. Opens Sleep and mind; on Android it answers from the shade. */
+    const val MOOD = "mood"
     const val DAYS_AHEAD = 7
     private const val CHECK_IN_ID = "v4_nudge_checkin_"
     const val SLIP_ID = "v4_nudge_slip"
@@ -92,10 +97,51 @@ object NudgePlan {
         return Nudge(SLIP_ID, title, body, at, REVIEW)
     }
 
+    // ── Mood check-in reminder ─────────────────────────────────────────────
+
+    private const val MOOD_ID = "v4_nudge_mood_"
+    /** "Surprise me" picks a time in this window, a new one each day. */
+    val SURPRISE_FROM = LocalTime(10, 0)
+    val SURPRISE_TO = LocalTime(20, 0)
+    const val MOOD_TITLE = "How are you today?"
+    const val MOOD_BODY = "Low, okay or good? One tap is enough."
+
+    /** One id per weekday: a week ahead fits exactly, and today's is always easy to find. */
+    fun moodId(date: LocalDate): String = "$MOOD_ID${date.dayOfWeek.name.lowercase()}"
+    fun moodIds(): List<String> = DayOfWeek.entries.map { "$MOOD_ID${it.name.lowercase()}" }
+
+    /**
+     * The surprise minute of the day for [date]: somewhere in the window, on a 5-minute step, the
+     * same every time it is asked for the same day and [seed], so replanning never moves it.
+     */
+    fun surpriseMinute(date: LocalDate, seed: Int): Int {
+        val from = SURPRISE_FROM.hour * 60 + SURPRISE_FROM.minute
+        val slots = ((SURPRISE_TO.hour * 60 + SURPRISE_TO.minute) - from) / 5 + 1
+        var x = date.toEpochDays().toLong() * 6364136223846793005L + seed.toLong() * 1442695040888963407L
+        x = x xor (x ushr 33)
+        x *= -0x61c8864680b583ebL
+        x = x xor (x ushr 29)
+        return from + x.mod(slots.toLong()).toInt() * 5
+    }
+
+    /**
+     * The mood reminders for the next [DAYS_AHEAD] days. [minute] is the fixed time of day, or null
+     * for a surprise time. Today is left out once it has passed or a mood is already recorded.
+     */
+    fun moods(now: LocalDateTime, minute: Int?, seed: Int, recordedToday: Boolean): List<Nudge> =
+        (0 until DAYS_AHEAD).mapNotNull { d ->
+            val date = now.date.plus(DatePeriod(days = d))
+            val m = minute ?: surpriseMinute(date, seed)
+            val at = LocalDateTime(date, LocalTime(m / 60, m % 60))
+            if (d == 0 && (recordedToday || at <= now)) return@mapNotNull null
+            Nudge(moodId(date), MOOD_TITLE, MOOD_BODY, at, MOOD)
+        }
+
     fun routeFor(open: String): String? = when (open) {
         CHECK_IN -> V4Routes.CHECK_IN
         REVIEW -> V4Routes.REVIEW
         STUDY -> V4Routes.area(az.tribe.lifeplanner.domain.model.PlanArea.STUDY)
+        MOOD -> V4Routes.area(az.tribe.lifeplanner.domain.model.PlanArea.MIND)
         else -> null
     }
 
@@ -109,7 +155,15 @@ object NudgePlan {
 
 /** What the user chose for the two nudges. */
 class NudgePrefs(private val settings: Settings) {
-    data class Snapshot(val evening: Boolean, val eveningMinute: Int?, val slipped: Boolean)
+    data class Snapshot(
+        val evening: Boolean,
+        val eveningMinute: Int?,
+        val slipped: Boolean,
+        /** The daily mood check-in reminder, off unless the user turns it on. */
+        val mood: Boolean = false,
+        /** Minute of the day, or null for "Surprise me". */
+        val moodMinute: Int? = DEFAULT_MOOD_MINUTE,
+    )
 
     private val _state = MutableStateFlow(read())
     val state: StateFlow<Snapshot> = _state.asStateFlow()
@@ -118,6 +172,14 @@ class NudgePrefs(private val settings: Settings) {
     /** Null follows the learned time. */
     fun setEveningMinute(minute: Int?) = write { settings.putInt(KEY_EVENING_MINUTE, minute ?: -1) }
     fun setSlipped(on: Boolean) = write { settings.putBoolean(KEY_SLIPPED, on) }
+    fun setMood(on: Boolean) = write { settings.putBoolean(KEY_MOOD, on) }
+    /** Null is "Surprise me". */
+    fun setMoodMinute(minute: Int?) = write { settings.putInt(KEY_MOOD_MINUTE, minute ?: -1) }
+
+    /** Fixed per install, so each day's surprise time stays put across replans. */
+    val moodSeed: Int
+        get() = settings.getInt(KEY_MOOD_SEED, 0).takeIf { it != 0 }
+            ?: kotlin.random.Random.nextInt(1, Int.MAX_VALUE).also { settings.putInt(KEY_MOOD_SEED, it) }
 
     var lastSlipDate: LocalDate?
         get() = settings.getStringOrNull(KEY_SLIP_DATE)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
@@ -129,6 +191,8 @@ class NudgePrefs(private val settings: Settings) {
         evening = settings.getBoolean(KEY_EVENING, true),
         eveningMinute = settings.getInt(KEY_EVENING_MINUTE, -1).takeIf { it >= 0 },
         slipped = settings.getBoolean(KEY_SLIPPED, true),
+        mood = settings.getBoolean(KEY_MOOD, false),
+        moodMinute = settings.getInt(KEY_MOOD_MINUTE, DEFAULT_MOOD_MINUTE).takeIf { it >= 0 },
     )
 
     companion object {
@@ -136,6 +200,10 @@ class NudgePrefs(private val settings: Settings) {
         const val KEY_EVENING_MINUTE = "v4_nudge_evening_minute"
         const val KEY_SLIPPED = "v4_nudge_slipped"
         const val KEY_SLIP_DATE = "v4_nudge_slip_date"
+        const val KEY_MOOD = "v4_nudge_mood"
+        const val KEY_MOOD_MINUTE = "v4_nudge_mood_minute"
+        const val KEY_MOOD_SEED = "v4_nudge_mood_seed"
+        const val DEFAULT_MOOD_MINUTE = 20 * 60
     }
 }
 

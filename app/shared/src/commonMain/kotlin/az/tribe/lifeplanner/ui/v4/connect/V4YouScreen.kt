@@ -161,7 +161,7 @@ fun V4YouScreen(
                 V4Switch(nudge.slipped, { nudgePrefs.setSlipped(it); nudges.replan() }, label = "Slipped habits")
             }
             Text(
-                "Each habit's own reminder is set on the habit. These two are the only nudges the app sends by itself.",
+                "Each habit's own reminder is set on the habit, and the daily mood reminder on Sleep and mind.",
                 style = V4.type.caption, color = c.ink3,
             )
         }

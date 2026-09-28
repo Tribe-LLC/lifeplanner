@@ -123,6 +123,9 @@ internal fun V4AppRoot(
             // Keeps repeating study blocks planned a week ahead.
             val study: az.tribe.lifeplanner.data.study.StudyService = koinInject()
             LaunchedEffect(Unit) { runCatching { study.fillRepeats() } }
+            // Keeps the daily mood reminder, when it is on, planned a week ahead.
+            val moodNudges: az.tribe.lifeplanner.data.mind.MoodNudges = koinInject()
+            LaunchedEffect(Unit) { moodNudges.replan() }
         }
 
         LaunchedEffect(authState) {

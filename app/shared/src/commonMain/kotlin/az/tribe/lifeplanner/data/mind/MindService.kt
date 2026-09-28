@@ -1,5 +1,6 @@
 package az.tribe.lifeplanner.data.mind
 
+import az.tribe.lifeplanner.data.habits.NudgePlan
 import az.tribe.lifeplanner.data.health.HealthDataManager
 import az.tribe.lifeplanner.data.integrations.DataFlow
 import az.tribe.lifeplanner.data.integrations.IntegrationPrefs
@@ -13,6 +14,7 @@ import az.tribe.lifeplanner.domain.repository.BudgetRepository
 import az.tribe.lifeplanner.domain.repository.JournalRepository
 import az.tribe.lifeplanner.domain.repository.LifeLogRepository
 import az.tribe.lifeplanner.domain.service.MindCheckIns
+import az.tribe.lifeplanner.notification.NudgeAlarms
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -55,6 +57,8 @@ class MindService(
             occurredAt = Clock.System.now().toLocalDateTime(tz),
         )
         logs.save(log)
+        // Today's mood reminder has nothing left to ask.
+        runCatching { NudgeAlarms.cancel(NudgePlan.moodId(log.date)) }
         return log
     }
 

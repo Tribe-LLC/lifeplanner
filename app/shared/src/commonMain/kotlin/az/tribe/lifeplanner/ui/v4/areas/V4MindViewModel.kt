@@ -6,6 +6,7 @@ import az.tribe.lifeplanner.data.analytics.PostHogAnalytics
 import az.tribe.lifeplanner.data.habits.HabitRow
 import az.tribe.lifeplanner.data.habits.HabitService
 import az.tribe.lifeplanner.data.mind.MindService
+import az.tribe.lifeplanner.data.mind.MoodNudges
 import az.tribe.lifeplanner.domain.enum.HabitType
 import az.tribe.lifeplanner.domain.enum.HealthMetricType
 import az.tribe.lifeplanner.domain.model.JournalEntry
@@ -18,6 +19,8 @@ import az.tribe.lifeplanner.domain.service.FitnessWeek
 import az.tribe.lifeplanner.domain.service.HabitSchedule
 import az.tribe.lifeplanner.domain.service.MindCheckIns
 import az.tribe.lifeplanner.domain.service.MindInsights
+import az.tribe.lifeplanner.domain.service.MoodYear
+import az.tribe.lifeplanner.domain.service.SleepDebt
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -51,8 +54,16 @@ data class MindState(
     val promptOffset: Int = 0,
     val entries: List<JournalEntry> = emptyList(),
     val lowRun: Boolean = false,
+    /** A year in pixels, oldest month first. */
+    val year: List<MoodYear.Row> = emptyList(),
+    /** What each day with a mood said, for the grid's tapped day. */
+    val moodDays: Map<LocalDate, MoodDay> = emptyMap(),
+    /** Null without enough nights from Health. */
+    val sleepDebt: SleepDebt.Result? = null,
     val loaded: Boolean = false,
 )
+
+data class MoodDay(val level: Int, val note: String?)
 
 class V4MindViewModel(
     private val mind: MindService,
@@ -60,6 +71,7 @@ class V4MindViewModel(
     journal: JournalRepository,
     habits: HabitService,
     private val healthRepository: HealthRepository,
+    private val moodNudges: MoodNudges,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -73,7 +85,7 @@ class V4MindViewModel(
     private data class HealthDays(val steps: Map<LocalDate, Double> = emptyMap(), val sleep: Map<LocalDate, Double> = emptyMap())
 
     val state: StateFlow<MindState> = combine(
-        combine(logs.observeInRange(today().minus(DatePeriod(days = 90)), today()), journal.observeAllEntries(), ::Pair),
+        combine(logs.observeInRange(today().minus(DatePeriod(days = 366)), today()), journal.observeAllEntries(), ::Pair),
         habits.rows,
         healthDays,
         combine(editing, promptOffset, flags, ::Triple),
@@ -97,13 +109,20 @@ class V4MindViewModel(
     }
 
     private fun build(
-        ls: List<LifeLog>, entries: List<JournalEntry>, habitRows: List<HabitRow>, h: HealthDays,
+        yearLogs: List<LifeLog>, entries: List<JournalEntry>, habitRows: List<HabitRow>, h: HealthDays,
         edit: LifeLog?, offset: Int, supports: Boolean, canWrite: Boolean, goal: Double?,
     ): MindState {
         val today = today()
+        // The year grid reads a year back; everything else keeps to the last 90 days.
+        val ls = yearLogs.filter { it.date >= today.minus(DatePeriod(days = 90)) }
         val checkIns = ls.filter { MindCheckIns.isCheckIn(it) }
         val journalScores = entries.map { it.date to it.mood.score }
         val daily = MindInsights.dailyMood(checkIns, journalScores)
+        val yearCheckIns = yearLogs.filter { MindCheckIns.isCheckIn(it) }
+        val yearDaily = MindInsights.dailyMood(yearCheckIns, journalScores)
+        val checkInsByDay = yearCheckIns.groupBy { it.date }
+        val titlesByDay = entries.groupBy({ it.date }, { it.title })
+        val sleepWeek = (7 downTo 1).map { today.minus(DatePeriod(days = it - 1)) }.mapNotNull { d -> h.sleep[d]?.let { d to it } }
         val last14 = (13 downTo 0).map { today.minus(DatePeriod(days = it)) }
         val weekFrom = HabitSchedule.weekStart(today)
 
@@ -131,7 +150,7 @@ class V4MindViewModel(
             checkInDays14 = recent14.size,
             lifts = MindInsights.lifts(daily, factors),
             checkInDaysTotal = daily.size,
-            sleep = (7 downTo 1).map { today.minus(DatePeriod(days = it - 1)) }.mapNotNull { d -> h.sleep[d]?.let { d to it } },
+            sleep = sleepWeek,
             sleepGoal = goal,
             mindfulWeek = ls.filter { MindCheckIns.isMindful(it) && it.date >= weekFrom }.sumOf { it.durationMin ?: 0 },
             supportsMindful = supports,
@@ -139,6 +158,11 @@ class V4MindViewModel(
             promptOffset = offset,
             entries = entries.sortedByDescending { it.createdAt }.take(2),
             lowRun = MindInsights.lowRun(scoresInOrder),
+            year = MoodYear.rows(today, yearDaily),
+            moodDays = yearDaily.mapValues { (d, avg) ->
+                MoodDay(MoodYear.level(avg), MoodYear.dayNote(checkInsByDay[d].orEmpty(), titlesByDay[d].orEmpty()))
+            },
+            sleepDebt = SleepDebt.of(sleepWeek.map { it.second }, goal ?: SleepDebt.DEFAULT_GOAL),
             loaded = true,
         )
     }
@@ -195,8 +219,27 @@ class V4MindViewModel(
 
     fun nextPrompt() { promptOffset.value++ }
 
+    // ── Mood reminder ────────────────────────────────────────────────────────
+
+    val reminder = moodNudges.state
+
+    fun setReminder(on: Boolean) = viewModelScope.launch { moodNudges.setOn(on) }
+
+    /** Null is "Surprise me". */
+    fun setReminderMinute(minute: Int?) = viewModelScope.launch { moodNudges.setMinute(minute) }
+
+    private var dayOpened = false
+
+    /** Counted once per visit, not per tap: sliding along a row taps many days. */
+    fun tappedDay() {
+        if (dayOpened) return
+        dayOpened = true
+        PostHogAnalytics.capture("v4_mind_year_day_opened", emptyMap())
+    }
+
     fun write(text: String, prompt: String?) = viewModelScope.launch {
         runCatching { mind.write(prompt ?: "", text, todayScore(), prompt) }
+        PostHogAnalytics.capture("v4_mind_journal_written", mapOf("kind" to "question", "offset" to promptOffset.value))
     }
 
     fun threeGoodThings(things: List<String>) = viewModelScope.launch {
@@ -205,6 +248,7 @@ class V4MindViewModel(
         runCatching {
             mind.write("Three good things", list.mapIndexed { i, t -> "${i + 1}. $t" }.joinToString("\n"), todayScore(), null, listOf("gratitude"))
         }
+        PostHogAnalytics.capture("v4_mind_journal_written", mapOf("kind" to "three_good"))
     }
 
     private fun todayScore(): Int? = (editing.value ?: state.value.lastToday)?.let { MindCheckIns.score(it) }
