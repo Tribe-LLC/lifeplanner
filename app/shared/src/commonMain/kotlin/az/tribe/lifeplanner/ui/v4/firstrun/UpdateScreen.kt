@@ -88,7 +88,7 @@ fun UpdateScreen(
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             V4PrimaryButton("Open Today", onClick = onOpenToday, modifier = Modifier.fillMaxWidth())
             Text(
-                "Tools you used before, like Wheel of life, are under You.",
+                "Your journal is under Mind, and the focus timer is under Study.",
                 style = V4.type.caption,
                 color = V4.colors.ink3,
                 textAlign = TextAlign.Center,

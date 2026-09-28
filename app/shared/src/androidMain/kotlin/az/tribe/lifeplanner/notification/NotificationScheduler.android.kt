@@ -57,11 +57,7 @@ object AndroidNotificationScheduler : NotificationSchedulerInterface {
         }
 
         try {
-            alarmManager.setAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                triggerTimeMillis,
-                pendingIntent
-            )
+            alarmManager.planNear(triggerTimeMillis, pendingIntent)
             Logger.i(TAG) { "Scheduled reminder '${reminder.title}' at ${java.util.Date(triggerTimeMillis)}" }
         } catch (e: Exception) {
             Logger.e(TAG) { "Failed to schedule reminder: ${e.message}" }

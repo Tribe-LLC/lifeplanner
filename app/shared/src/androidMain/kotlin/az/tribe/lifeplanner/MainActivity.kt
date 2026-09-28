@@ -91,6 +91,12 @@ class MainActivity : ComponentActivity() {
     private fun handleShortcutDeeplink(intent: Intent) {
         val uri = intent.data ?: return
         if (uri.scheme != "lifeplanner") return
+        if (uri.host == "nudge") {
+            val open = uri.lastPathSegment ?: return
+            pendingPromoRoute = az.tribe.lifeplanner.data.habits.NudgePlan.routeFor(open) ?: return
+            az.tribe.lifeplanner.data.analytics.PostHogAnalytics.capture("v4_nudge_opened", mapOf("kind" to open))
+            return
+        }
         pendingPromoRoute = when (uri.host) {
             "focus"       -> "focus_setup"
             "habits"      -> "journal_habits"

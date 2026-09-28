@@ -11,6 +11,7 @@ import az.tribe.lifeplanner.domain.model.Habit
 import az.tribe.lifeplanner.domain.model.HealthMetricSource
 import az.tribe.lifeplanner.domain.model.PlanArea
 import az.tribe.lifeplanner.domain.repository.ChatRepository
+import az.tribe.lifeplanner.domain.repository.FocusRepository
 import az.tribe.lifeplanner.domain.repository.GoalRepository
 import az.tribe.lifeplanner.domain.repository.HabitRepository
 import az.tribe.lifeplanner.domain.repository.HealthRepository
@@ -48,6 +49,7 @@ class V4FirstRunViewModel(
     private val healthRepository: HealthRepository,
     private val integrationPrefs: IntegrationPrefs,
     private val settings: Settings,
+    focusRepository: FocusRepository,
 ) : ViewModel() {
 
     private val chats = MutableStateFlow(0L)
@@ -57,14 +59,17 @@ class V4FirstRunViewModel(
         habitRepository.observeHabitsWithTodayStatus(),
         journalRepository.observeAllEntries(),
         chats,
-    ) { goals, habits, journal, chatCount ->
+        focusRepository.observeAllSessions(),
+    ) { goals, habits, journal, chatCount, focus ->
         KeptData(
             goals = goals.size,
             steps = goals.sumOf { it.milestones.size },
             habits = habits.size,
             journal = journal.size,
             chats = chatCount,
-            suggested = suggestAreas(goals, habits.map { it.first }, journal.size),
+            suggested = suggestAreas(goals, habits.map { it.first }, journal.size) +
+                // The focus timer moved into Study, so its users need Study on to find it.
+                (if (focus.isNotEmpty()) setOf(PlanArea.STUDY) else emptySet()),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 

@@ -186,8 +186,12 @@ object HabitSchedule {
             due++
             if (d in done) kept++
         }
-        return if (due == 0) null else kept.toFloat() / due
+        // "100% in 30 days" on a habit made this morning says nothing; wait for a few due days.
+        return if (due < MIN_SCORE_DAYS) null else kept.toFloat() / due
     }
+
+    /** Due days before a daily score means anything. */
+    const val MIN_SCORE_DAYS = 5
 
     /**
      * Weeks in a row that reached [times], counting back. This week counts once reached and is

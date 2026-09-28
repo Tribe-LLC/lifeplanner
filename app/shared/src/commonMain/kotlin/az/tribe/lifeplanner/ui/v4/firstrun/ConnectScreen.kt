@@ -158,7 +158,7 @@ fun ConnectScreen(
         }
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             V4PrimaryButton(
-                text = "Show me Today",
+                text = "Continue",
                 onClick = { if (ask == Ask.NONE) ask = Ask.HEALTH },
                 modifier = Modifier.fillMaxWidth(),
             )

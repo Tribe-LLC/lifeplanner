@@ -19,6 +19,9 @@ object V4Routes {
     fun areas(edit: Boolean = false) = "v4_areas?mode=${if (edit) "edit" else "first"}"
     const val CONNECT = "v4_connect"
     const val UPDATE = "v4_update"
+    /** Starter habits by swipe, then the first tick. [path] is "new" or "update", for analytics. */
+    const val STARTERS = "v4_starters?path={path}"
+    fun starters(path: String) = "v4_starters?path=$path"
 
     const val TODAY = "v4_today"
     const val LIFE = "v4_life"
@@ -45,5 +48,5 @@ object V4Routes {
     val ADD_BAR = setOf(TODAY, LIFE)
 
     /** First-run routes: no bottom bar, and the gate never bounces a user out of them. */
-    val FIRST_RUN = setOf(WELCOME, AREAS, CONNECT, UPDATE)
+    val FIRST_RUN = setOf(WELCOME, AREAS, CONNECT, UPDATE, STARTERS)
 }

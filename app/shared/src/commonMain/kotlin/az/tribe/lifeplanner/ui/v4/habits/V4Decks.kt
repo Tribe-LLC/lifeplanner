@@ -163,7 +163,7 @@ internal fun ArtPlate(art: DeckArt, size: Dp, modifier: Modifier = Modifier, pla
  * the same way for the buttons; [labels] are the stamps shown while dragging.
  */
 @Composable
-private fun SwipeCard(
+internal fun SwipeCard(
     key: Any,
     command: Swipe?,
     onGone: (Swipe) -> Unit,
@@ -262,7 +262,7 @@ private fun SwipeCard(
 
 /** The coloured face every deck card shares: gradient, a scrim for the text, and the content. */
 @Composable
-private fun CardFace(tint: CardTint, content: @Composable ColumnScope.() -> Unit) {
+internal fun CardFace(tint: CardTint, content: @Composable ColumnScope.() -> Unit) {
     Box(
         Modifier
             .fillMaxSize()
@@ -285,7 +285,7 @@ private fun CardFace(tint: CardTint, content: @Composable ColumnScope.() -> Unit
 }
 
 @Composable
-private fun LightPill(text: String, color: Color = Color(0xFF15171C)) {
+internal fun LightPill(text: String, color: Color = Color(0xFF15171C)) {
     Text(
         text,
         style = V4.type.label,
@@ -296,14 +296,14 @@ private fun LightPill(text: String, color: Color = Color(0xFF15171C)) {
 
 /** Two cards peeking out behind the top one, so it reads as a deck. */
 @Composable
-private fun DeckBacking(left: Int) {
+internal fun DeckBacking(left: Int) {
     val c = V4.colors
     if (left > 2) Box(Modifier.fillMaxSize().padding(start = 22.dp, end = 22.dp, top = 22.dp).rotate(3f).clip(RoundedCornerShape(28.dp)).background(c.accentSoft.copy(alpha = 0.7f)))
     if (left > 1) Box(Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 6.dp).rotate(-2f).clip(RoundedCornerShape(28.dp)).background(c.accentSoft))
 }
 
 @Composable
-private fun RoundAction(icon: ImageVector, label: String, onClick: () -> Unit, big: Boolean, primary: Boolean, tintColor: Color = V4.colors.ink2) {
+internal fun RoundAction(icon: ImageVector, label: String, onClick: () -> Unit, big: Boolean, primary: Boolean, tintColor: Color = V4.colors.ink2) {
     val c = V4.colors
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         val size = if (big) 64.dp else 52.dp
@@ -324,7 +324,7 @@ private fun RoundAction(icon: ImageVector, label: String, onClick: () -> Unit, b
 }
 
 @Composable
-private fun DeckTopBar(center: @Composable () -> Unit, onClose: () -> Unit, canUndo: Boolean, onUndo: () -> Unit) {
+internal fun DeckTopBar(center: @Composable () -> Unit, onClose: () -> Unit, canUndo: Boolean, onUndo: () -> Unit) {
     val c = V4.colors
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
         Box(
@@ -353,7 +353,7 @@ private fun Progress(done: Int, total: Int) {
 }
 
 @Composable
-private fun EndScreen(art: DeckArt, title: String, body: String, button: String, onDone: () -> Unit, extra: @Composable ColumnScope.() -> Unit = {}) {
+internal fun EndScreen(art: DeckArt, title: String, body: String, button: String, onDone: () -> Unit, extra: @Composable ColumnScope.() -> Unit = {}) {
     val c = V4.colors
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Column(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically)) {
@@ -465,7 +465,7 @@ private fun HabitCardFace(r: HabitRow, count: Int, onMinus: () -> Unit, onPlus: 
 }
 
 @Composable
-private fun StepButton(text: String, label: String, onClick: () -> Unit) {
+internal fun StepButton(text: String, label: String, onClick: () -> Unit) {
     Box(
         Modifier.size(44.dp).clip(CircleShape).background(Color(0xEBFFFFFF)).clickable(role = Role.Button, onClick = onClick).semantics { contentDescription = label },
         contentAlignment = Alignment.Center,

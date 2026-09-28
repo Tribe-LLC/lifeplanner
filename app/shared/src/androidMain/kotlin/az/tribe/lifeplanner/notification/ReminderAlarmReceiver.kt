@@ -29,6 +29,8 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         const val EXTRA_MINUTE = "minute"
         const val EXTRA_SCHEDULED_DAYS = "scheduled_days"
         const val EXTRA_LINKED_GOAL_ID = "linked_goal_id"
+        /** A nudge's destination (NudgePlan.CHECK_IN / REVIEW); opens it on tap. */
+        const val EXTRA_OPEN = "open"
         private const val CHANNEL_ID = "reminders"
         private const val CHANNEL_NAME = "Reminders"
     }
@@ -42,10 +44,11 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         val minute = intent.getIntExtra(EXTRA_MINUTE, -1)
         val scheduledDaysStr = intent.getStringExtra(EXTRA_SCHEDULED_DAYS) ?: ""
         val linkedGoalId = intent.getStringExtra(EXTRA_LINKED_GOAL_ID)
+        val open = intent.getStringExtra(EXTRA_OPEN)
 
         Logger.i("ReminderAlarmReceiver") { "Firing reminder: $title" }
 
-        showNotification(context, reminderId, title, message, linkedGoalId)
+        showNotification(context, reminderId, title, message, linkedGoalId, open)
 
         // Reschedule for recurring reminders
         val frequency = try {
@@ -80,7 +83,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun showNotification(context: Context, reminderId: String, title: String, message: String, linkedGoalId: String? = null) {
+    private fun showNotification(context: Context, reminderId: String, title: String, message: String, linkedGoalId: String? = null, open: String? = null) {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         // Create channel (required for Android 8+)
@@ -99,7 +102,9 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         // Tap action opens the app with a deep link if goal ID is present
         val tapIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            if (linkedGoalId != null) {
+            if (open != null) {
+                data = android.net.Uri.parse("lifeplanner://nudge/$open")
+            } else if (linkedGoalId != null) {
                 data = android.net.Uri.parse("https://tribe.az/lifeplanner/goal/$linkedGoalId")
             }
         }

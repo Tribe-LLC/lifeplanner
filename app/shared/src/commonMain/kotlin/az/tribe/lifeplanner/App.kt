@@ -123,7 +123,10 @@ fun App(
                     super.onNotificationClicked(data)
                     Logger.d("App") { "Notification clicked with data: $data" }
                     val goalId = data["linked_goal_id"] as? String
-                    if (!goalId.isNullOrBlank()) {
+                    val open = data["open"] as? String
+                    if (!open.isNullOrBlank()) {
+                        az.tribe.lifeplanner.data.habits.NudgePlan.opened(open)
+                    } else if (!goalId.isNullOrBlank()) {
                         az.tribe.lifeplanner.util.DeepLinkNavigator.navigate("goal_detail/$goalId")
                     }
                 }

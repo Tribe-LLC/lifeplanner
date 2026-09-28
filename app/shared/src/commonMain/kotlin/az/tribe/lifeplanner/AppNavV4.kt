@@ -18,6 +18,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +63,7 @@ import az.tribe.lifeplanner.ui.viewmodel.signInAsGuest
 import az.tribe.lifeplanner.domain.repository.GoalRepository
 import az.tribe.lifeplanner.domain.repository.HabitRepository
 import az.tribe.lifeplanner.domain.repository.JournalRepository
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
@@ -111,6 +113,12 @@ internal fun V4AppRoot(
             V4AuthPhase.IN -> V4Routes.HOME
         }
 
+        // Keeps the evening check-in and slip nudges planned while signed in.
+        if (phase == V4AuthPhase.IN) {
+            val nudges: az.tribe.lifeplanner.data.habits.NudgeService = koinInject()
+            LaunchedEffect(Unit) { nudges.run() }
+        }
+
         LaunchedEffect(authState) {
             // Same iOS guard as App.kt: wait until the graph is set before navigating.
             navController.currentBackStackEntryFlow.firstOrNull()
@@ -133,12 +141,22 @@ internal fun V4AppRoot(
         }
 
         val signedIn = authState is AuthState.Authenticated || authState is AuthState.Guest
+        val signedInNow by rememberUpdatedState(signedIn)
+        // A deep link (a tapped nudge, a goal link) waits until the home gate has settled on Today,
+        // or the gate's own navigate-and-clear would wipe it straight away. First run keeps it out.
+        suspend fun openWhenSettled(route: String) {
+            val settled = navController.currentBackStackEntryFlow.first { entry ->
+                entry.destination.route.let { it != V4Routes.HOME && it != null }
+            }
+            if (settled.destination.route in V4Routes.FIRST_RUN) return
+            navController.navigate(route) { launchSingleTop = true }
+        }
         LaunchedEffect(promoRoute, signedIn) {
-            if (promoRoute != null && signedIn) navController.navigate(promoRoute) { launchSingleTop = true }
+            if (promoRoute != null && signedIn) openWhenSettled(promoRoute)
         }
         LaunchedEffect(Unit) {
             az.tribe.lifeplanner.util.DeepLinkNavigator.navEvents.collect { route ->
-                if (signedIn) navController.navigate(route) { launchSingleTop = true }
+                if (signedInNow) openWhenSettled(route)
             }
         }
 
@@ -273,7 +291,7 @@ internal fun NavGraphBuilder.appNavV4(
         val enabled by vm.enabledAreas.collectAsState()
         AreasScreen(
             initial = enabled,
-            stepLabel = if (edit) null else "Step 1 of 2",
+            stepLabel = if (edit) null else "Step 1 of 3",
             onBack = if (edit) ({ navController.popBackStack() }) else null,
             ctaPrefix = if (edit) "Save" else "Continue with",
             onContinue = { picked ->
@@ -286,10 +304,23 @@ internal fun NavGraphBuilder.appNavV4(
     composable(V4Routes.CONNECT) {
         val vm: V4FirstRunViewModel = koinViewModel()
         ConnectScreen(
-            stepLabel = "Step 2 of 2",
+            stepLabel = "Step 2 of 3",
+            onBack = { navController.popBackStack() },
+            onDone = { navController.navigate(V4Routes.starters("new")) },
+        )
+    }
+
+    composable(
+        V4Routes.STARTERS,
+        arguments = listOf(navArgument("path") { type = NavType.StringType; defaultValue = "new" }),
+    ) { entry ->
+        val path = entry.arguments?.read { getStringOrNull("path") } ?: "new"
+        val vm: V4FirstRunViewModel = koinViewModel()
+        az.tribe.lifeplanner.ui.v4.habits.V4StartersScreen(
+            stepLabel = if (path == "new") "Step 3 of 3" else null,
             onBack = { navController.popBackStack() },
             onDone = {
-                vm.finish(path = "new")
+                vm.finish(path = path)
                 navController.navigate(V4Routes.TODAY) { popUpTo(0) { inclusive = true } }
             },
         )
@@ -301,8 +332,12 @@ internal fun NavGraphBuilder.appNavV4(
             viewModel = vm,
             onChangeAreas = { navController.navigate(V4Routes.areas(edit = true)) },
             onOpenToday = {
-                vm.finish(path = "update")
-                navController.navigate(V4Routes.TODAY) { popUpTo(0) { inclusive = true } }
+                // Nothing to tick yet: the starter deck first, so Today does not open empty.
+                if (vm.kept.value?.habits == 0) navController.navigate(V4Routes.starters("update"))
+                else {
+                    vm.finish(path = "update")
+                    navController.navigate(V4Routes.TODAY) { popUpTo(0) { inclusive = true } }
+                }
             },
         )
     }
@@ -358,6 +393,7 @@ internal fun NavGraphBuilder.appNavV4(
         val state by authViewModel.authState.collectAsState()
         V4YouScreen(
             authState = state,
+            authViewModel = authViewModel,
             onBack = { navController.popBackStack() },
             onConnectedApps = { navController.navigate(V4Routes.CONNECTED_APPS) { launchSingleTop = true } },
             onChangeAreas = { navController.navigate(V4Routes.areas(edit = true)) { launchSingleTop = true } },

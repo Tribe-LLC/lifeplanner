@@ -57,6 +57,8 @@ data class HabitRow(
     val slip: HabitLearning.Slip? = null,
     /** Weekdays it really happens on, when clearly fewer than it is set for. */
     val learnedDays: Set<kotlinx.datetime.DayOfWeek>? = null,
+    /** When each recent tick happened (the day it counts for, and the moment it was written). */
+    val ticks: List<Pair<LocalDate, LocalDateTime>> = emptyList(),
 ) {
     val reminderMinute: Int? get() = habit.reminderTime?.let { t ->
         val h = t.substringBefore(':').trim().toIntOrNull() ?: return@let null
@@ -133,6 +135,7 @@ class HabitService(
                 skipped = skipped,
                 notes = notesBy[h.id].orEmpty().sortedByDescending { it.occurredAt },
                 usualMinute = HabitLearning.usualMinute(ticksBy[h.id].orEmpty()),
+                ticks = ticksBy[h.id].orEmpty(),
                 // Health and in-app sessions tick these by themselves, so a miss there is not the user's.
                 slip = if (h.healthMetricType != null || h.completionSource != HabitCompletionSource.MANUAL) null
                     else HabitLearning.slip(schedule, done, skipped, trip, today, since, reviewedBy[h.id]),
@@ -162,11 +165,12 @@ class HabitService(
         healthMetric: HealthMetricType? = null,
         healthTarget: Double? = null,
         source: HabitCompletionSource = HabitCompletionSource.MANUAL,
+        category: GoalCategory = GoalCategory.WELLBEING,
     ): Habit {
         val habit = Habit(
             id = Uuid.random().toString(),
             title = title.trim(),
-            category = GoalCategory.WELLBEING,
+            category = category,
             frequency = HabitSchedule.frequencyFor(schedule),
             targetCount = target.coerceAtLeast(1),
             unit = unit?.trim()?.takeIf { it.isNotEmpty() && target > 1 },
@@ -241,6 +245,13 @@ class HabitService(
     }
 
     /** Stops showing and reminding; the history stays. */
+    /** Takes back a habit made a moment ago (undo in the starter deck); nothing was logged on it yet. */
+    suspend fun remove(habit: Habit) {
+        runCatching { reminders.getRemindersByHabit(habit.id) }.getOrDefault(emptyList()).forEach { runCatching { reminders.deleteReminder(it.id) } }
+        runCatching { budgets.getAll().filter { it.area == PlanArea.HABITS && it.category == habit.id }.forEach { budgets.delete(it.id) } }
+        habits.deleteHabit(habit.id)
+    }
+
     suspend fun stop(habit: Habit) {
         habits.deactivateHabit(habit.id)
         runCatching { reminders.getRemindersByHabit(habit.id) }.getOrDefault(emptyList()).forEach { runCatching { reminders.deleteReminder(it.id) } }

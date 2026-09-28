@@ -44,6 +44,27 @@ object HabitLearning {
         return if (minutes.size % 2 == 1) minutes[mid] else (minutes[mid - 1] + minutes[mid]) / 2
     }
 
+    /** Until an evening check-in time is learned. */
+    const val DEFAULT_CHECK_IN = 21 * 60
+    private const val EARLIEST_CHECK_IN = 18 * 60
+    private const val LATEST_CHECK_IN = 22 * 60 + 30
+
+    /**
+     * When the user usually wraps up the day: the median of each evening's last tick (after 17:00),
+     * from at least [MIN_TICKS] evenings, rounded to the quarter hour and kept between 18:00 and 22:30.
+     * The evening nudge goes there, so it only lands on days that check-in has not happened yet.
+     */
+    fun checkInMinute(ticks: List<Pair<LocalDate, LocalDateTime>>): Int? {
+        val lastByDay = ticks.filter { (day, at) -> at.date == day && at.hour >= 17 }
+            .groupBy { it.first }
+            .map { (_, v) -> v.maxOf { it.second.hour * 60 + it.second.minute } }
+            .sorted()
+        if (lastByDay.size < MIN_TICKS) return null
+        val mid = lastByDay.size / 2
+        val median = if (lastByDay.size % 2 == 1) lastByDay[mid] else (lastByDay[mid - 1] + lastByDay[mid]) / 2
+        return ((median + 7) / 15 * 15).coerceIn(EARLIEST_CHECK_IN, LATEST_CHECK_IN)
+    }
+
     fun slotOf(minute: Int): HabitSchedule.Slot = when {
         minute < 12 * 60 -> HabitSchedule.Slot.MORNING
         minute < 17 * 60 -> HabitSchedule.Slot.AFTERNOON
