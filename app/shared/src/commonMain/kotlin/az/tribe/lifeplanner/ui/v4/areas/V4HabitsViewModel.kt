@@ -1,5 +1,6 @@
 package az.tribe.lifeplanner.ui.v4.areas
 
+import az.tribe.lifeplanner.domain.service.SelfTick
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import az.tribe.lifeplanner.data.analytics.PostHogAnalytics
@@ -102,8 +103,11 @@ class V4HabitsViewModel(
     fun addNote(row: HabitRow, text: String) = viewModelScope.launch { runCatching { service.addNote(row.habit, text) } }
     fun stop(row: HabitRow) = viewModelScope.launch { runCatching { service.stop(row.habit) } }
 
-    fun save(row: HabitRow, title: String, schedule: Schedule, target: Int, unit: String?, reminder: LocalTime?) = viewModelScope.launch {
-        runCatching { service.update(row.habit, title, schedule, target, unit, reminder) }
+    fun save(row: HabitRow, title: String, schedule: Schedule, target: Int, unit: String?, reminder: LocalTime?, selfTick: SelfTick) = viewModelScope.launch {
+        runCatching {
+            service.update(row.habit, title, schedule, target, unit, reminder, selfTick)
+            if (selfTick != SelfTick.of(row.habit)) PostHogAnalytics.capture("v4_habit_self_tick_set", mapOf("by" to selfTick.name))
+        }
     }
 
     fun create(s: Starter) = viewModelScope.launch {
@@ -119,6 +123,7 @@ class V4HabitsViewModel(
             Starter("Read 10 pages", reminder = LocalTime(21, 30)),
             Starter("Stretch, 10 min", reminder = LocalTime(7, 30)),
             Starter("Walk 8,000 steps", health = HealthMetricType.STEPS, healthTarget = 8_000.0),
+            Starter("Work out", schedule = Schedule.PerWeek(3), source = HabitCompletionSource.WORKOUT),
             Starter("Breathe, 1 min", source = HabitCompletionSource.BREATHING),
             Starter("Phone out of the bedroom", type = HabitType.QUIT, reminder = LocalTime(22, 30)),
             Starter("Plan the week", schedule = Schedule.Days(setOf(kotlinx.datetime.DayOfWeek.SUNDAY)), reminder = LocalTime(19, 0)),

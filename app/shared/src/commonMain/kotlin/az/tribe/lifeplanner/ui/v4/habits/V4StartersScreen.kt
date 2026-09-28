@@ -201,6 +201,8 @@ private fun TickRow(card: StarterCard, habit: Habit, ticked: Int?, onTick: (Habi
                 when {
                     habit.healthMetricType != null -> "Ticks itself from Health"
                     habit.completionSource == HabitCompletionSource.BREATHING -> "Ticks itself after a breathing break"
+                    habit.completionSource == HabitCompletionSource.WORKOUT -> "Ticks itself after a workout"
+                    habit.completionSource == HabitCompletionSource.FOCUS -> "Your study time counts toward it"
                     count -> "${ticked ?: 0} of ${habit.targetCount}${habit.unit?.let { " $it" } ?: ""}"
                     else -> card.meta
                 },

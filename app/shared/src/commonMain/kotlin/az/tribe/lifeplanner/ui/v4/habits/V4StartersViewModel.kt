@@ -68,6 +68,7 @@ object StarterDeck {
         PlanArea.FITNESS to listOfNotNull(
             if (health) StarterCard(Starter("Walk 8,000 steps", health = HealthMetricType.STEPS, healthTarget = 8_000.0), PlanArea.FITNESS, "Ticks itself from Health, nothing to log.", CardTint.ORANGE, GoalCategory.BODY)
             else StarterCard(Starter("Walk 20 minutes"), PlanArea.FITNESS, "The simplest workout there is.", CardTint.ORANGE, GoalCategory.BODY),
+            StarterCard(Starter("Work out", schedule = Schedule.PerWeek(3), source = HabitCompletionSource.WORKOUT), PlanArea.FITNESS, "Three a week. Ticks itself when you finish a workout.", CardTint.ORANGE, GoalCategory.BODY),
             StarterCard(Starter("Stretch, 10 min", reminder = LocalTime(7, 30)), PlanArea.FITNESS, "Wakes you up better than coffee.", CardTint.GREEN, GoalCategory.BODY),
         ),
         PlanArea.MIND to listOf(
@@ -84,7 +85,7 @@ object StarterDeck {
             StarterCard(Starter("Vegetables with lunch"), PlanArea.MEALS, "Half the plate, no counting.", CardTint.GREEN),
         ),
         PlanArea.STUDY to listOf(
-            StarterCard(Starter("Study 25 minutes", schedule = Schedule.Days(weekdays)), PlanArea.STUDY, "One focused block beats three distracted ones.", CardTint.BLUE),
+            StarterCard(Starter("Study 25 minutes", schedule = Schedule.Days(weekdays), target = 25, unit = "min", source = HabitCompletionSource.FOCUS), PlanArea.STUDY, "Your study time counts toward it by itself.", CardTint.BLUE),
             StarterCard(Starter("Review today's notes", reminder = LocalTime(20, 0)), PlanArea.STUDY, "Five minutes today saves an hour before the exam.", CardTint.PURPLE),
         ),
         PlanArea.CAREER to listOf(

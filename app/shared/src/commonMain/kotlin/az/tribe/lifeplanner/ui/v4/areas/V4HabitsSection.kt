@@ -1,5 +1,6 @@
 package az.tribe.lifeplanner.ui.v4.areas
 
+import az.tribe.lifeplanner.domain.service.SelfTick
 import androidx.compose.foundation.background
 import az.tribe.lifeplanner.ui.v4.habits.CheckInHero
 import az.tribe.lifeplanner.ui.v4.habits.SlippedCard
@@ -255,11 +256,12 @@ private fun HabitSheet(r: HabitRow, vm: V4HabitsViewModel, onDismiss: () -> Unit
     var target by remember(r.habit.id) { mutableIntStateOf(r.habit.targetCount) }
     var unit by remember(r.habit.id) { mutableStateOf(r.habit.unit ?: "") }
     var reminder by remember(r.habit.id) { mutableStateOf(r.habit.reminderTime?.let { runCatching { LocalTime.parse(it) }.getOrNull() }) }
+    var selfTick by remember(r.habit.id) { mutableStateOf(SelfTick.of(r.habit)) }
     var note by remember { mutableStateOf("") }
     var breakPick by remember { mutableStateOf(false) }
     var stopping by remember { mutableStateOf(false) }
     val changed = title.trim() != r.habit.title || schedule != HabitSchedule.normal(r.schedule) || target != r.habit.targetCount ||
-        unit.trim() != (r.habit.unit ?: "") || reminder?.let(::fmtTime) != r.habit.reminderTime
+        unit.trim() != (r.habit.unit ?: "") || reminder?.let(::fmtTime) != r.habit.reminderTime || selfTick != SelfTick.of(r.habit)
     val onBreak = r.skipped.any { it > today }
 
     AreaSheet(r.habit.title, onDismiss) {
@@ -278,7 +280,12 @@ private fun HabitSheet(r: HabitRow, vm: V4HabitsViewModel, onDismiss: () -> Unit
         FormLabel("When")
         ScheduleChoices(schedule) { schedule = it }
 
-        if (r.habit.type == HabitType.BUILD && r.habit.healthMetricType == null) {
+        if (r.habit.type == HabitType.BUILD) {
+            FormLabel("Ticks itself")
+            SelfTickChoices(selfTick) { selfTick = it }
+        }
+
+        if (r.habit.type == HabitType.BUILD && selfTick != SelfTick.STEPS && selfTick != SelfTick.SLEEP) {
             FormLabel("Each day")
             CountChoices(listOf(1, 2, 3, 5, 8, 10), target, { if (it == 1) "Once" else "$it times" }) { target = it }
             if (target > 1) TravelField(unit, { unit = it }, "glasses, pages, minutes", "Unit")
@@ -287,7 +294,7 @@ private fun HabitSheet(r: HabitRow, vm: V4HabitsViewModel, onDismiss: () -> Unit
         FormLabel("Reminder")
         ReminderChoices(reminder) { reminder = it }
 
-        if (changed) V4PrimaryButton("Save changes", onClick = { vm.save(r, title, schedule, target, unit, reminder) }, container = tint.color, modifier = Modifier.fillMaxWidth())
+        if (changed) V4PrimaryButton("Save changes", onClick = { vm.save(r, title, schedule, target, unit, reminder, selfTick) }, container = tint.color, modifier = Modifier.fillMaxWidth())
 
         FormLabel("Note for today")
         TravelField(note, { note = it }, "How it went, or why not", "Note for today")
@@ -362,6 +369,15 @@ private fun ScheduleChoices(schedule: Schedule, onChange: (Schedule) -> Unit) {
         is Schedule.PerWeek -> CountChoices((1..6).toList(), schedule.times, { if (it == 1) "Once" else "$it times" }) { onChange(Schedule.PerWeek(it)) }
         else -> {}
     }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SelfTickChoices(pick: SelfTick, onPick: (SelfTick) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SelfTick.entries.forEach { t -> Choice(t.label, t == pick) { onPick(t) } }
+    }
+    Text(pick.detail, style = V4.type.caption, color = V4.colors.ink2)
 }
 
 @OptIn(ExperimentalLayoutApi::class)

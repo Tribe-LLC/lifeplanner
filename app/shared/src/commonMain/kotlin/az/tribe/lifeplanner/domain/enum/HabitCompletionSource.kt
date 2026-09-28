@@ -8,7 +8,9 @@ package az.tribe.lifeplanner.domain.enum
 enum class HabitCompletionSource(val displayName: String, val description: String) {
     MANUAL("Manually", "You tick it off yourself"),
     FOCUS("Focus session", "Minutes focused count toward it"),
-    BREATHING("Breathing", "Each guided breath session counts");
+    BREATHING("Breathing", "Each guided breath session counts"),
+    /** Ticked by any finished workout that day (v4). Older app versions read it as MANUAL. */
+    WORKOUT("Workout", "Any finished workout counts");
 
     companion object {
         /** Parses a stored/synced name, falling back to [MANUAL] for null or unknown values. */

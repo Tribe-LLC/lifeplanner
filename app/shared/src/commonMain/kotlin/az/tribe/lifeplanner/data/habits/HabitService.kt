@@ -1,5 +1,6 @@
 package az.tribe.lifeplanner.data.habits
 
+import az.tribe.lifeplanner.domain.service.SelfTick
 import az.tribe.lifeplanner.domain.enum.GoalCategory
 import az.tribe.lifeplanner.domain.enum.HabitCompletionSource
 import az.tribe.lifeplanner.domain.enum.HabitType
@@ -78,6 +79,7 @@ data class HabitRow(
     val meta: String get() = when {
         habit.targetCount > 1 && !stats.skippedToday -> "${if (doneToday) habit.targetCount else countToday} of ${habit.targetCount}${habit.unit?.let { " $it" } ?: ""}"
         habit.healthMetricType != null && !doneToday -> "Ticks itself from Health"
+        habit.completionSource == HabitCompletionSource.WORKOUT && !doneToday -> "Ticks itself after a workout"
         habit.type == HabitType.QUIT && !stats.skippedToday -> (if (stats.streak >= 2) "To break. ${stats.streak} days strong" else "To break")
         else -> HabitSchedule.meta(schedule, stats, doneToday)
     }
@@ -187,8 +189,14 @@ class HabitService(
         return habit
     }
 
-    suspend fun update(habit: Habit, title: String, schedule: Schedule, target: Int, unit: String?, reminder: LocalTime?) {
+    suspend fun update(habit: Habit, title: String, schedule: Schedule, target: Int, unit: String?, reminder: LocalTime?, selfTick: SelfTick = SelfTick.of(habit)) {
+        val (source, metric, metricTarget) = SelfTick.fields(selfTick)
+        val keepHealth = SelfTick.of(habit) == selfTick
         val updated = habit.copy(
+            completionSource = source,
+            healthMetricType = metric,
+            // A habit already on steps or sleep keeps its own target; a new choice gets the default.
+            healthTarget = if (keepHealth) habit.healthTarget ?: metricTarget else metricTarget,
             title = title.trim().ifEmpty { habit.title },
             frequency = HabitSchedule.frequencyFor(schedule),
             targetCount = target.coerceAtLeast(1),

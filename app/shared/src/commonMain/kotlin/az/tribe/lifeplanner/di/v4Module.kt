@@ -75,6 +75,7 @@ val v4Module = module {
     // Resolved on each call, not here: HabitService needs the habit repository, which needs this.
     single<HabitStreakRules> { HabitStreakRules { habit -> get<HabitService>().rulesFor(habit) } }
 
+    single { az.tribe.lifeplanner.data.habits.SelfTickService(get(), get(), get()) }
     single { az.tribe.lifeplanner.data.money.FxRates(get(), get(), get()) }
     single { az.tribe.lifeplanner.data.money.BillService(get()) }
     single { az.tribe.lifeplanner.ui.v4.today.TodayMoney(get(), get(), get(), get()) }

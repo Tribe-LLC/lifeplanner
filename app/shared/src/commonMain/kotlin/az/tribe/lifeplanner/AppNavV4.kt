@@ -116,7 +116,10 @@ internal fun V4AppRoot(
         // Keeps the evening check-in and slip nudges planned while signed in.
         if (phase == V4AuthPhase.IN) {
             val nudges: az.tribe.lifeplanner.data.habits.NudgeService = koinInject()
+            val selfTicks: az.tribe.lifeplanner.data.habits.SelfTickService = koinInject()
             LaunchedEffect(Unit) { nudges.run() }
+            // Ticks habits that tick themselves from a workout, a breathing break or study time.
+            LaunchedEffect("self_tick") { selfTicks.run() }
             // Keeps repeating study blocks planned a week ahead.
             val study: az.tribe.lifeplanner.data.study.StudyService = koinInject()
             LaunchedEffect(Unit) { runCatching { study.fillRepeats() } }
