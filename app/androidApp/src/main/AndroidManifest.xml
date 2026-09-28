@@ -173,6 +173,11 @@
             android:name=".notification.HabitReminderActions"
             android:exported="false" />
 
+        <!-- Low / Okay / Good on the daily mood reminder -->
+        <receiver
+            android:name=".notification.MoodReminderActions"
+            android:exported="false" />
+
         <!-- Study timer notification: Pause, Resume and Stop without opening the app -->
         <receiver
             android:name=".notification.StudyTimerReceiver"

@@ -24,6 +24,8 @@ class BootReceiver : BroadcastReceiver(), KoinComponent {
                     val reminders = reminderRepository.getEnabledReminders()
                     reminders.forEach { AndroidNotificationScheduler.schedule(it) }
                     Logger.i("BootReceiver") { "Rescheduled ${reminders.size} reminders" }
+                    // The daily mood reminder, when it is on.
+                    runCatching { getKoin().getOrNull<az.tribe.lifeplanner.data.mind.MoodNudges>()?.replan() }
                 } catch (e: Exception) {
                     Logger.e("BootReceiver") { "Failed to reschedule: ${e.message}" }
                 }

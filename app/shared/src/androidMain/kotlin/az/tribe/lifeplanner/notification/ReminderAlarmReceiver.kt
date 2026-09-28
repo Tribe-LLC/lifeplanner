@@ -13,6 +13,8 @@ import az.tribe.lifeplanner.shared.R
 import az.tribe.lifeplanner.domain.model.DayOfWeek
 import az.tribe.lifeplanner.domain.model.ReminderFrequency
 import az.tribe.lifeplanner.data.habits.HabitService
+import az.tribe.lifeplanner.data.habits.NudgePlan
+import az.tribe.lifeplanner.data.mind.MoodNudges
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -85,6 +87,21 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
                     pending.finish()
                 }
             }
+        } else if (open == NudgePlan.MOOD) {
+            // The daily mood reminder: quiet when a mood is already down today, and it plans the
+            // days ahead again so it keeps going without the app being opened.
+            val pending = goAsync()
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val nudges = GlobalContext.getOrNull()?.getOrNull<MoodNudges>()
+                    val recorded = nudges?.let { runCatching { it.recordedToday() }.getOrDefault(false) } ?: false
+                    if (!recorded) showNotification(context, reminderId, title, message, open = open, mood = true)
+                    else Logger.i("ReminderAlarmReceiver") { "Mood already recorded today, staying quiet" }
+                    nudges?.replan()
+                } finally {
+                    pending.finish()
+                }
+            }
         } else {
             showNotification(context, reminderId, title, message, linkedGoalId, open)
         }
@@ -132,6 +149,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         habitId: String? = null,
         source: Intent? = null,
         counted: Boolean = false,
+        mood: Boolean = false,
     ) {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         ensureChannel(context)
@@ -164,6 +182,9 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
             HabitReminderActions.all.forEach { a ->
                 builder.addAction(0, if (counted && a == HabitReminderActions.Action.DONE) "+1" else a.label, HabitReminderActions.pending(context, a, habitId, reminderId, title, source))
             }
+        }
+        if (mood) {
+            MoodReminderActions.all.forEach { a -> builder.addAction(0, a.label, MoodReminderActions.pending(context, a, reminderId)) }
         }
         val notification = builder.build()
 
