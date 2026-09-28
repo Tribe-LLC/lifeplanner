@@ -19,6 +19,8 @@ actual object NudgeAlarms {
             setBody(nudge.body)
             setSound(UNNotificationSound.defaultSound())
             setUserInfo(mapOf("open" to nudge.open))
+            // The daily mood reminder answers Low / Okay / Good from the banner.
+            if (nudge.open == az.tribe.lifeplanner.data.habits.NudgePlan.MOOD) setCategoryIdentifier(HabitNotificationActions.MOOD_CATEGORY)
         }
         val at = nudge.at
         val parts = NSDateComponents().apply {

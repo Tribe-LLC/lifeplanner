@@ -43,7 +43,7 @@ object NudgePlan {
     const val REVIEW = "review"
     /** The Study timer's "your minutes are up" notice, and its running notification. Opens Study. */
     const val STUDY = "study"
-    /** The daily mood check-in reminder. Opens Sleep and mind; on Android it answers from the shade. */
+    /** The daily mood check-in reminder. Opens Sleep and mind, and answers Low / Okay / Good from the notification on both platforms. */
     const val MOOD = "mood"
     const val DAYS_AHEAD = 7
     private const val CHECK_IN_ID = "v4_nudge_checkin_"
