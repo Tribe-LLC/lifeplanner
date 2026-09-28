@@ -100,18 +100,6 @@
             android:name="firebase_performance_logcat_enabled"
             android:value="false" />
 
-        <!-- Daily Dashboard Widget -->
-        <receiver
-            android:name=".widget.DailyDashboardWidgetReceiver"
-            android:exported="true"
-            android:label="@string/widget_dashboard_label">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/daily_dashboard_widget_info" />
-        </receiver>
 
         <!-- Habit Check-In Widget -->
         <receiver
@@ -126,18 +114,6 @@
                 android:resource="@xml/habit_checkin_widget_info" />
         </receiver>
 
-        <!-- Quick Actions Widget -->
-        <receiver
-            android:name=".widget.QuickActionsWidgetReceiver"
-            android:exported="true"
-            android:label="@string/widget_quick_actions_label">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/quick_actions_widget_info" />
-        </receiver>
 
         <!-- Add Goal Quick Settings Tile -->
         <service

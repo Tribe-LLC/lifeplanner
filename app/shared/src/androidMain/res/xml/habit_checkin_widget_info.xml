@@ -3,7 +3,7 @@
     android:initialLayout="@layout/glance_default_loading_layout"
     android:minWidth="250dp"
     android:minHeight="110dp"
-    android:minResizeWidth="250dp"
+    android:minResizeWidth="110dp"
     android:minResizeHeight="110dp"
     android:maxResizeWidth="400dp"
     android:maxResizeHeight="400dp"
@@ -12,5 +12,6 @@
     android:targetCellHeight="2"
     android:updatePeriodMillis="1800000"
     android:previewImage="@drawable/widget_preview_habit_checkin"
+    android:previewLayout="@layout/widget_preview_habits"
     android:description="@string/widget_habit_description"
     android:widgetCategory="home_screen" />

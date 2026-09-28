@@ -80,6 +80,7 @@ data class HabitRow(
         habit.targetCount > 1 && !stats.skippedToday -> "${if (doneToday) habit.targetCount else countToday} of ${habit.targetCount}${habit.unit?.let { " $it" } ?: ""}"
         habit.healthMetricType != null && !doneToday -> "Ticks itself from Health"
         habit.completionSource == HabitCompletionSource.WORKOUT && !doneToday -> "Ticks itself after a workout"
+        habit.completionSource == HabitCompletionSource.BREATHING && !doneToday -> "Ticks itself after breathing"
         habit.type == HabitType.QUIT && !stats.skippedToday -> (if (stats.streak >= 2) "To break. ${stats.streak} days strong" else "To break")
         else -> HabitSchedule.meta(schedule, stats, doneToday)
     }

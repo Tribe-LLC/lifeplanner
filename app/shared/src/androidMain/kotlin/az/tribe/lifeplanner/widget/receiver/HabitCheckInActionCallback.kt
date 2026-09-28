@@ -5,7 +5,7 @@ import androidx.glance.GlanceId
 import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
 import az.tribe.lifeplanner.widget.WidgetUpdateHelper
-import az.tribe.lifeplanner.widget.data.WidgetDatabaseHelper
+import az.tribe.lifeplanner.widget.data.WidgetHabits
 import co.touchlab.kermit.Logger
 
 class HabitCheckInActionCallback : ActionCallback {
@@ -19,7 +19,7 @@ class HabitCheckInActionCallback : ActionCallback {
 
         Logger.i("HabitCheckInActionCallback") { "Checking in habit: $habitId" }
 
-        val success = WidgetDatabaseHelper.performHabitCheckIn(context, habitId)
+        val success = WidgetHabits.tick(habitId)
 
         if (success) {
             Logger.i("HabitCheckInActionCallback") { "Check-in successful, refreshing widgets" }

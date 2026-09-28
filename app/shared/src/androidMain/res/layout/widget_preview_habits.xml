@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the widget picker shows: a still picture of "Today's habits" in v4 colours. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="14dp" android:background="@drawable/widget_preview_bg">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingBottom="6dp">
+        <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Today" android:textSize="17sp" android:textStyle="bold" android:textColor="#FF15171C" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="1 of 3 done" android:textSize="12sp" android:textStyle="bold" android:textColor="#FF3B5BE5" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingTop="4dp" android:paddingBottom="4dp">
+        <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Stretch" android:textSize="14sp" android:textStyle="bold" android:textColor="#FF15171C" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Morning" android:textSize="11sp" android:textColor="#FF45484F" />
+        </LinearLayout>
+        <TextView android:layout_width="36dp" android:layout_height="36dp" android:gravity="center" android:background="@drawable/widget_preview_circle" android:text="" android:textSize="16sp" android:textStyle="bold" android:textColor="#FF3B5BE5" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingTop="4dp" android:paddingBottom="4dp">
+        <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Drink water" android:textSize="14sp" android:textStyle="bold" android:textColor="#FF15171C" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="3 of 8 glasses" android:textSize="11sp" android:textColor="#FF45484F" />
+        </LinearLayout>
+        <TextView android:layout_width="36dp" android:layout_height="36dp" android:gravity="center" android:background="@drawable/widget_preview_circle" android:text="+" android:textSize="16sp" android:textStyle="bold" android:textColor="#FF3B5BE5" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingTop="4dp" android:paddingBottom="4dp">
+        <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Read 10 pages" android:textSize="14sp" android:textStyle="bold" android:textColor="#FF8A8D95" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Done" android:textSize="11sp" android:textColor="#FF45484F" />
+        </LinearLayout>
+        <TextView android:layout_width="36dp" android:layout_height="36dp" android:gravity="center" android:background="@drawable/widget_preview_circle_done" android:text="✓" android:textSize="16sp" android:textStyle="bold" android:textColor="#FFFFFFFF" />
+    </LinearLayout>
+</LinearLayout>
