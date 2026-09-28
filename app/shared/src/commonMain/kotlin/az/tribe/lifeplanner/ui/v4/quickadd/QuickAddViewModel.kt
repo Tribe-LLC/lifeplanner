@@ -1,5 +1,7 @@
 package az.tribe.lifeplanner.ui.v4.quickadd
 
+import az.tribe.lifeplanner.domain.repository.TripRepository
+import az.tribe.lifeplanner.domain.service.TripPlanner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import az.tribe.lifeplanner.core.CurrencyPrefs
@@ -48,6 +50,7 @@ class QuickAddViewModel(
     private val planAreas: PlanAreasRepository,
     private val currency: CurrencyPrefs,
     private val awardHabitCompletion: AwardHabitCompletionUseCase,
+    private val trips: TripRepository,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -70,7 +73,12 @@ class QuickAddViewModel(
         viewModelScope.launch {
             runCatching {
                 val group = Uuid.random().toString()
-                val logRows = input.entries.filter { !it.isRoutine }.map { e -> e.toLog(input, group) }
+                // Travel spends go to the trip under way or coming up in the next two months.
+                val today = input.occurredAt.date
+                val trip = TripPlanner.current(trips.getAll(), today)?.takeIf { it.startDate.toEpochDays() - today.toEpochDays() <= 60 }
+                val logRows = input.entries.filter { !it.isRoutine }.map { e ->
+                    e.toLog(input, group).let { l -> if (trip != null && l.category == "travel") l.copy(tripId = trip.id) else l }
+                }
                 logs.saveAll(logRows)
                 input.entries.filter { it.isRoutine }.forEach { addRoutine(it) }
                 input.entries.firstOrNull { it.kind == LogKind.WATER }?.let { tickWaterHabit(it) }

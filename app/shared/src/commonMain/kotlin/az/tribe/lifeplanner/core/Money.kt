@@ -26,6 +26,10 @@ object MoneyFormat {
         "INR" to "₹", "AUD" to "A$", "SGD" to "S$", "CAD" to "C$",
     )
 
+    /** An amount as the user would type it back: "2400", "12.5". For prefilling fields. */
+    fun plain(amount: Double): String =
+        if (amount == kotlin.math.floor(amount)) amount.toLong().toString() else amount.toString()
+
     fun symbol(code: String?): String = symbols[code] ?: code?.let { "$it " } ?: ""
 
     /** "€12.50", "€1,240", "-€8". Whole amounts drop the cents; yen never has them. */

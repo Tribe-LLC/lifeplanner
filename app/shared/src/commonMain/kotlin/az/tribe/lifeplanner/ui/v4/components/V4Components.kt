@@ -250,6 +250,19 @@ fun V4Switch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, label: String
     )
 }
 
+/** A visible label with a switch at the end; the whole row toggles. */
+@Composable
+fun V4SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = Role.Switch) { onCheckedChange(!checked) },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(label, style = V4.type.bodyStrong, color = V4.colors.ink, modifier = Modifier.weight(1f))
+        V4Switch(checked, onCheckedChange, label)
+    }
+}
+
 @Composable
 fun V4SectionTitle(text: String, modifier: Modifier = Modifier, trailing: (@Composable RowScope.() -> Unit)? = null) {
     Row(

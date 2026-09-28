@@ -55,6 +55,7 @@ import az.tribe.lifeplanner.ui.v4.theme.V4
 import az.tribe.lifeplanner.ui.v4.theme.V4Theme
 import az.tribe.lifeplanner.ui.v4.today.DayItemType
 import az.tribe.lifeplanner.ui.v4.today.V4TodayScreen
+import az.tribe.lifeplanner.ui.v4.travel.V4TripScreen
 import az.tribe.lifeplanner.ui.viewmodel.AuthState
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
 import az.tribe.lifeplanner.ui.viewmodel.signInAsGuest
@@ -315,6 +316,7 @@ internal fun NavGraphBuilder.appNavV4(
                     DayItemType.HABIT -> navController.navigate("habit_detail_redesign/${item.refId}") { launchSingleTop = true }
                     DayItemType.STEP -> item.goalId?.let { navController.navigate("goal_detail/$it") { launchSingleTop = true } }
                     DayItemType.WORKOUT -> navController.navigate(V4Routes.area(PlanArea.FITNESS)) { launchSingleTop = true }
+                    DayItemType.TRIP -> navController.navigate(V4Routes.area(PlanArea.TRAVEL)) { launchSingleTop = true }
                     DayItemType.EVENT -> {}
                 }
             },
@@ -371,5 +373,10 @@ internal fun NavGraphBuilder.appNavV4(
                 onQuickAdd = onQuickAdd,
             ),
         )
+    }
+
+    composable(V4Routes.TRIP, arguments = listOf(navArgument("tripId") { type = NavType.StringType })) { entry ->
+        val tripId = entry.arguments?.read { getStringOrNull("tripId") } ?: return@composable
+        V4TripScreen(tripId = tripId, onBack = { navController.popBackStack() })
     }
 }

@@ -1,5 +1,7 @@
 package az.tribe.lifeplanner.ui.v4.life
 
+import az.tribe.lifeplanner.domain.repository.TripRepository
+import az.tribe.lifeplanner.domain.service.TripPlanner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import az.tribe.lifeplanner.domain.enum.HealthMetricType
@@ -76,6 +78,7 @@ class V4LifeViewModel(
     private val planAreas: PlanAreasRepository,
     private val lifeLogs: LifeLogRepository,
     private val budgets: BudgetRepository,
+    private val trips: TripRepository,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -267,8 +270,31 @@ class V4LifeViewModel(
                     else -> plansFallback("Set a budget", "Know what is left to spend this week")
                 }
             }
-            PlanArea.TRAVEL -> plansFallback("Plan a trip", "Budget, packing and days in one place")
-            PlanArea.MEALS -> plansFallback("Log a meal", "Type what you ate in the box below")
+            PlanArea.TRAVEL -> {
+                val t = TripPlanner.current(runCatching { trips.getAll() }.getOrDefault(emptyList()), today)
+                if (t == null) plansFallback("Plan a trip", "Budget, packing and days in one place")
+                else {
+                    val spent = runCatching { lifeLogs.getInRange(today.minus(DatePeriod(days = 180)), t.endDate) }.getOrDefault(emptyList())
+                        .filter { it.tripId == t.id && MoneySummary.isSpend(it) }.sumOf { it.amount ?: 0.0 }
+                    AreaSummary(
+                        area,
+                        t.destination,
+                        TripPlanner.countdown(t, today).replaceFirstChar { it.uppercase() } +
+                            (t.budget?.let { ", ${MoneyFormat.format(it - spent, t.currency)} left" } ?: ""),
+                        emptyList(),
+                    )
+                }
+            }
+            PlanArea.MEALS -> {
+                val meals = runCatching { lifeLogs.getInRange(week.first(), today) }.getOrDefault(emptyList()).filter { it.kind == LogKind.MEAL }
+                if (meals.isEmpty()) plansFallback("Log a meal", "Type what you ate in the box below")
+                else AreaSummary(
+                    area,
+                    "${meals.size} ${if (meals.size == 1) "meal" else "meals"}",
+                    "logged this week",
+                    week.map { d -> meals.count { it.date == d }.toFloat() },
+                )
+            }
             PlanArea.CAREER -> plansFallback("Add a plan", "Skills, applications, next moves")
         }
     }

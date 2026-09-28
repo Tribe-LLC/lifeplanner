@@ -1,5 +1,7 @@
 package az.tribe.lifeplanner.data.repository
 
+import az.tribe.lifeplanner.domain.service.StreakPauses
+import az.tribe.lifeplanner.domain.service.TravelMode
 import az.tribe.lifeplanner.data.mapper.createNewCheckIn
 import az.tribe.lifeplanner.data.mapper.toDomain
 import az.tribe.lifeplanner.data.mapper.toDomainCheckIns
@@ -26,7 +28,8 @@ import kotlinx.datetime.toLocalDateTime
 class HabitRepositoryImpl(
     private val database: SharedDatabase,
     private val widgetSyncService: WidgetDataSyncService,
-    private val syncManager: SyncManager
+    private val syncManager: SyncManager,
+    private val pauses: StreakPauses = StreakPauses.None,
 ) : HabitRepository {
 
     private suspend fun notifyWidgets() {
@@ -224,13 +227,9 @@ class HabitRepositoryImpl(
             .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
             .toSet()
 
-        var streak = 0
-        var currentDate = today
-        while (currentDate in completedDates) {
-            streak++
-            currentDate = currentDate.minus(DatePeriod(days = 1))
-        }
-        return streak
+        // Days on a trip with travel mode on neither keep nor break a streak.
+        val paused = runCatching { pauses.pausedDays() }.getOrDefault(emptySet())
+        return TravelMode.streak(completedDates, paused, today)
     }
 
     override suspend fun updateStreakAfterCheckIn(habitId: String) {

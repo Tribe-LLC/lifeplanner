@@ -37,6 +37,7 @@ import az.tribe.lifeplanner.ui.v4.components.areaName
 import az.tribe.lifeplanner.ui.v4.illustration.AreaIllustration
 import az.tribe.lifeplanner.ui.v4.theme.V4
 import az.tribe.lifeplanner.ui.v4.today.V4TodayViewModel
+import az.tribe.lifeplanner.ui.v4.travel.TravelSection
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -78,6 +79,7 @@ fun V4AreaScreen(
         when (area) {
             PlanArea.MONEY -> MoneySection(onAddSpend = actions.onQuickAdd)
             PlanArea.FITNESS -> FitnessSection(state.health, onOpenHealth = { actions.onRoute("health") })
+            PlanArea.TRAVEL -> TravelSection(onOpenTrip = { actions.onRoute("v4_trip/$it") })
             PlanArea.MIND -> MindCard(state.health, onJournal = { actions.onRoute("journal_wizard") }, onJournalList = { actions.onRoute("journal") })
             PlanArea.STUDY -> V4Card {
                 Text("Focus time", style = V4.type.bodyStrong, color = c.ink)

@@ -310,7 +310,7 @@ val appModule = module {
     single<GoalHistoryRepository> { GoalHistoryRepositoryImpl(get(), get()) }
     single<GamificationRepository> { GamificationRepositoryImpl(get(), get(), get(), get()) }
     single<UserRepository> { UserRepositoryImpl(get(), get()) }
-    single<HabitRepository> { HabitRepositoryImpl(get(), get(), get()) }
+    single<HabitRepository> { HabitRepositoryImpl(get(), get(), get(), get()) }
     single<JournalRepository> { JournalRepositoryImpl(get(), get()) }
     single<GoalDependencyRepository> { GoalDependencyRepositoryImpl(get(), get()) }
     single<CoachRepository> { CoachRepositoryImpl(get(), get()) }

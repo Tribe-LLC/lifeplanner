@@ -60,7 +60,7 @@ import az.tribe.lifeplanner.ui.v4.components.V4Divider
 import az.tribe.lifeplanner.ui.v4.components.V4PillButton
 import az.tribe.lifeplanner.ui.v4.components.V4PrimaryButton
 import az.tribe.lifeplanner.ui.v4.components.V4ProgressBar
-import az.tribe.lifeplanner.ui.v4.components.V4Switch
+import az.tribe.lifeplanner.ui.v4.components.V4SwitchRow
 import az.tribe.lifeplanner.ui.v4.components.V4TextButton
 import az.tribe.lifeplanner.ui.v4.theme.V4
 import az.tribe.lifeplanner.ui.v4.today.V4TodayViewModel
@@ -384,7 +384,7 @@ private fun PlanWorkoutSheet(
                 listOf(20, 30, 45, 60).forEach { m -> Choice("$m min", minutes == m) { minutes = m } }
             }
 
-            if (canCalendar && time != null) V4Switch(toCalendar, { toCalendar = it }, "Add to your calendar")
+            if (canCalendar && time != null) V4SwitchRow("Add to your calendar", toCalendar, { toCalendar = it })
 
             V4PrimaryButton(
                 "Plan it",

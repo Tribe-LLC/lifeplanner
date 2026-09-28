@@ -31,6 +31,14 @@ import az.tribe.lifeplanner.domain.model.LifeLog
 import az.tribe.lifeplanner.domain.model.LogStatus
 import az.tribe.lifeplanner.domain.service.FitnessWeek
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import az.tribe.lifeplanner.domain.model.Trip
+import az.tribe.lifeplanner.domain.model.TripItem
+import az.tribe.lifeplanner.domain.model.TripItemKind
+import az.tribe.lifeplanner.domain.repository.TripRepository
+import az.tribe.lifeplanner.domain.service.TravelMode
+import az.tribe.lifeplanner.domain.service.TripPlanner
 import kotlinx.coroutines.flow.map
 import az.tribe.lifeplanner.usecases.habit.AwardHabitCompletionUseCase
 import az.tribe.lifeplanner.usecases.habit.CheckInHabitUseCase
@@ -58,7 +66,7 @@ import kotlinx.datetime.todayIn
 import kotlin.time.Clock
 import kotlin.time.Instant
 
-enum class DayItemType { HABIT, STEP, EVENT, WORKOUT }
+enum class DayItemType { HABIT, STEP, EVENT, WORKOUT, TRIP }
 
 /** One row of "Your day". Habits and plan steps can be ticked; calendar events are context. */
 data class DayItem(
@@ -120,6 +128,7 @@ class V4TodayViewModel(
     private val lifeLogs: LifeLogRepository,
     budgets: BudgetRepository,
     private val workouts: WorkoutService,
+    private val trips: TripRepository,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -133,6 +142,12 @@ class V4TodayViewModel(
     private val swapTick = MutableStateFlow(0)
 
     /** Workouts from today through next week: today's go on the day, the rest pick a swap day. */
+    /** The trip under way or next, with its list. Drives the trip chip, travel mode and "before you go". */
+    private val currentTrip = trips.observeAll().flatMapLatest { all ->
+        val t = TripPlanner.current(all, today())
+        if (t == null) flowOf(null) else trips.observeItems(t.id).map { items -> t to items }
+    }
+
     private val weekWorkouts = lifeLogs.observeInRange(today(), today().plus(DatePeriod(days = 7)))
         .map { list -> list.filter { FitnessWeek.isWorkout(it) } }
 
@@ -159,13 +174,15 @@ class V4TodayViewModel(
 
     val state: StateFlow<TodayUiState> = combine(
         combine(habitsWithCounts, goalRepository.observeAllGoals(), events, ::Triple),
-        combine(health, moneyChip, weekWorkouts, swapTick) { h, m, w, _ -> Triple(h, m, w) },
+        combine(health, moneyChip, weekWorkouts, swapTick, currentTrip) { h, m, w, _, t -> Extras(h, m, w, t) },
         stepsDoneToday,
         planAreas.enabledAreas,
         dismissed,
-    ) { (habits, goals, evts), (h, money, week), stepsDone, areas, dismissedId ->
-        build(habits, goals, evts, h, stepsDone, areas, dismissedId, money, week)
+    ) { (habits, goals, evts), x, stepsDone, areas, dismissedId ->
+        build(habits, goals, evts, x.health, stepsDone, areas, dismissedId, x.money, x.week, x.trip)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TodayUiState(date = today()))
+
+    private data class Extras(val health: HealthToday, val money: String?, val week: List<LifeLog>, val trip: Pair<Trip, List<TripItem>>?)
 
     init {
         refresh()
@@ -208,6 +225,12 @@ class V4TodayViewModel(
             DayItemType.HABIT -> toggleHabit(item)
             DayItemType.STEP -> toggleStep(item)
             DayItemType.WORKOUT -> toggleWorkout(item)
+            DayItemType.TRIP -> viewModelScope.launch {
+                runCatching {
+                    val t = currentTrip.first() ?: return@launch
+                    t.second.firstOrNull { it.id == item.refId }?.let { trips.saveItem(it.copy(isDone = !it.isDone)) }
+                }
+            }
             DayItemType.EVENT -> {}
         }
     }
@@ -318,11 +341,13 @@ class V4TodayViewModel(
         dismissedId: String?,
         money: String?,
         week: List<LifeLog>,
+        trip: Pair<Trip, List<TripItem>>?,
     ): TodayUiState {
         val today = today()
         val items = mutableListOf<DayItem>()
+        val away = trip?.first?.takeIf { it.travelMode && TripPlanner.isActive(it, today) }
 
-        habits.filter { it.first.isActive }.forEach { (habit, done, count) ->
+        habits.filter { it.first.isActive && (away == null || TravelMode.keeps(it.first)) }.forEach { (habit, done, count) ->
             items += DayItem(
                 key = "h_${habit.id}",
                 type = DayItemType.HABIT,
@@ -372,6 +397,24 @@ class V4TodayViewModel(
             )
         }
 
+        // The week before a trip, what is left to do for it shows up here too.
+        trip?.let { (t, list) ->
+            val until = t.startDate.toEpochDays() - today.toEpochDays()
+            if (until in 0..7) list.filter { it.kind == TripItemKind.TODO }.forEach { todo ->
+                items += DayItem(
+                    key = "t_${todo.id}",
+                    type = DayItemType.TRIP,
+                    refId = todo.id,
+                    time = null,
+                    title = todo.title,
+                    area = PlanArea.TRAVEL,
+                    meta = "Before ${t.destination}",
+                    done = todo.isDone,
+                    checkable = true,
+                )
+            }
+        }
+
         evts.forEach { e ->
             val start = Instant.fromEpochMilliseconds(e.startEpochMillis).toLocalDateTime(tz)
             items += DayItem(
@@ -395,6 +438,13 @@ class V4TodayViewModel(
 
         val chips = buildList {
             if (checkable.isNotEmpty()) add(TodayChip("$done of ${checkable.size} done", null))
+            trip?.first?.let { t ->
+                val until = (t.startDate.toEpochDays() - today.toEpochDays()).toInt()
+                when {
+                    TripPlanner.isActive(t, today) -> add(TodayChip("${TripPlanner.countdown(t, today).replaceFirstChar { it.uppercase() }} in ${t.destination}", PlanArea.TRAVEL))
+                    until <= 30 -> add(TodayChip("${t.destination} ${TripPlanner.countdown(t, today)}", PlanArea.TRAVEL))
+                }
+            }
             if (PlanArea.MONEY in areas) money?.let { add(TodayChip(it, PlanArea.MONEY)) }
             if (PlanArea.FITNESS in areas) h.steps?.let { add(TodayChip("${formatThousands(it.toLong())} steps", PlanArea.FITNESS)) }
             if (PlanArea.MIND in areas) h.sleepHours?.let { add(TodayChip("Slept ${formatHours(it)}", PlanArea.MIND)) }
