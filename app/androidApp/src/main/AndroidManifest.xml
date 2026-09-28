@@ -22,6 +22,8 @@
     <!-- v4 Fitness: watch workouts in, workouts finished here out -->
     <uses-permission android:name="android.permission.health.READ_EXERCISE" />
     <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
+    <uses-permission android:name="android.permission.health.WRITE_NUTRITION" />
+    <uses-permission android:name="android.permission.health.WRITE_HYDRATION" />
 
     <application
         android:name=".MainApplication"

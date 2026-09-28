@@ -63,6 +63,9 @@ class QuickAddParserTest {
     fun studyMinutes() {
         val e = parse("studied 25 min").entries.single()
         assertEquals(PlanArea.STUDY, e.area)
+        assertEquals("Study", e.title)
+        assertEquals("Biology", parse("studied biology 45 min").entries.single().title)
+        assertEquals("French vocab", parse("1h 30m of french vocab revision").entries.single().title)
         assertEquals(25, e.durationMin)
     }
 

@@ -3,6 +3,27 @@
 package az.tribe.lifeplanner.data.health
 
 import co.touchlab.kermit.Logger
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.coroutines.suspendCancellableCoroutine
+import platform.Foundation.NSDate
+import platform.Foundation.dateWithTimeIntervalSince1970
+import platform.HealthKit.HKAuthorizationStatusSharingAuthorized
+import platform.HealthKit.HKCorrelation
+import platform.HealthKit.HKCorrelationType
+import platform.HealthKit.HKCorrelationTypeIdentifierFood
+import platform.HealthKit.HKHealthStore
+import platform.HealthKit.HKMetadataKeyFoodType
+import platform.HealthKit.HKMetadataKeyExternalUUID
+import platform.HealthKit.HKQuantity
+import platform.HealthKit.HKQuantitySample
+import platform.HealthKit.HKQuantityType
+import platform.HealthKit.HKQuantityTypeIdentifierDietaryEnergyConsumed
+import platform.HealthKit.HKQuantityTypeIdentifierDietaryProtein
+import platform.HealthKit.HKQuantityTypeIdentifierDietaryWater
+import platform.HealthKit.HKUnit
+import platform.HealthKit.gramUnit
+import platform.HealthKit.kilocalorieUnit
+import kotlin.coroutines.resume
 import com.viktormykhailiv.kmp.health.HealthDataType
 import com.viktormykhailiv.kmp.health.HealthManagerFactory
 import com.viktormykhailiv.kmp.health.aggregateSteps
@@ -236,6 +257,70 @@ actual class HealthDataManager {
         ).onSuccess { ok = true }
             .onFailure { Logger.w(TAG) { "Failed to write workout: ${it.message}" } }
         return ok
+    }
+
+    // Meals and water go straight to HealthKit: the shared health library has no types for them.
+    private val store by lazy { HKHealthStore() }
+
+    private fun quantityType(id: String?): HKQuantityType? = id?.let { HKQuantityType.quantityTypeForIdentifier(it) }
+
+    private fun foodAndWaterTypes(): Set<HKQuantityType> = listOfNotNull(
+        quantityType(HKQuantityTypeIdentifierDietaryEnergyConsumed),
+        quantityType(HKQuantityTypeIdentifierDietaryProtein),
+        quantityType(HKQuantityTypeIdentifierDietaryWater),
+    ).toSet()
+
+    actual suspend fun canWriteFoodAndWater(): Boolean {
+        if (!HKHealthStore.isHealthDataAvailable()) return false
+        val types = foodAndWaterTypes()
+        return types.isNotEmpty() && types.all { store.authorizationStatusForType(it) == HKAuthorizationStatusSharingAuthorized }
+    }
+
+    actual suspend fun requestFoodAndWater(): Boolean {
+        if (!HKHealthStore.isHealthDataAvailable()) return false
+        suspendCancellableCoroutine { cont ->
+            store.requestAuthorizationToShareTypes(foodAndWaterTypes(), readTypes = null) { _, error ->
+                error?.let { Logger.w(TAG) { "Food and water authorization failed: ${it.localizedDescription}" } }
+                if (cont.isActive) cont.resume(Unit)
+            }
+        }
+        return canWriteFoodAndWater()
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    actual suspend fun writeMeal(name: String, slot: String, atEpochMs: Long, kcal: Double?, proteinG: Double?, clientId: String): Boolean {
+        if (!HKHealthStore.isHealthDataAvailable() || (kcal == null && proteinG == null)) return false
+        val date = NSDate.dateWithTimeIntervalSince1970(atEpochMs / 1000.0)
+        val samples = listOfNotNull(
+            kcal?.let { v -> quantityType(HKQuantityTypeIdentifierDietaryEnergyConsumed)?.let { HKQuantitySample.quantitySampleWithType(it, HKQuantity.quantityWithUnit(HKUnit.kilocalorieUnit(), v), date, date) } },
+            proteinG?.let { v -> quantityType(HKQuantityTypeIdentifierDietaryProtein)?.let { HKQuantitySample.quantitySampleWithType(it, HKQuantity.quantityWithUnit(HKUnit.gramUnit(), v), date, date) } },
+        )
+        val foodType = HKCorrelationType.correlationTypeForIdentifier(HKCorrelationTypeIdentifierFood!!) ?: return false
+        if (samples.isEmpty()) return false
+        val food = HKCorrelation.correlationWithType(
+            foodType, date, date, samples.toSet(),
+            mapOf<Any?, Any?>(HKMetadataKeyFoodType to name, HKMetadataKeyExternalUUID to clientId, "LifePlannerMeal" to slot),
+        )
+        return save(food, "meal")
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    actual suspend fun writeWater(ml: Double, atEpochMs: Long, clientId: String): Boolean {
+        if (!HKHealthStore.isHealthDataAvailable() || ml <= 0) return false
+        val type = quantityType(HKQuantityTypeIdentifierDietaryWater) ?: return false
+        val date = NSDate.dateWithTimeIntervalSince1970(atEpochMs / 1000.0)
+        val sample = HKQuantitySample.quantitySampleWithType(
+            type, HKQuantity.quantityWithUnit(HKUnit.unitFromString("mL"), ml), date, date,
+            mapOf<Any?, Any?>(HKMetadataKeyExternalUUID to clientId),
+        )
+        return save(sample, "water")
+    }
+
+    private suspend fun save(obj: platform.HealthKit.HKObject, what: String): Boolean = suspendCancellableCoroutine { cont ->
+        store.saveObject(obj) { ok, error ->
+            error?.let { Logger.w(TAG) { "Failed to write $what: ${it.localizedDescription}" } }
+            if (cont.isActive) cont.resume(ok)
+        }
     }
 }
 

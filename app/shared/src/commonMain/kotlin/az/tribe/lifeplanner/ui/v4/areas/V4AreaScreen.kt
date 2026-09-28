@@ -50,6 +50,8 @@ data class AreaActions(
     val onNewRoutine: () -> Unit,
     val onRoute: (String) -> Unit,
     val onQuickAdd: () -> Unit,
+    /** Opens the coach with this message ready to send. */
+    val onAskCoach: (String) -> Unit = {},
 )
 
 @Composable
@@ -81,11 +83,8 @@ fun V4AreaScreen(
             PlanArea.FITNESS -> FitnessSection(state.health, onOpenHealth = { actions.onRoute("health") })
             PlanArea.TRAVEL -> TravelSection(onOpenTrip = { actions.onRoute("v4_trip/$it") })
             PlanArea.MIND -> MindCard(state.health, onJournal = { actions.onRoute("journal_wizard") }, onJournalList = { actions.onRoute("journal") })
-            PlanArea.STUDY -> V4Card {
-                Text("Focus time", style = V4.type.bodyStrong, color = c.ink)
-                Text("Study in blocks. Every finished session counts toward this area.", style = V4.type.caption, color = c.ink2)
-                V4PillButton("Start a focus session", onClick = { actions.onRoute("focus_setup") })
-            }
+            PlanArea.STUDY -> StudySection(onOpenFocus = { actions.onRoute("focus_setup") })
+            PlanArea.MEALS -> MealsSection(onAskCoach = actions.onAskCoach)
             else -> {}
         }
 

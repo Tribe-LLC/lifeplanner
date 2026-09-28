@@ -14,12 +14,12 @@ import az.tribe.lifeplanner.domain.model.LogKind
 import az.tribe.lifeplanner.domain.model.PlanArea
 import az.tribe.lifeplanner.domain.repository.HabitRepository
 import az.tribe.lifeplanner.domain.repository.LifeLogRepository
+import az.tribe.lifeplanner.data.meals.MealService
 import az.tribe.lifeplanner.domain.repository.PlanAreasRepository
 import az.tribe.lifeplanner.domain.service.ParsedEntry
 import az.tribe.lifeplanner.domain.service.ParsedInput
 import az.tribe.lifeplanner.domain.service.QuickAddParser
 import az.tribe.lifeplanner.ui.v4.components.areaName
-import az.tribe.lifeplanner.usecases.habit.AwardHabitCompletionUseCase
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,8 +49,8 @@ class QuickAddViewModel(
     private val habits: HabitRepository,
     private val planAreas: PlanAreasRepository,
     private val currency: CurrencyPrefs,
-    private val awardHabitCompletion: AwardHabitCompletionUseCase,
     private val trips: TripRepository,
+    private val meals: MealService,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -81,7 +81,8 @@ class QuickAddViewModel(
                 }
                 logs.saveAll(logRows)
                 input.entries.filter { it.isRoutine }.forEach { addRoutine(it) }
-                input.entries.firstOrNull { it.kind == LogKind.WATER }?.let { tickWaterHabit(it) }
+                // Water also goes to Health and ticks the water habit, as it does from the Meals page.
+                input.entries.firstOrNull { it.kind == LogKind.WATER }?.let { meals.addWater((it.quantity ?: 1.0).toInt().coerceAtLeast(1), fromQuickAdd = true) }
 
                 // Logging into an area turns it on: the entry should be visible somewhere.
                 val areas = input.entries.map { it.area }.toSet()
@@ -127,16 +128,6 @@ class QuickAddViewModel(
             else -> GoalCategory.WELLBEING
         }
         habits.insertHabit(createNewHabit(title = e.title, category = category, frequency = HabitFrequency.DAILY))
-    }
-
-    /** "2 glasses of water" also ticks a water habit, if there is one. */
-    private suspend fun tickWaterHabit(e: ParsedEntry) {
-        val today = Clock.System.now().toLocalDateTime(tz).date
-        val habit = habits.getAllHabits().firstOrNull { it.isActive && "water" in it.title.lowercase() } ?: return
-        if (habits.getCheckInByHabitAndDate(habit.id, today)?.completed == true) return
-        val n = (e.quantity ?: 1.0).toInt().coerceAtLeast(1)
-        val checkIn = if (habit.targetCount > 1) habits.addCount(habit.id, today, n) else habits.checkIn(habit.id, today)
-        if (checkIn.completed) awardHabitCompletion(habit.id, today)
     }
 
     companion object {

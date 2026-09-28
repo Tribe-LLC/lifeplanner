@@ -7,6 +7,12 @@ import android.os.Build
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ExerciseSessionRecord
+import androidx.health.connect.client.records.HydrationRecord
+import androidx.health.connect.client.records.MealType
+import androidx.health.connect.client.records.NutritionRecord
+import androidx.health.connect.client.units.Energy
+import androidx.health.connect.client.units.Mass
+import androidx.health.connect.client.units.Volume
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.metadata.Metadata
 import androidx.health.connect.client.records.SleepSessionRecord
@@ -290,8 +296,83 @@ actual class HealthDataManager {
         }
     }
 
+    actual suspend fun canWriteFoodAndWater(): Boolean {
+        val client = getClient() ?: return false
+        return try {
+            client.permissionController.getGrantedPermissions().let { WRITE_NUTRITION in it && WRITE_HYDRATION in it }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    actual suspend fun requestFoodAndWater(): Boolean = canWriteFoodAndWater()
+
+    actual suspend fun writeMeal(name: String, slot: String, atEpochMs: Long, kcal: Double?, proteinG: Double?, clientId: String): Boolean {
+        val client = getClient() ?: return false
+        if (kcal == null && proteinG == null) return false
+        return try {
+            // A meal is a moment; Health Connect wants a span, so it gets a quarter of an hour.
+            val start = Instant.ofEpochMilli(atEpochMs)
+            val end = start.plusSeconds(15 * 60)
+            val rules = java.time.ZoneId.systemDefault().rules
+            client.insertRecords(
+                listOf(
+                    NutritionRecord(
+                        startTime = start,
+                        startZoneOffset = rules.getOffset(start),
+                        endTime = end,
+                        endZoneOffset = rules.getOffset(end),
+                        metadata = Metadata.manualEntry(clientRecordId = clientId),
+                        name = name,
+                        mealType = when (slot) {
+                            "breakfast" -> MealType.MEAL_TYPE_BREAKFAST
+                            "lunch" -> MealType.MEAL_TYPE_LUNCH
+                            "dinner" -> MealType.MEAL_TYPE_DINNER
+                            "snack" -> MealType.MEAL_TYPE_SNACK
+                            else -> MealType.MEAL_TYPE_UNKNOWN
+                        },
+                        energy = kcal?.let { Energy.kilocalories(it) },
+                        protein = proteinG?.let { Mass.grams(it) },
+                    )
+                )
+            )
+            true
+        } catch (e: Exception) {
+            Logger.w("HealthDataManager") { "Failed to write meal: ${e.message}" }
+            false
+        }
+    }
+
+    actual suspend fun writeWater(ml: Double, atEpochMs: Long, clientId: String): Boolean {
+        val client = getClient() ?: return false
+        if (ml <= 0) return false
+        return try {
+            val start = Instant.ofEpochMilli(atEpochMs)
+            val end = start.plusSeconds(60)
+            val rules = java.time.ZoneId.systemDefault().rules
+            client.insertRecords(
+                listOf(
+                    HydrationRecord(
+                        startTime = start,
+                        startZoneOffset = rules.getOffset(start),
+                        endTime = end,
+                        endZoneOffset = rules.getOffset(end),
+                        metadata = Metadata.manualEntry(clientRecordId = clientId),
+                        volume = Volume.milliliters(ml),
+                    )
+                )
+            )
+            true
+        } catch (e: Exception) {
+            Logger.w("HealthDataManager") { "Failed to write water: ${e.message}" }
+            false
+        }
+    }
+
     companion object {
         private val WRITE_EXERCISE = HealthPermission.getWritePermission(ExerciseSessionRecord::class)
+        private val WRITE_NUTRITION = HealthPermission.getWritePermission(NutritionRecord::class)
+        private val WRITE_HYDRATION = HealthPermission.getWritePermission(HydrationRecord::class)
 
         val REQUIRED_PERMISSIONS = setOf(
             HealthPermission.getReadPermission(StepsRecord::class),
@@ -300,6 +381,8 @@ actual class HealthDataManager {
             HealthPermission.getReadPermission(SleepSessionRecord::class),
             HealthPermission.getReadPermission(ExerciseSessionRecord::class),
             WRITE_EXERCISE,
+            WRITE_NUTRITION,
+            WRITE_HYDRATION,
         )
 
         private fun Int.toKind(): WorkoutKind = when (this) {

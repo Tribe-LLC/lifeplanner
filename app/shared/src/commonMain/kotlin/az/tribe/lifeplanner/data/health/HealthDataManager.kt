@@ -30,6 +30,24 @@ expect class HealthDataManager() {
      * a new workout and so [readWorkouts] can mark it [HealthWorkout.fromThisApp]. False if refused.
      */
     suspend fun writeWorkout(kind: WorkoutKind, title: String, startEpochMs: Long, endEpochMs: Long, clientId: String): Boolean
+
+    /** Whether the user let us save meals (energy, protein) and water. One grant covers both here. */
+    suspend fun canWriteFoodAndWater(): Boolean
+
+    /**
+     * Asks for the meal and water write grants where the platform asks in code (HealthKit). On
+     * Android the permission screen is launched from the UI instead; this just reports the grant.
+     */
+    suspend fun requestFoodAndWater(): Boolean
+
+    /**
+     * Saves a meal with what is known of it. [slot] is breakfast, lunch, dinner or snack. Needs at
+     * least [kcal] or [proteinG], since Health has nothing to hold otherwise. False if refused.
+     */
+    suspend fun writeMeal(name: String, slot: String, atEpochMs: Long, kcal: Double?, proteinG: Double?, clientId: String): Boolean
+
+    /** Saves water drunk, in millilitres. */
+    suspend fun writeWater(ml: Double, atEpochMs: Long, clientId: String): Boolean
 }
 
 enum class WorkoutKind(val label: String) {

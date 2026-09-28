@@ -317,6 +317,8 @@ internal fun NavGraphBuilder.appNavV4(
                     DayItemType.STEP -> item.goalId?.let { navController.navigate("goal_detail/$it") { launchSingleTop = true } }
                     DayItemType.WORKOUT -> navController.navigate(V4Routes.area(PlanArea.FITNESS)) { launchSingleTop = true }
                     DayItemType.TRIP -> navController.navigate(V4Routes.area(PlanArea.TRAVEL)) { launchSingleTop = true }
+                    DayItemType.MEAL -> navController.navigate(V4Routes.area(PlanArea.MEALS)) { launchSingleTop = true }
+                    DayItemType.STUDY -> navController.navigate(V4Routes.area(PlanArea.STUDY)) { launchSingleTop = true }
                     DayItemType.EVENT -> {}
                 }
             },
@@ -371,6 +373,7 @@ internal fun NavGraphBuilder.appNavV4(
                 onNewRoutine = { navController.navigate(Screen.AddHabit.route) { launchSingleTop = true } },
                 onRoute = { navController.navigate(it) { launchSingleTop = true } },
                 onQuickAdd = onQuickAdd,
+                onAskCoach = { text -> onCoachPrompt(text); openTab(V4Routes.COACH) },
             ),
         )
     }

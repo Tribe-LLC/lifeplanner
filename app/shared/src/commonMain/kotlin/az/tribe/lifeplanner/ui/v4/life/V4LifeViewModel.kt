@@ -230,16 +230,22 @@ class V4LifeViewModel(
                 )
             }
             PlanArea.STUDY -> {
-                val sessions = runCatching { focusRepository.getCompletedSessions() }.getOrDefault(emptyList())
-                    .filter { s -> s.completedAt?.date?.let { it >= week.first() } == true }
-                if (sessions.isEmpty()) plansFallback("Plan study", "Courses, exams and focus time")
+                val focus = runCatching { focusRepository.getCompletedSessions() }.getOrDefault(emptyList())
+                    .mapNotNull { s -> s.completedAt?.let { az.tribe.lifeplanner.domain.service.StudyTime(it.date, s.actualMinutes, null) } }
+                val rows = runCatching { lifeLogs.getInRange(week.first(), today.plus(DatePeriod(days = 60))) }.getOrDefault(emptyList())
+                val times = az.tribe.lifeplanner.domain.service.StudyPlanner.times(rows, focus).filter { it.date >= week.first() && it.date <= today }
+                val next = az.tribe.lifeplanner.domain.service.StudyPlanner.upcoming(rows, today).firstOrNull { it.status != az.tribe.lifeplanner.domain.model.LogStatus.DONE }
+                val nextText = next?.let { e ->
+                    "${az.tribe.lifeplanner.domain.service.StudyPlanner.dueLine(e)} ${az.tribe.lifeplanner.domain.service.StudyPlanner.countdown(e.date, today)}"
+                }
+                if (times.isEmpty()) plansFallback(if (nextText != null) "Study for it" else "Plan study", nextText ?: "Exams, deadlines and study time")
                 else {
-                    val minutes = sessions.sumOf { it.actualMinutes }
+                    val minutes = times.sumOf { it.minutes }
                     AreaSummary(
                         area,
-                        "${minutes / 60}h ${(minutes % 60).toString().padStart(2, '0')}m",
-                        "focus time this week",
-                        week.map { d -> sessions.filter { it.completedAt?.date == d }.sumOf { it.actualMinutes }.toFloat() },
+                        az.tribe.lifeplanner.domain.service.StudyPlanner.formatMinutes(minutes),
+                        "studied this week" + (nextText?.let { ", $it" } ?: ""),
+                        week.map { d -> times.filter { it.date == d }.sumOf { it.minutes }.toFloat() },
                     )
                 }
             }
@@ -286,8 +292,9 @@ class V4LifeViewModel(
                 }
             }
             PlanArea.MEALS -> {
-                val meals = runCatching { lifeLogs.getInRange(week.first(), today) }.getOrDefault(emptyList()).filter { it.kind == LogKind.MEAL }
-                if (meals.isEmpty()) plansFallback("Log a meal", "Type what you ate in the box below")
+                val meals = runCatching { lifeLogs.getInRange(week.first(), today) }.getOrDefault(emptyList())
+                    .filter { it.kind == LogKind.MEAL && it.status == az.tribe.lifeplanner.domain.model.LogStatus.DONE }
+                if (meals.isEmpty()) plansFallback("Plan meals", "A week of dinners, a shopping list, water")
                 else AreaSummary(
                     area,
                     "${meals.size} ${if (meals.size == 1) "meal" else "meals"}",

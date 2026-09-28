@@ -144,7 +144,7 @@ object QuickAddParser {
                 title = workoutTitle(words, km, cleanTitle),
                 quantity = km, unit = km?.let { "km" }, durationMin = duration,
             )
-            isStudy -> out += ParsedEntry(PlanArea.STUDY, LogKind.STUDY, title = cleanTitle, durationMin = duration)
+            isStudy -> out += ParsedEntry(PlanArea.STUDY, LogKind.STUDY, title = studyTitle(cleanTitle), durationMin = duration)
             isWater -> {
                 val n = glasses.find(lower)?.groupValues?.get(1)?.toIntOrNull() ?: 1
                 out += ParsedEntry(PlanArea.HABITS, LogKind.WATER, title = if (n == 1) "Glass of water" else "$n glasses of water", quantity = n.toDouble(), unit = "glass")
@@ -219,6 +219,17 @@ object QuickAddParser {
             .replace(Regex("""\s{2,}"""), " ")
             .trim().trim(',', '.', '-')
         return stripped.ifBlank { text }.capitalizeFirst()
+    }
+
+    /**
+     * "Studied biology 45 min" files as "Biology", so the Study page can add up time per subject.
+     * With nothing left after the study words and the time, it is just "Study".
+     */
+    private fun studyTitle(title: String): String {
+        val verbs = Regex("""\b(studied|studying|study|revised|revising|revision|did|some|of|for)\b""", RegexOption.IGNORE_CASE)
+        val rest = title.replace(hoursAndMin, " ").replace(hours, " ").replace(minutes, " ").replace(verbs, " ")
+            .replace(Regex("""\s{2,}"""), " ").trim().trim(',', '.', '-')
+        return rest.ifBlank { "Study" }.capitalizeFirst()
     }
 
     private fun mealTitle(title: String, words: Set<String>): String {

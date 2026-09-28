@@ -24,6 +24,11 @@ import az.tribe.lifeplanner.domain.service.StreakPauses
 import az.tribe.lifeplanner.domain.service.TripPlanner
 import az.tribe.lifeplanner.ui.v4.travel.V4TravelViewModel
 import az.tribe.lifeplanner.ui.v4.travel.V4TripViewModel
+import az.tribe.lifeplanner.data.meals.MealService
+import az.tribe.lifeplanner.data.plans.PlanService
+import az.tribe.lifeplanner.data.study.StudyService
+import az.tribe.lifeplanner.ui.v4.areas.V4MealsViewModel
+import az.tribe.lifeplanner.ui.v4.areas.V4StudyViewModel
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
@@ -38,6 +43,9 @@ val v4Module = module {
     single<TripRepository> { TripRepositoryImpl(get(), get()) }
     single { WorkoutService(get(), get(), get(), get(), get()) }
     single { TripWeather(get()) }
+    single { PlanService(get(), get(), get(), get()) }
+    single { MealService(get(), get(), get(), get(), get(), get(), get()) }
+    single { StudyService(get(), get(), get()) }
     // Trip days with travel mode on do not break habit streaks.
     single<StreakPauses> {
         val trips = get<TripRepository>()
@@ -51,6 +59,8 @@ val v4Module = module {
     viewModelOf(::V4MoneyViewModel)
     viewModelOf(::V4FitnessViewModel)
     viewModelOf(::V4TravelViewModel)
+    viewModelOf(::V4MealsViewModel)
+    viewModelOf(::V4StudyViewModel)
     viewModel { params -> V4TripViewModel(params.get<String>(), get(), get(), get(), get(), get(), get()) }
     viewModel { params ->
         V4AreaViewModel(params.get<PlanArea>(), get(), get(), get(), get(), get(), get())

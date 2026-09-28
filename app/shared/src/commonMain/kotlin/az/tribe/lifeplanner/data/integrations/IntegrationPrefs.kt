@@ -70,7 +70,8 @@ enum class DataFlow(val key: String, val source: Source, val label: String, val 
     HEART("heart", Source.HEALTH, "Heart rate", "Resting and during workouts", FlowDirection.IN),
     SLEEP("sleep", Source.HEALTH, "Sleep", "Shapes tomorrow's plan", FlowDirection.BOTH),
     WEIGHT("weight", Source.HEALTH, "Weight", "Logged here or on a scale", FlowDirection.BOTH),
-    WATER("water", Source.HEALTH, "Water", "Glasses you tick off", FlowDirection.BOTH),
+    MEALS("meals", Source.HEALTH, "Meals", "Calories and protein you add", FlowDirection.OUT),
+    WATER("water", Source.HEALTH, "Water", "Glasses you tick off", FlowDirection.OUT),
     MINDFUL("mindful", Source.HEALTH, "Mindful minutes", "From breathing sessions", FlowDirection.OUT),
     EVENTS_IN("events_in", Source.CALENDAR, "Your events", "Today plans around your meetings", FlowDirection.IN),
     EVENTS_OUT("events_out", Source.CALENDAR, "Plans as events", "Trips, study blocks and workouts", FlowDirection.OUT);
