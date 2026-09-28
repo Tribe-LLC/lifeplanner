@@ -195,10 +195,17 @@ object MealPlanner {
             .replace(Regex("""\s{2,}"""), " ").trim().trimEnd('.', ';', ':')
     }
 
+    /**
+     * The aisle a shopping row goes under: a word in its name, else the aisle the coach gave it
+     * (kept in [LifeLog.unit]), else Other.
+     */
+    fun aisleOf(item: LifeLog): Aisle =
+        aisleOf(item.title).takeIf { it != Aisle.OTHER } ?: Aisle.entries.firstOrNull { it.name == item.unit } ?: Aisle.OTHER
+
     /** Items still to buy, grouped by aisle in walking order. Bought ones are left out. */
     fun byAisle(items: List<LifeLog>): List<Pair<Aisle, List<LifeLog>>> =
         items.filter { isShoppingItem(it) && it.status != LogStatus.DONE }
-            .groupBy { aisleOf(it.title) }
+            .groupBy { aisleOf(it) }
             .toList()
             .sortedBy { it.first.ordinal }
 

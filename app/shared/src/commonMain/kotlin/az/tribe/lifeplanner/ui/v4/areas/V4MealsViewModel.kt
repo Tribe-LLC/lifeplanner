@@ -24,6 +24,11 @@ import az.tribe.lifeplanner.domain.service.MealPlanner
 import az.tribe.lifeplanner.domain.service.MealSlot
 import az.tribe.lifeplanner.domain.service.MoneySummary
 import az.tribe.lifeplanner.domain.service.Recipe
+import az.tribe.lifeplanner.domain.service.CoachContext
+import az.tribe.lifeplanner.domain.service.CoachDinner
+import az.tribe.lifeplanner.domain.service.MealWeek
+import az.tribe.lifeplanner.domain.service.RotationDish
+import az.tribe.lifeplanner.data.meals.MealCoachService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -69,6 +74,31 @@ data class MealsState(
     val needsHealthGrant: Boolean = false,
     val healthOn: Boolean = false,
     val loaded: Boolean = false,
+    /** Favourites and what was eaten lately, as one row of dishes to plan again. */
+    val rotation: List<RotationDish> = emptyList(),
+    /** Meals from last week that "Repeat last week" would plan. */
+    val repeatable: Int = 0,
+    val staples: List<String> = MealWeek.DEFAULT_STAPLES,
+    /** Staples not on the list yet. */
+    val staplesMissing: Int = 0,
+    /** What you have in, as ingredient keys: kept off the list. */
+    val pantry: Set<String> = emptySet(),
+    /** Evenings in the next week with no dinner yet, for "Plan my week". */
+    val freeEvenings: List<LocalDate> = emptyList(),
+    /** Every meal in the window, for remembering what a dish needed. */
+    val history: List<LifeLog> = emptyList(),
+)
+
+/** The coach's week while it is being reviewed. Nothing is saved until "Put it in my week". */
+data class CoachWeekUi(
+    val dates: List<LocalDate> = emptyList(),
+    val household: Int = 1,
+    val asked: Boolean = false,
+    val loading: Boolean = false,
+    val failed: Boolean = false,
+    val dinners: List<CoachDinner> = emptyList(),
+    val swapping: LocalDate? = null,
+    val saving: Boolean = false,
 )
 
 /** What the plan sheet opens with: empty, a favourite, or an imported recipe. */
@@ -93,6 +123,7 @@ class V4MealsViewModel(
     private val currencyPrefs: CurrencyPrefs,
     private val planAreas: PlanAreasRepository,
     private val prefs: IntegrationPrefs,
+    private val coach: MealCoachService,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -136,6 +167,9 @@ class V4MealsViewModel(
         }
 
         val shopping = MealPlanner.shopping(all)
+        val toBuyTitles = shopping.filter { it.status != LogStatus.DONE }.map { it.title }
+        val staples = bs.firstOrNull { it.area == PlanArea.MEALS && it.metric == METRIC_STAPLES }?.let { MealWeek.decodeList(it.category) } ?: MealWeek.DEFAULT_STAPLES
+        val nowHour = Clock.System.now().toLocalDateTime(tz).hour
         MealsState(
             today = MealPlanner.day(all, today).mapValues { (_, v) -> v.map(::row) },
             water = all.filter { it.kind == LogKind.WATER && it.date == today }.sumOf { (it.quantity ?: 1.0).toInt() },
@@ -157,6 +191,15 @@ class V4MealsViewModel(
             needsHealthGrant = p.health && (p.isOn(DataFlow.MEALS) || p.isOn(DataFlow.WATER)) && !ex.canWriteHealth,
             healthOn = p.health,
             loaded = true,
+            rotation = MealWeek.rotation(all),
+            repeatable = MealWeek.repeatLastWeek(all, today).size,
+            staples = staples,
+            staplesMissing = MealWeek.toBuy(staples, toBuyTitles, emptySet()).size,
+            pantry = bs.firstOrNull { it.area == PlanArea.MEALS && it.metric == METRIC_PANTRY }?.let { MealWeek.decodeList(it.category).toSet() }.orEmpty(),
+            freeEvenings = (0..6).map { today.plus(DatePeriod(days = it)) }
+                .filter { d -> d != today || nowHour < 17 }
+                .filter { d -> MealPlanner.day(all, d)[MealSlot.DINNER].isNullOrEmpty() },
+            history = all.filter { MealPlanner.isMeal(it) },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MealsState(currency = currencyPrefs.code))
 
@@ -239,7 +282,7 @@ class V4MealsViewModel(
 
     fun draft(date: LocalDate = today(), slot: MealSlot = MealSlot.DINNER, dish: String = ""): MealDraft {
         // A dish planned before brings back what it needed, so the list fills itself.
-        val before = state.value.plan.flatMap { it.meals.values.flatten() }.map { it.log } + state.value.recent.map { it.log }
+        val before = state.value.history.sortedBy { it.occurredAt }
         val known = if (dish.isBlank()) null else before.lastOrNull { MealPlanner.dishName(it).equals(dish, ignoreCase = true) && MealNotes.decode(it.notes).ingredients.isNotEmpty() }
         val notes = MealNotes.decode(known?.notes)
         return MealDraft(
@@ -264,52 +307,222 @@ class V4MealsViewModel(
      * Plans a meal: the meal itself, [extra] leftover meals in the next free lunch and dinner slots,
      * and its ingredients on the shopping list (skipping what is already there to buy).
      */
-    fun plan(d: MealDraft, extra: Int, toCalendar: Boolean) {
-        val name = d.dish.trim().ifEmpty { return }
+    fun plan(d: MealDraft, extra: Int, toCalendar: Boolean, have: Set<String> = emptySet()) {
+        if (d.dish.isBlank()) return
         viewModelScope.launch {
-            val group = Uuid.random().toString()
-            val all = logs.getInRange(today().minus(DatePeriod(days = 1)), today().plus(DatePeriod(days = 30)))
-            val cook = LifeLog(
-                id = Uuid.random().toString(), area = PlanArea.MEALS, kind = LogKind.MEAL, title = name, category = d.slot.key,
-                quantity = d.kcal?.takeIf { it > 0 }, unit = d.kcal?.takeIf { it > 0 }?.let { MealService.UNIT_KCAL },
-                durationMin = d.minutes, occurredAt = LocalDateTime(d.date, d.slot.usualTime), externalId = group,
-                notes = MealNotes(d.url, d.proteinG, d.ingredients).encode(),
-            )
-            val taken = all.filter { MealPlanner.isMeal(it) && it.status != LogStatus.SKIPPED }.map { it.date to MealPlanner.slotOf(it) }.toSet()
-            val leftovers = MealPlanner.leftoverSlots(d.date, d.slot, extra, taken).map { (date, slot) ->
-                cook.copy(
-                    id = Uuid.random().toString(), title = "Leftover $name".let { if (name.startsWith("Leftover", true)) name else it },
-                    category = slot.key, occurredAt = LocalDateTime(date, slot.usualTime), durationMin = null,
-                    notes = MealNotes(proteinG = d.proteinG, leftoverOf = cook.id).encode(),
-                )
-            }
-            plans.plan(cook, toCalendar, eventTitle = "Cook: $name", leadMinutes = d.minutes?.coerceIn(10, 180) ?: 30)
-            if (leftovers.isNotEmpty()) plans.planAll(leftovers, addToCalendar = false)
-            addToList(d.ingredients, group)
-            enable(PlanArea.MEALS)
-            PostHogAnalytics.capture(
-                "v4_meal_planned",
-                mapOf("slot" to d.slot.key, "leftovers" to leftovers.size, "ingredients" to d.ingredients.size, "recipe" to (d.url != null), "calendar" to toCalendar),
+            rememberHave(d.ingredients, have)
+            planNow(d, extra, toCalendar)
+        }
+    }
+
+    /** Plans one meal now. Returns how many things went on the list. */
+    private suspend fun planNow(d: MealDraft, extra: Int, toCalendar: Boolean, hints: Map<String, Aisle> = emptyMap()): Int {
+        val name = d.dish.trim().ifEmpty { return 0 }
+        val group = Uuid.random().toString()
+        val all = logs.getInRange(today().minus(DatePeriod(days = 1)), today().plus(DatePeriod(days = 30)))
+        val cook = LifeLog(
+            id = Uuid.random().toString(), area = PlanArea.MEALS, kind = LogKind.MEAL, title = name, category = d.slot.key,
+            quantity = d.kcal?.takeIf { it > 0 }, unit = d.kcal?.takeIf { it > 0 }?.let { MealService.UNIT_KCAL },
+            durationMin = d.minutes, occurredAt = LocalDateTime(d.date, d.slot.usualTime), externalId = group,
+            notes = MealNotes(d.url, d.proteinG, d.ingredients).encode(),
+        )
+        val taken = all.filter { MealPlanner.isMeal(it) && it.status != LogStatus.SKIPPED }.map { it.date to MealPlanner.slotOf(it) }.toSet()
+        val leftovers = MealPlanner.leftoverSlots(d.date, d.slot, extra, taken).map { (date, slot) ->
+            cook.copy(
+                id = Uuid.random().toString(), title = "Leftover $name".let { if (name.startsWith("Leftover", true)) name else it },
+                category = slot.key, occurredAt = LocalDateTime(date, slot.usualTime), durationMin = null,
+                notes = MealNotes(proteinG = d.proteinG, leftoverOf = cook.id).encode(),
             )
         }
+        plans.plan(cook, toCalendar, eventTitle = "Cook: $name", leadMinutes = d.minutes?.coerceIn(10, 180) ?: 30)
+        if (leftovers.isNotEmpty()) plans.planAll(leftovers, addToCalendar = false)
+        val added = addToList(d.ingredients, group, hints)
+        enable(PlanArea.MEALS)
+        PostHogAnalytics.capture(
+            "v4_meal_planned",
+            mapOf("slot" to d.slot.key, "leftovers" to leftovers.size, "ingredients" to d.ingredients.size, "recipe" to (d.url != null), "calendar" to toCalendar),
+        )
+        return added
+    }
+
+    /**
+     * What the plan sheet said you have: those stay off the list now and are pre-marked next time;
+     * an ingredient shown and not marked is taken off "have it", since you said you need it.
+     */
+    private suspend fun rememberHave(ingredients: List<String>, have: Set<String>) {
+        val shown = ingredients.map(MealWeek::ingredientKey).toSet()
+        val marked = have.map(MealWeek::ingredientKey).toSet()
+        val before = state.value.pantry
+        val next = (before - shown) + marked
+        if (next != before) {
+            saveList(PANTRY_ID, METRIC_PANTRY, next)
+            if ((marked - before).isNotEmpty()) PostHogAnalytics.capture("v4_meals_have_it", mapOf("items" to (marked - before).size))
+        }
+    }
+
+    // ── Repeat last week ─────────────────────────────────────────────────────
+
+    /** Plans last week's meals on the same weekdays and fills the list. Calls back with (meals, items). */
+    fun repeatLastWeek(onDone: (Int, Int) -> Unit) {
+        viewModelScope.launch {
+            val today = today()
+            val all = logs.getInRange(today.minus(DatePeriod(days = 60)), today.plus(DatePeriod(days = 14)))
+            val copies = MealWeek.repeatLastWeek(all, today)
+            if (copies.isEmpty()) { onDone(0, 0); return@launch }
+            val ids = copies.associate { it.source.id to Uuid.random().toString() }
+            val groups = mutableMapOf<String, String>()
+            val rows = copies.map { c ->
+                val notes = MealNotes.decode(c.source.notes)
+                // Leftovers follow their cook when both are copied; alone they are just a meal.
+                val cook = notes.leftoverOf?.let { ids[it] }
+                val key = notes.leftoverOf?.takeIf { cook != null } ?: c.source.id
+                c.source.copy(
+                    id = ids.getValue(c.source.id), status = LogStatus.PLANNED, source = LifeLog.SOURCE_PLAN,
+                    category = c.slot.key, occurredAt = LocalDateTime(c.date, c.slot.usualTime),
+                    externalId = groups.getOrPut(key) { Uuid.random().toString() },
+                    notes = notes.copy(leftoverOf = cook).encode(),
+                )
+            }
+            plans.planAll(rows, addToCalendar = false)
+            var items = 0
+            rows.forEach { r -> MealNotes.decode(r.notes).ingredients.takeIf { it.isNotEmpty() }?.let { items += addToList(it, r.externalId) } }
+            enable(PlanArea.MEALS)
+            PostHogAnalytics.capture("v4_meals_repeat_week", mapOf("meals" to rows.size, "items" to items))
+            onDone(rows.size, items)
+        }
+    }
+
+    // ── Plan my week (the coach) ─────────────────────────────────────────────
+
+    val coachWeek = MutableStateFlow<CoachWeekUi?>(null)
+
+    fun openCoachWeek() {
+        coachWeek.value = CoachWeekUi(dates = state.value.freeEvenings, household = coach.household)
+    }
+
+    fun closeCoachWeek() {
+        coachWeek.value = null
+    }
+
+    private fun coachContext(household: Int): CoachContext {
+        val s = state.value
+        return CoachContext(
+            foodBudget = s.foodBudget,
+            household = household,
+            likes = s.rotation.map { it.name },
+            have = s.pantry.toList(),
+            onList = s.toBuy.flatMap { it.second }.map { it.title },
+            planned = s.plan.flatMap { d -> d.meals.values.flatten().filter { it.planned }.map { it.dish } }.distinct(),
+        )
+    }
+
+    fun askCoach(household: Int) {
+        val ui = coachWeek.value ?: return
+        coach.household = household
+        coachWeek.value = ui.copy(household = household, asked = true, loading = true, failed = false)
+        viewModelScope.launch {
+            val dinners = coach.planWeek(ui.dates, coachContext(household))
+            coachWeek.value = coachWeek.value?.copy(loading = false, failed = dinners.isNullOrEmpty(), dinners = dinners.orEmpty())
+        }
+    }
+
+    fun swapDinner(date: LocalDate) {
+        val ui = coachWeek.value ?: return
+        if (ui.swapping != null) return
+        coachWeek.value = ui.copy(swapping = date)
+        viewModelScope.launch {
+            val avoid = ui.dinners.map { it.title } + state.value.plan.flatMap { d -> d.meals.values.flatten().map { it.dish } }
+            val next = coach.swap(date, coachContext(ui.household), avoid.distinct())
+            val now = coachWeek.value ?: return@launch
+            coachWeek.value = now.copy(
+                swapping = null,
+                dinners = if (next == null) now.dinners else now.dinners.map { if (it.date == date) next.copy(date = date) else it },
+            )
+        }
+    }
+
+    fun dropDinner(date: LocalDate) {
+        coachWeek.value = coachWeek.value?.let { ui -> ui.copy(dinners = ui.dinners.filterNot { it.date == date }) }
+    }
+
+    /** Plans every dinner kept, with its ingredients on the list (minus what is there or at home). */
+    fun putCoachWeek(onDone: (Int, Int) -> Unit) {
+        val ui = coachWeek.value ?: return
+        if (ui.saving) return
+        coachWeek.value = ui.copy(saving = true)
+        viewModelScope.launch {
+            var items = 0
+            ui.dinners.forEach { dn ->
+                val hints = dn.ingredients.mapNotNull { i -> i.aisle?.let { a -> i.line.lowercase() to a } }.toMap()
+                items += planNow(
+                    MealDraft(dish = dn.title, date = dn.date, slot = MealSlot.DINNER, ingredients = dn.ingredients.map { it.line }, minutes = dn.minutes),
+                    extra = 0, toCalendar = false, hints = hints,
+                )
+            }
+            PostHogAnalytics.capture("v4_meals_coach_saved", mapOf("dinners" to ui.dinners.size, "items" to items))
+            coachWeek.value = null
+            onDone(ui.dinners.size, items)
+        }
+    }
+
+    // ── Staples ──────────────────────────────────────────────────────────────
+
+    /** Puts every staple not already on the list onto it. Returns through [onDone] how many. */
+    fun addStaples(onDone: (Int) -> Unit = {}) {
+        viewModelScope.launch {
+            val existing = MealPlanner.shopping(logs.getInRange(today().minus(DatePeriod(days = 60)), today().plus(DatePeriod(days = 30))))
+                .filter { it.status != LogStatus.DONE }
+            val fresh = MealWeek.toBuy(state.value.staples, existing.map { it.title }, emptySet())
+            saveItems(fresh, null, emptyMap())
+            PostHogAnalytics.capture("v4_meals_staples_added", mapOf("items" to fresh.size))
+            onDone(fresh.size)
+        }
+    }
+
+    fun saveStaples(items: List<String>) {
+        viewModelScope.launch { saveList(STAPLES_ID, METRIC_STAPLES, items) }
+    }
+
+    private suspend fun saveList(id: String, metric: String, items: Collection<String>) {
+        val text = MealWeek.encodeList(items)
+        budgets.save(Budget(id = id, area = PlanArea.MEALS, metric = metric, category = text, amount = MealWeek.decodeList(text).size.toDouble(), period = az.tribe.lifeplanner.domain.model.BudgetPeriod.WEEK))
     }
 
     // ── Shopping list ────────────────────────────────────────────────────────
 
     fun addToShopping(text: String) {
-        viewModelScope.launch { addToList(MealPlanner.parseShopping(text), null) }
+        viewModelScope.launch {
+            // Typed in: kept even if you said you have it, but not twice on the list.
+            val existing = MealPlanner.shopping(logs.getInRange(today().minus(DatePeriod(days = 60)), today().plus(DatePeriod(days = 30))))
+            val typed = MealPlanner.parseShopping(text, existing)
+            saveItems(MealWeek.toBuy(typed, existing.filter { it.status != LogStatus.DONE }.map { it.title }, emptySet()), null, emptyMap())
+        }
     }
 
-    private suspend fun addToList(items: List<String>, group: String?) {
+    /**
+     * A meal's ingredients onto the list: one per line, minus what is on it already (in any amount)
+     * and what you have in. [hints] carries the coach's aisle for items the words do not place.
+     * Returns how many were added.
+     */
+    private suspend fun addToList(items: List<String>, group: String?, hints: Map<String, Aisle> = emptyMap()): Int {
         val existing = MealPlanner.shopping(logs.getInRange(today().minus(DatePeriod(days = 60)), today().plus(DatePeriod(days = 30))))
-        val fresh = MealPlanner.parseShopping(items.joinToString("\n"), existing, perLine = group != null)
+            .filter { it.status != LogStatus.DONE }
+        val have = budgets.getAll().firstOrNull { it.area == PlanArea.MEALS && it.metric == METRIC_PANTRY }?.let { MealWeek.decodeList(it.category).toSet() }.orEmpty()
+        val fresh = MealWeek.toBuy(items, existing.map { it.title }, have)
+        saveItems(fresh, group, hints)
+        return fresh.size
+    }
+
+    private suspend fun saveItems(fresh: List<String>, group: String?, hints: Map<String, Aisle>) {
+        if (fresh.isEmpty()) return
         val now = Clock.System.now().toLocalDateTime(tz)
         logs.saveAll(
             fresh.mapIndexed { i, t ->
+                val hint = hints.entries.firstOrNull { (line, _) -> MealWeek.ingredientKey(line) == MealWeek.ingredientKey(t) }?.value
                 LifeLog(
                     id = Uuid.random().toString(), area = PlanArea.MEALS, kind = LogKind.NOTE, status = LogStatus.PLANNED, title = t,
                     category = MealPlanner.CATEGORY_SHOPPING, occurredAt = LocalDateTime(now.date, LocalTime(now.hour, now.minute, (now.second + i).coerceAtMost(59))),
-                    externalId = group,
+                    externalId = group, unit = hint?.takeIf { MealPlanner.aisleOf(t) == Aisle.OTHER }?.name,
                 )
             },
         )
@@ -400,6 +613,13 @@ class V4MealsViewModel(
             if (list.isNotEmpty()) append("On my shopping list: ${list.take(15).joinToString(", ")}. ")
             append("Keep it simple, reuse ingredients across days, and plan one cook for two meals where it makes sense.")
         }
+    }
+
+    companion object {
+        const val METRIC_STAPLES = "staples"
+        const val METRIC_PANTRY = "pantry"
+        private const val STAPLES_ID = "meals-staples"
+        private const val PANTRY_ID = "meals-pantry"
     }
 
     private suspend fun enable(area: PlanArea) {

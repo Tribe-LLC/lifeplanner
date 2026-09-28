@@ -1,7 +1,9 @@
 package az.tribe.lifeplanner.ui.v4.areas
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,8 +34,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.core.MoneyFormat
@@ -41,7 +47,9 @@ import az.tribe.lifeplanner.di.createFileSharer
 import az.tribe.lifeplanner.domain.model.LifeLog
 import az.tribe.lifeplanner.domain.model.LogStatus
 import az.tribe.lifeplanner.domain.model.PlanArea
+import az.tribe.lifeplanner.domain.service.MealPlanner
 import az.tribe.lifeplanner.domain.service.MealSlot
+import az.tribe.lifeplanner.domain.service.MealWeek
 import az.tribe.lifeplanner.ui.health.rememberHealthPermissionLauncher
 import az.tribe.lifeplanner.ui.v4.components.CheckCircleButton
 import az.tribe.lifeplanner.ui.v4.components.OneLine
@@ -80,6 +88,9 @@ fun MealsSection(onAskCoach: (String) -> Unit, viewModel: V4MealsViewModel = koi
     var editingWater by remember { mutableStateOf(false) }
     var budgetFor by remember { mutableStateOf(false) }
     var copied by remember { mutableStateOf(false) }
+    var notice by remember { mutableStateOf<String?>(null) }
+    var editingStaples by remember { mutableStateOf(false) }
+    val coachWeek by viewModel.coachWeek.collectAsState()
     val sharer = remember { createFileSharer() }
     val askHealth = rememberHealthPermissionLauncher { viewModel.onHealthGranted() }
 
@@ -143,6 +154,23 @@ fun MealsSection(onAskCoach: (String) -> Unit, viewModel: V4MealsViewModel = koi
 
     // ── This week's plan ──
     Text("This week's plan", style = V4.type.headline, color = c.ink, modifier = Modifier.semantics { heading() })
+    if (s.repeatable > 0 || s.freeEvenings.isNotEmpty()) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (s.repeatable > 0) {
+                V4PillButton("Repeat last week", onClick = {
+                    viewModel.repeatLastWeek { meals, items ->
+                        notice = if (meals == 0) "Last week is already in your plan."
+                        else "Planned $meals ${if (meals == 1) "meal" else "meals"} from last week" + if (items > 0) ". $items ${if (items == 1) "thing" else "things"} went on your list." else "."
+                    }
+                }, filled = false)
+            }
+            if (s.freeEvenings.isNotEmpty()) V4PillButton("Plan my week", onClick = viewModel::openCoachWeek, container = tint.color)
+        }
+    }
+    notice?.let {
+        LaunchedEffect(it) { delay(5_000); notice = null }
+        Text(it, style = V4.type.label, color = c.success)
+    }
     V4Card(contentPadding = PaddingValues(0.dp), verticalSpacing = 0.dp) {
         s.plan.forEachIndexed { i, day ->
             if (i > 0) V4Divider()
@@ -168,21 +196,53 @@ fun MealsSection(onAskCoach: (String) -> Unit, viewModel: V4MealsViewModel = koi
             }
         }
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        V4PillButton("Plan a meal", onClick = { planning = viewModel.draft() }, container = tint.color)
-        V4PillButton("Plan with the coach", onClick = { onAskCoach(viewModel.coachPrompt()) }, filled = false)
+    V4PillButton("Plan a meal", onClick = { planning = viewModel.draft() }, filled = false)
+
+    // ── Your rotation ──
+    if (s.rotation.isNotEmpty()) {
+        Text("Your rotation", style = V4.type.headline, color = c.ink, modifier = Modifier.semantics { heading() })
+        Text("What you make most. Tap one to plan it with its ingredients.", style = V4.type.caption, color = c.ink2)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            s.rotation.forEach { dish ->
+                RotationChip(dish.name, if (dish.times > 1) "${dish.times}x" else null) {
+                    val slot = s.history.filter { az.tribe.lifeplanner.domain.service.MealPlanner.dishName(it).equals(dish.name, ignoreCase = true) }
+                        .maxByOrNull { it.occurredAt }?.let { az.tribe.lifeplanner.domain.service.MealPlanner.slotOf(it) } ?: MealSlot.DINNER
+                    val day = s.plan.firstOrNull { it.meals[slot].isNullOrEmpty() }?.date ?: Clock.System.todayIn(TimeZone.currentSystemDefault())
+                    planning = viewModel.draft(date = day, slot = slot, dish = dish.name)
+                    az.tribe.lifeplanner.data.analytics.PostHogAnalytics.capture("v4_meals_rotation_tap", mapOf("times" to dish.times))
+                }
+            }
+        }
     }
 
     // ── Shopping list ──
     var adding by remember { mutableStateOf("") }
+    var staplesAdded by remember { mutableStateOf(0) }
+    if (staplesAdded > 0) LaunchedEffect(staplesAdded) { delay(3_000); staplesAdded = 0 }
     Text("Shopping list", style = V4.type.headline, color = c.ink, modifier = Modifier.semantics { heading() })
     V4Card(verticalSpacing = 10.dp) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(Modifier.weight(1f)) { TravelField(adding, { adding = it }, "Eggs, milk, 2 onions", "Add to the shopping list") }
             V4PillButton("Add", onClick = { viewModel.addToShopping(adding); adding = "" })
         }
+        // Always buy
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(tint.soft).padding(start = 12.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Always buy", style = V4.type.label, color = tint.ink)
+                Text(s.staples.joinToString(", ").ifEmpty { "Nothing yet. Add what you buy every week." }, style = V4.type.body, color = if (s.staples.isEmpty()) c.ink3 else c.ink, maxLines = 2)
+            }
+            if (s.staples.isNotEmpty()) {
+                if (s.staplesMissing > 0) V4PillButton("Add them", onClick = { viewModel.addStaples { n -> if (n > 0) staplesAdded = n } }, container = tint.color)
+                else Text("On the list", style = V4.type.label, color = c.ink3, modifier = Modifier.padding(horizontal = 6.dp))
+            }
+            V4TextButton("Edit", onClick = { editingStaples = true }, modifier = Modifier.semantics { contentDescription = "Change what you always buy" })
+        }
         if (s.toBuy.isEmpty() && s.bought.isEmpty()) {
-            Text("Empty. Plan a meal with its ingredients and they land here, sorted by aisle.", style = V4.type.caption, color = c.ink2)
+            Text("Empty. Plan a meal with its ingredients and they land here, sorted by aisle. What you have in stays off.", style = V4.type.caption, color = c.ink2)
         }
         s.toBuy.forEach { (aisle, items) ->
             Text(aisle.label, style = V4.type.micro, color = c.ink3, modifier = Modifier.padding(top = 4.dp))
@@ -202,58 +262,24 @@ fun MealsSection(onAskCoach: (String) -> Unit, viewModel: V4MealsViewModel = koi
             }
             if (copied) LaunchedEffect(Unit) { delay(2_000); copied = false }
         }
+        if (staplesAdded > 0) Text("Added $staplesAdded from Always buy.", style = V4.type.label, color = c.success)
     }
 
-    // ── Last 7 days ──
+    // ── Last 7 days, one line (Money has the rest) ──
     s.week?.let { w ->
-        Text("Last 7 days", style = V4.type.headline, color = c.ink, modifier = Modifier.semantics { heading() })
-        V4Card {
-            Text(
-                if (w.eaten == 0) "No meals logged yet" else "${w.eaten} ${if (w.eaten == 1) "meal" else "meals"}, ${w.home} at home, ${w.out} out",
-                style = V4.type.bodyStrong, color = c.ink,
-            )
-            Row(Modifier.fillMaxWidth().height(56.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
-                val max = (w.perDay.maxOfOrNull { it.second } ?: 0).coerceAtLeast(3)
-                w.perDay.forEach { (d, n) ->
-                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Box(
-                            Modifier.fillMaxWidth().height((6 + 34 * n / max).dp).clip(RoundedCornerShape(6.dp))
-                                .background(if (n > 0) tint.color else c.trackOff)
-                                .semantics { contentDescription = "${az.tribe.lifeplanner.domain.service.FitnessWeek.dayName(d.dayOfWeek)}, $n ${if (n == 1) "meal" else "meals"}" },
-                        )
-                        Text(az.tribe.lifeplanner.domain.service.FitnessWeek.dayLetter(d.dayOfWeek), style = V4.type.micro, color = c.ink3)
-                    }
+        Text(
+            if (w.eaten == 0) "Last 7 days: no meals logged yet."
+            else "Last 7 days: ${w.eaten} ${if (w.eaten == 1) "meal" else "meals"}, ${w.home} at home, ${w.out} out.",
+            style = V4.type.body, color = c.ink2,
+        )
+        if (!s.hasFoodBudget) {
+            if (budgetFor) {
+                var amount by remember { mutableStateOf("") }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(Modifier.weight(1f)) { TravelField(amount, { v -> amount = v.filter { it.isDigit() || it == '.' || it == ',' } }, "${MoneyFormat.symbol(s.currency)}a week for food", "Food budget per week", KeyboardType.Decimal) }
+                    V4PillButton("Save", onClick = { amount.toAmount()?.let { viewModel.setFoodBudget(it); budgetFor = false } })
                 }
-            }
-            if (w.foodSpent > 0) Text("${MoneyFormat.format(w.foodSpent, s.currency)} on food, groceries and eating out.", style = V4.type.caption, color = c.ink2)
-            if (!s.hasFoodBudget) {
-                if (budgetFor) {
-                    var amount by remember { mutableStateOf("") }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Box(Modifier.weight(1f)) { TravelField(amount, { v -> amount = v.filter { it.isDigit() || it == '.' || it == ',' } }, "${MoneyFormat.symbol(s.currency)}a week for food", "Food budget per week", KeyboardType.Decimal) }
-                        V4PillButton("Save", onClick = { amount.toAmount()?.let { viewModel.setFoodBudget(it); budgetFor = false } })
-                    }
-                } else V4TextButton("Set a weekly food budget", onClick = { budgetFor = true })
-            }
-        }
-    }
-
-    // ── Eaten lately ──
-    if (s.recent.isNotEmpty()) {
-        Text("Eaten lately", style = V4.type.headline, color = c.ink, modifier = Modifier.semantics { heading() })
-        V4Card(contentPadding = PaddingValues(0.dp), verticalSpacing = 0.dp) {
-            s.recent.forEachIndexed { i, r ->
-                if (i > 0) V4Divider()
-                Row(
-                    Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(role = Role.Button) { acting = r }.padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        OneLine(r.dish, V4.type.bodyStrong, c.ink)
-                        OneLine(listOfNotNull(az.tribe.lifeplanner.domain.service.MealPlanner.slotOf(r.log).label, dayWord(r.log.date), r.meta).joinToString(", "), V4.type.caption, c.ink3)
-                    }
-                }
-            }
+            } else V4TextButton("Set a weekly food budget", onClick = { budgetFor = true })
         }
     }
 
@@ -271,10 +297,35 @@ fun MealsSection(onAskCoach: (String) -> Unit, viewModel: V4MealsViewModel = koi
         PlanMealSheet(
             initial = draft,
             favourites = s.favourites,
+            pantry = s.pantry,
             canCalendar = s.canCalendar,
             viewModel = viewModel,
             onDismiss = { planning = null },
-            onSave = { d, extra, cal -> viewModel.plan(d, extra, cal); planning = null },
+            onSave = { d, extra, cal, have -> viewModel.plan(d, extra, cal, have); planning = null },
+        )
+    }
+
+    coachWeek?.let { ui ->
+        CoachWeekSheet(
+            ui = ui,
+            onAsk = viewModel::askCoach,
+            onSwap = viewModel::swapDinner,
+            onDrop = viewModel::dropDinner,
+            onPut = {
+                viewModel.putCoachWeek { dinners, items ->
+                    notice = "Planned $dinners ${if (dinners == 1) "dinner" else "dinners"}" + if (items > 0) ". $items ${if (items == 1) "thing" else "things"} went on your list." else "."
+                }
+            },
+            onChat = { viewModel.closeCoachWeek(); onAskCoach(viewModel.coachPrompt()) },
+            onDismiss = viewModel::closeCoachWeek,
+        )
+    }
+
+    if (editingStaples) {
+        StaplesSheet(
+            initial = s.staples,
+            onDismiss = { editingStaples = false },
+            onSave = { viewModel.saveStaples(it); editingStaples = false },
         )
     }
 
@@ -378,10 +429,13 @@ private fun LogMealSheet(
         DayChoices(day, { day = it }, days = 2, includeYesterday = true)
         V4SwitchRow("Bought it (eaten out, takeaway)", bought, { bought = it })
         if (bought) TravelField(cost, { v -> cost = v.filter { it.isDigit() || it == '.' || it == ',' } }, "${MoneyFormat.symbol(currency)}0.00, goes to Money", "What it cost", KeyboardType.Decimal)
-        FormLabel("Calories, if you know")
-        TravelField(kcal, { v -> kcal = v.filter { it.isDigit() } }, "Skip it, or about 600", "Calories", KeyboardType.Number)
+        MoreFields(kcal.isNotEmpty()) {
+            FormLabel("Calories, if you know")
+            TravelField(kcal, { v -> kcal = v.filter { it.isDigit() } }, "Skip it, or about 600", "Calories", KeyboardType.Number)
+            Text("Only for Health. Skip it and nothing is missing.", style = V4.type.caption, color = V4.colors.ink3)
+        }
         V4PrimaryButton("Save", onClick = { onSave(dish, sl, day, if (bought) cost.toAmount() else null, kcal.toAmount()) }, enabled = dish.isNotBlank(), modifier = Modifier.fillMaxWidth())
-        SheetNote("No counting needed. The name is enough; calories only go to Health when you add them.")
+        SheetNote("No counting needed. The name is enough.")
     }
 }
 
@@ -390,14 +444,18 @@ private fun LogMealSheet(
 private fun PlanMealSheet(
     initial: MealDraft,
     favourites: List<String>,
+    pantry: Set<String>,
     canCalendar: Boolean,
     viewModel: V4MealsViewModel,
     onDismiss: () -> Unit,
-    onSave: (MealDraft, Int, Boolean) -> Unit,
+    onSave: (MealDraft, Int, Boolean, Set<String>) -> Unit,
 ) {
     val c = V4.colors
     var d by remember { mutableStateOf(initial) }
-    var ingredients by remember { mutableStateOf(initial.ingredients.joinToString("\n")) }
+    var ingredients by remember { mutableStateOf(initial.ingredients) }
+    // Marked "have it": pre-marked from what you said you have before.
+    var have by remember { mutableStateOf(initial.ingredients.filter { MealWeek.ingredientKey(it) in pantry }.toSet()) }
+    var newItem by remember { mutableStateOf("") }
     var link by remember { mutableStateOf("") }
     var extra by remember { mutableStateOf(0) }
     var kcal by remember { mutableStateOf(initial.kcal?.toInt()?.toString() ?: "") }
@@ -407,7 +465,8 @@ private fun PlanMealSheet(
 
     fun apply(next: MealDraft) {
         d = next
-        ingredients = next.ingredients.joinToString("\n")
+        ingredients = next.ingredients
+        have = next.ingredients.filter { MealWeek.ingredientKey(it) in pantry }.toSet()
         kcal = next.kcal?.toInt()?.toString() ?: ""
     }
 
@@ -415,10 +474,19 @@ private fun PlanMealSheet(
         FormLabel("From a recipe link, optional")
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(Modifier.weight(1f)) { TravelField(link, { link = it }, "Paste a recipe page", "Recipe link", KeyboardType.Uri) }
-            V4PillButton(if (importing) "Reading" else "Get it", onClick = { if (link.isNotBlank() && !importing) viewModel.importRecipe(link, d.copy(ingredients = ingredients.lines().filter { it.isNotBlank() })) { apply(it) } }, filled = false)
+            V4PillButton(if (importing) "Reading" else "Get it", onClick = { if (link.isNotBlank() && !importing) viewModel.importRecipe(link, d.copy(ingredients = ingredients)) { apply(it) } }, filled = false)
         }
         if (failed) Text("Could not read a recipe there. Type it in instead.", style = V4.type.caption, color = c.ink2)
         d.url?.let { Text("From ${it.substringAfter("://").substringBefore('/')}" + (d.servings?.let { n -> ", serves $n" } ?: "") + (d.minutes?.let { m -> ", $m min" } ?: ""), style = V4.type.caption, color = c.ink2) }
+        if (d.url == null && Clock.System.todayIn(TimeZone.currentSystemDefault()) <= MEALIME_CLOSES) {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(c.area(PlanArea.MEALS).soft).padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text("Coming from Mealime?", style = V4.type.label, color = c.area(PlanArea.MEALS).ink)
+                Text("It closes on 21 October with no export. Paste a recipe's web link above and it comes with you, ingredients and all.", style = V4.type.caption, color = c.ink2)
+            }
+        }
 
         FormLabel("What")
         TravelField(d.dish, { d = d.copy(dish = it) }, "Chilli, stir fry, pasta bake", "Dish name")
@@ -432,21 +500,178 @@ private fun PlanMealSheet(
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             MealSlot.entries.forEach { m -> Choice(m.label, d.slot == m) { d = d.copy(slot = m) } }
         }
-        FormLabel("What you need, one per line")
-        MultiLineField(ingredients, { ingredients = it }, "Onion\nMince\nTinned tomatoes", "Ingredients")
-        Text("Goes on the shopping list, minus what is already there.", style = V4.type.caption, color = c.ink3)
+
+        FormLabel("What you need")
+        if (ingredients.isNotEmpty()) {
+            Text("Tap what you already have. It stays off the list, now and next time.", style = V4.type.caption, color = c.ink3)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ingredients.forEach { item -> HaveChip(item, item in have) { have = if (item in have) have - item else have + item } }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.weight(1f)) { TravelField(newItem, { newItem = it }, if (ingredients.isEmpty()) "Onion, mince, tinned tomatoes" else "Add an ingredient", "Add an ingredient") }
+            V4PillButton("Add", onClick = {
+                val more = MealPlanner.parseShopping(newItem).filter { n -> ingredients.none { it.equals(n, ignoreCase = true) } }
+                ingredients = ingredients + more
+                newItem = ""
+            }, filled = false)
+        }
+        if (ingredients.isNotEmpty()) {
+            val need = ingredients.count { it !in have }
+            Text(
+                if (need == 0) "You have everything. Nothing goes on the list."
+                else "$need ${if (need == 1) "goes" else "go"} on your list" + if (have.isNotEmpty()) ", ${have.size} you have." else ", minus what is already there.",
+                style = V4.type.label, color = c.success,
+            )
+        }
+
         FormLabel("Cook once, eat again")
         CountChoices(listOf(0, 1, 2, 3), extra, { if (it == 0) "Just this meal" else "+$it ${if (it == 1) "meal" else "meals"}" }) { extra = it }
         if (extra > 0) Text("Leftovers go in your next free lunch and dinner.", style = V4.type.caption, color = c.ink3)
-        FormLabel("Calories a portion, optional")
-        TravelField(kcal, { v -> kcal = v.filter { it.isDigit() } }, "Skip it, or about 550", "Calories a portion", KeyboardType.Number)
+        MoreFields(kcal.isNotEmpty()) {
+            FormLabel("Calories a portion, optional")
+            TravelField(kcal, { v -> kcal = v.filter { it.isDigit() } }, "Skip it, or about 550", "Calories a portion", KeyboardType.Number)
+            Text("Only for Health. Skip it and nothing is missing.", style = V4.type.caption, color = c.ink3)
+        }
         if (canCalendar) V4SwitchRow("Add cooking time to your calendar", toCalendar, { toCalendar = it })
         V4PrimaryButton(
             "Plan it",
-            onClick = { onSave(d.copy(ingredients = ingredients.lines().map { it.trim() }.filter { it.isNotEmpty() }, kcal = kcal.toAmount()), extra, toCalendar) },
+            onClick = { onSave(d.copy(ingredients = ingredients.map { it.trim() }.filter { it.isNotEmpty() }, kcal = kcal.toAmount()), extra, toCalendar, have) },
             enabled = d.dish.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
         )
         SheetNote("It shows on Today on the day. Tick it when you have eaten it.")
+    }
+}
+
+/** Mealime shuts down on this day with no export; the hint goes away after it. */
+private val MEALIME_CLOSES = LocalDate(2026, 10, 21)
+
+/** Calories and protein, folded away behind "More" (they only feed Health). Opens by itself when filled. */
+@Composable
+private fun MoreFields(filled: Boolean, content: @Composable () -> Unit) {
+    var open by remember { mutableStateOf(filled) }
+    if (open) content()
+    else V4TextButton("More: calories for Health", onClick = { open = true }, modifier = Modifier.semantics { stateDescription = "Collapsed" })
+}
+
+/** An ingredient that can be marked "have it": crossed through and kept off the list. */
+@Composable
+private fun HaveChip(item: String, have: Boolean, onToggle: () -> Unit) {
+    val c = V4.colors
+    Text(
+        if (have) "$item, have it" else item,
+        style = V4.type.label.copy(textDecoration = if (have) TextDecoration.LineThrough else null),
+        color = if (have) c.ink3 else c.ink,
+        modifier = Modifier
+            .heightIn(min = 44.dp)
+            .clip(RoundedCornerShape(22.dp))
+            .background(if (have) c.surfaceMuted else c.surface)
+            .border(1.5.dp, if (have) c.surfaceMuted else c.line, RoundedCornerShape(22.dp))
+            .toggleable(value = have, role = Role.Checkbox, onValueChange = { onToggle() })
+            .semantics { stateDescription = if (have) "Have it" else "Need it" }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    )
+}
+
+/** A dish in "Your rotation": its name and how many times. */
+@Composable
+private fun RotationChip(name: String, times: String?, onClick: () -> Unit) {
+    val c = V4.colors
+    Row(
+        Modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(22.dp)).background(c.surface)
+            .border(1.5.dp, c.line, RoundedCornerShape(22.dp))
+            .clickable(role = Role.Button, onClickLabel = "Plan $name", onClick = onClick)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(name, style = V4.type.label, color = c.ink, maxLines = 1)
+        times?.let { Text(it, style = V4.type.micro, color = c.ink3) }
+    }
+}
+
+/** "Always buy", one per line. */
+@Composable
+private fun StaplesSheet(initial: List<String>, onDismiss: () -> Unit, onSave: (List<String>) -> Unit) {
+    var text by remember { mutableStateOf(initial.joinToString("\n")) }
+    AreaSheet("Always buy", onDismiss) {
+        Text("What you buy every week. One tap puts whatever is not on the list yet onto it.", style = V4.type.body, color = V4.colors.ink2)
+        MultiLineField(text, { text = it }, "Milk\nEggs\nBread", "Things you always buy, one per line", minLines = 5)
+        V4PrimaryButton("Save", onClick = { onSave(MealWeek.decodeList(text)) }, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+/**
+ * "Plan my week": how many you cook for, then the coach's dinners to keep, swap or drop, then
+ * "Put it in my week". Nothing is saved before that last tap, so a failure costs nothing.
+ */
+@Composable
+private fun CoachWeekSheet(
+    ui: CoachWeekUi,
+    onAsk: (Int) -> Unit,
+    onSwap: (LocalDate) -> Unit,
+    onDrop: (LocalDate) -> Unit,
+    onPut: () -> Unit,
+    onChat: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val c = V4.colors
+    val tint = c.area(PlanArea.MEALS)
+    var household by remember { mutableStateOf(ui.household) }
+    val days = ui.dates.joinToString(", ") { az.tribe.lifeplanner.domain.service.FitnessWeek.shortDay(it.dayOfWeek) }
+    AreaSheet("Your week of dinners", onDismiss) {
+        when {
+            !ui.asked -> {
+                Text(
+                    "The coach plans ${ui.dates.size} ${if (ui.dates.size == 1) "dinner" else "dinners"} for your free evenings ($days), around your food budget and what you like, reusing ingredients across days.",
+                    style = V4.type.body, color = c.ink2,
+                )
+                FormLabel("Cooking for")
+                CountChoices(listOf(1, 2, 3, 4, 5), household, { if (it == 5) "5+" else "$it" }) { household = it }
+                V4PrimaryButton("Plan my week", onClick = { onAsk(household) }, container = tint.color, modifier = Modifier.fillMaxWidth())
+                SheetNote("You see every dinner before anything is saved.")
+            }
+            ui.loading -> {
+                Text("The coach is planning $days...", style = V4.type.body, color = c.ink2, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+            }
+            ui.failed -> {
+                Text("Could not reach the coach. Your plan is unchanged. Try again when you are online.", style = V4.type.body, color = c.ink, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                V4PrimaryButton("Try again", onClick = { onAsk(household) }, modifier = Modifier.fillMaxWidth())
+                V4TextButton("Talk it through in chat instead", onClick = onChat)
+            }
+            ui.dinners.isEmpty() -> {
+                Text("You dropped them all. Ask again for a fresh set, or close this.", style = V4.type.body, color = c.ink2)
+                V4PrimaryButton("Ask again", onClick = { onAsk(household) }, modifier = Modifier.fillMaxWidth())
+            }
+            else -> {
+                V4Card(contentPadding = PaddingValues(0.dp), verticalSpacing = 0.dp) {
+                    ui.dinners.forEachIndexed { i, dn ->
+                        if (i > 0) V4Divider()
+                        Column(Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp, top = 12.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text(az.tribe.lifeplanner.domain.service.FitnessWeek.shortDay(dn.date.dayOfWeek), style = V4.type.label, color = tint.ink, modifier = Modifier.width(40.dp))
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(if (ui.swapping == dn.date) "Finding another..." else dn.title, style = V4.type.bodyStrong, color = if (ui.swapping == dn.date) c.ink3 else c.ink)
+                                    Text(
+                                        listOfNotNull(dn.minutes?.let { "$it min" }, dn.ingredients.takeIf { it.isNotEmpty() }?.joinToString(", ") { it.item }).joinToString(". "),
+                                        style = V4.type.caption, color = c.ink3, maxLines = 2,
+                                    )
+                                }
+                            }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                V4TextButton("Swap", onClick = { onSwap(dn.date) }, modifier = Modifier.semantics { contentDescription = "Swap ${dn.title}" })
+                                V4TextButton("Drop", onClick = { onDrop(dn.date) }, color = c.ink2, modifier = Modifier.semantics { contentDescription = "Drop ${dn.title}" })
+                            }
+                        }
+                    }
+                }
+                V4PrimaryButton(
+                    if (ui.saving) "Putting it in" else "Put it in my week",
+                    onClick = onPut, enabled = !ui.saving && ui.swapping == null, container = tint.color, modifier = Modifier.fillMaxWidth(),
+                )
+                SheetNote("Only what you do not have goes on the shopping list.")
+            }
+        }
     }
 }
