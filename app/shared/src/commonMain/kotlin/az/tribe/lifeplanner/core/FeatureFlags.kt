@@ -56,10 +56,10 @@ object FeatureFlags {
     const val V4_SHELL = true
 
     /**
-     * Cloud sync for the v4 tables (life_logs, budgets, trips, trip_items). Off until those tables
-     * exist in the production Supabase project: a missing table fails its syncer, and one failed
-     * syncer puts the whole sync into Error with retries. Rows written meanwhile stay unsynced
-     * locally and push on the first sync after this is turned on.
+     * Cloud sync for the v4 tables (life_logs, budgets, trips, trip_items). The tables went into
+     * the production Supabase project on 2026-09-28 (migration v4_life_area_tables). Keep this as
+     * the off switch: a missing table fails its syncer, and one failed syncer puts the whole sync
+     * into Error with retries. Rows written while it is off stay local and push once it is on.
      */
-    const val V4_CLOUD_SYNC = false
+    const val V4_CLOUD_SYNC = true
 }
