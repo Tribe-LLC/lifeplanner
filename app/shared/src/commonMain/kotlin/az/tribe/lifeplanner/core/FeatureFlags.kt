@@ -54,4 +54,12 @@ object FeatureFlags {
      * has not redesigned yet stays reachable inside it. Design: the "LifePlanner 4 redesign" canvas.
      */
     const val V4_SHELL = true
+
+    /**
+     * Cloud sync for the v4 tables (life_logs, budgets, trips, trip_items). Off until those tables
+     * exist in the production Supabase project: a missing table fails its syncer, and one failed
+     * syncer puts the whole sync into Error with retries. Rows written meanwhile stay unsynced
+     * locally and push on the first sync after this is turned on.
+     */
+    const val V4_CLOUD_SYNC = false
 }

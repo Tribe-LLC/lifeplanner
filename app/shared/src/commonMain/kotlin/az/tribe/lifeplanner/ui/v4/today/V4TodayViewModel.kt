@@ -21,6 +21,10 @@ import az.tribe.lifeplanner.domain.repository.GoalRepository
 import az.tribe.lifeplanner.domain.repository.HabitRepository
 import az.tribe.lifeplanner.domain.repository.HealthRepository
 import az.tribe.lifeplanner.domain.repository.PlanAreasRepository
+import az.tribe.lifeplanner.domain.repository.BudgetRepository
+import az.tribe.lifeplanner.domain.repository.LifeLogRepository
+import az.tribe.lifeplanner.domain.service.MoneySummary
+import az.tribe.lifeplanner.core.MoneyFormat
 import az.tribe.lifeplanner.usecases.habit.AwardHabitCompletionUseCase
 import az.tribe.lifeplanner.usecases.habit.CheckInHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.UncheckHabitUseCase
@@ -102,6 +106,8 @@ class V4TodayViewModel(
     private val integrationPrefs: IntegrationPrefs,
     private val planAreas: PlanAreasRepository,
     private val settings: Settings,
+    lifeLogs: LifeLogRepository,
+    budgets: BudgetRepository,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -120,14 +126,27 @@ class V4TodayViewModel(
         list.map { (habit, done) -> Triple(habit, done, counts[habit.id] ?: 0) }
     }
 
+    /** "€88 left for food this week", from the leading budget. Null without one. */
+    private val moneyChip = combine(
+        budgets.observeAll(),
+        lifeLogs.observeInRange(today().minus(DatePeriod(days = 40)), today()),
+    ) { bs, logs ->
+        MoneySummary.primary(bs)?.let { b ->
+            val st = MoneySummary.status(b, logs, today())
+            val what = b.category?.let { " for $it" } ?: ""
+            if (st.left >= 0) "${MoneyFormat.format(st.left, b.currency)} left$what ${MoneySummary.periodWord(b.period)}"
+            else "${MoneyFormat.format(-st.left, b.currency)} over$what ${MoneySummary.periodWord(b.period)}"
+        }
+    }
+
     val state: StateFlow<TodayUiState> = combine(
         combine(habitsWithCounts, goalRepository.observeAllGoals(), events, ::Triple),
-        health,
+        combine(health, moneyChip, ::Pair),
         stepsDoneToday,
         planAreas.enabledAreas,
         dismissed,
-    ) { (habits, goals, evts), h, stepsDone, areas, dismissedId ->
-        build(habits, goals, evts, h, stepsDone, areas, dismissedId)
+    ) { (habits, goals, evts), (h, money), stepsDone, areas, dismissedId ->
+        build(habits, goals, evts, h, stepsDone, areas, dismissedId, money)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TodayUiState(date = today()))
 
     init {
@@ -236,6 +255,7 @@ class V4TodayViewModel(
         stepsDone: Set<String>,
         areas: Set<PlanArea>,
         dismissedId: String?,
+        money: String?,
     ): TodayUiState {
         val today = today()
         val items = mutableListOf<DayItem>()
@@ -299,6 +319,7 @@ class V4TodayViewModel(
 
         val chips = buildList {
             if (checkable.isNotEmpty()) add(TodayChip("$done of ${checkable.size} done", null))
+            if (PlanArea.MONEY in areas) money?.let { add(TodayChip(it, PlanArea.MONEY)) }
             if (PlanArea.FITNESS in areas) h.steps?.let { add(TodayChip("${formatThousands(it.toLong())} steps", PlanArea.FITNESS)) }
             if (PlanArea.MIND in areas) h.sleepHours?.let { add(TodayChip("Slept ${formatHours(it)}", PlanArea.MIND)) }
         }

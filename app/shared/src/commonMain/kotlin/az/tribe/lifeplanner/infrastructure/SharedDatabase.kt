@@ -77,6 +77,11 @@ class SharedDatabase(
             q.deleteAllKnowledgeReads()
             q.deleteAllWheelScores()
             q.deleteAllWheelSnapshots()
+            // v4 areas: spends, workouts, budgets and trips are as personal as it gets.
+            q.deleteAllLifeLogs()
+            q.deleteAllBudgets()
+            q.deleteAllTrips()
+            q.deleteAllTripItems()
             // KnowledgeLessonEntity / KnowledgeCollectionEntity are deliberately kept. They are
             // server-authored content, identical for every user, so there is nothing to leak and
             // keeping them means the Learn map is populated before the next fetch returns.

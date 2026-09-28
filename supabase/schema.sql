@@ -956,7 +956,8 @@ BEGIN
             'reminders', 'custom_coaches', 'coach_groups', 'coach_group_members',
             'focus_sessions', 'coach_persona_overrides', 'user_situations',
             'life_values', 'decisions', 'identity_statements', 'decision_profiles',
-            'knowledge_reads', 'wheel_scores', 'wheel_snapshots'
+            'knowledge_reads', 'wheel_scores', 'wheel_snapshots',
+            'life_logs', 'budgets', 'trips', 'trip_items'
         ])
     LOOP
         EXECUTE format(
@@ -1072,4 +1073,151 @@ CREATE POLICY wheel_snapshots_delete ON wheel_snapshots FOR DELETE TO authentica
 
 CREATE TRIGGER trg_wheel_snapshots_sync
     BEFORE UPDATE ON wheel_snapshots
+    FOR EACH ROW EXECUTE FUNCTION update_sync_metadata();
+
+-- ────────────────────────────────────────────────────────────
+-- life_logs  (v4: everything logged in v4: spends, workouts, meals, study, sleep, water, mood.)
+-- ────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS life_logs (
+    id           TEXT        NOT NULL,
+    user_id      UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    area         TEXT NOT NULL,
+    kind         TEXT NOT NULL,
+    status       TEXT NOT NULL,
+    title        TEXT NOT NULL,
+    amount       DOUBLE PRECISION,
+    currency     TEXT,
+    category     TEXT,
+    quantity     DOUBLE PRECISION,
+    unit         TEXT,
+    duration_min INTEGER,
+    occurred_at  TEXT NOT NULL,
+    date         TEXT NOT NULL,
+    source       TEXT NOT NULL,
+    external_id  TEXT,
+    trip_id      TEXT,
+    notes        TEXT,
+    created_at   TEXT NOT NULL,
+    -- sync metadata
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    is_deleted   BOOLEAN     NOT NULL DEFAULT FALSE,
+    sync_version BIGINT      NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_life_logs_user_id ON life_logs(user_id);
+
+ALTER TABLE life_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY life_logs_select ON life_logs FOR SELECT TO authenticated USING ((select auth.uid()) = user_id);
+CREATE POLICY life_logs_insert ON life_logs FOR INSERT TO authenticated WITH CHECK ((select auth.uid()) = user_id);
+CREATE POLICY life_logs_update ON life_logs FOR UPDATE TO authenticated USING ((select auth.uid()) = user_id) WITH CHECK ((select auth.uid()) = user_id);
+CREATE POLICY life_logs_delete ON life_logs FOR DELETE TO authenticated USING ((select auth.uid()) = user_id);
+
+CREATE TRIGGER trg_life_logs_sync
+    BEFORE UPDATE ON life_logs
+    FOR EACH ROW EXECUTE FUNCTION update_sync_metadata();
+
+-- ────────────────────────────────────────────────────────────
+-- budgets  (v4: one number to stay under, per week, month or trip.)
+-- ────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS budgets (
+    id           TEXT        NOT NULL,
+    user_id      UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    area         TEXT NOT NULL,
+    metric       TEXT NOT NULL,
+    category     TEXT,
+    amount       DOUBLE PRECISION NOT NULL,
+    currency     TEXT,
+    period       TEXT NOT NULL,
+    trip_id      TEXT,
+    created_at   TEXT NOT NULL,
+    -- sync metadata
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    is_deleted   BOOLEAN     NOT NULL DEFAULT FALSE,
+    sync_version BIGINT      NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_budgets_user_id ON budgets(user_id);
+
+ALTER TABLE budgets ENABLE ROW LEVEL SECURITY;
+CREATE POLICY budgets_select ON budgets FOR SELECT TO authenticated USING ((select auth.uid()) = user_id);
+CREATE POLICY budgets_insert ON budgets FOR INSERT TO authenticated WITH CHECK ((select auth.uid()) = user_id);
+CREATE POLICY budgets_update ON budgets FOR UPDATE TO authenticated USING ((select auth.uid()) = user_id) WITH CHECK ((select auth.uid()) = user_id);
+CREATE POLICY budgets_delete ON budgets FOR DELETE TO authenticated USING ((select auth.uid()) = user_id);
+
+CREATE TRIGGER trg_budgets_sync
+    BEFORE UPDATE ON budgets
+    FOR EACH ROW EXECUTE FUNCTION update_sync_metadata();
+
+-- ────────────────────────────────────────────────────────────
+-- trips  (v4: a trip: where, when, budget and travel mode.)
+-- ────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS trips (
+    id           TEXT        NOT NULL,
+    user_id      UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    destination  TEXT NOT NULL,
+    latitude     DOUBLE PRECISION,
+    longitude    DOUBLE PRECISION,
+    start_date   TEXT NOT NULL,
+    end_date     TEXT NOT NULL,
+    budget       DOUBLE PRECISION,
+    currency     TEXT,
+    travel_mode  INTEGER NOT NULL,
+    notes        TEXT,
+    created_at   TEXT NOT NULL,
+    -- sync metadata
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    is_deleted   BOOLEAN     NOT NULL DEFAULT FALSE,
+    sync_version BIGINT      NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_trips_user_id ON trips(user_id);
+
+ALTER TABLE trips ENABLE ROW LEVEL SECURITY;
+CREATE POLICY trips_select ON trips FOR SELECT TO authenticated USING ((select auth.uid()) = user_id);
+CREATE POLICY trips_insert ON trips FOR INSERT TO authenticated WITH CHECK ((select auth.uid()) = user_id);
+CREATE POLICY trips_update ON trips FOR UPDATE TO authenticated USING ((select auth.uid()) = user_id) WITH CHECK ((select auth.uid()) = user_id);
+CREATE POLICY trips_delete ON trips FOR DELETE TO authenticated USING ((select auth.uid()) = user_id);
+
+CREATE TRIGGER trg_trips_sync
+    BEFORE UPDATE ON trips
+    FOR EACH ROW EXECUTE FUNCTION update_sync_metadata();
+
+-- ────────────────────────────────────────────────────────────
+-- trip_items  (v4: a trip's checklist items and day plans.)
+-- ────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS trip_items (
+    id           TEXT        NOT NULL,
+    user_id      UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    trip_id      TEXT NOT NULL,
+    kind         TEXT NOT NULL,
+    title        TEXT NOT NULL,
+    notes        TEXT,
+    date         TEXT,
+    is_done      BOOLEAN NOT NULL DEFAULT FALSE,
+    sort_order   INTEGER NOT NULL,
+    created_at   TEXT NOT NULL,
+    -- sync metadata
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    is_deleted   BOOLEAN     NOT NULL DEFAULT FALSE,
+    sync_version BIGINT      NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_trip_items_user_id ON trip_items(user_id);
+
+ALTER TABLE trip_items ENABLE ROW LEVEL SECURITY;
+CREATE POLICY trip_items_select ON trip_items FOR SELECT TO authenticated USING ((select auth.uid()) = user_id);
+CREATE POLICY trip_items_insert ON trip_items FOR INSERT TO authenticated WITH CHECK ((select auth.uid()) = user_id);
+CREATE POLICY trip_items_update ON trip_items FOR UPDATE TO authenticated USING ((select auth.uid()) = user_id) WITH CHECK ((select auth.uid()) = user_id);
+CREATE POLICY trip_items_delete ON trip_items FOR DELETE TO authenticated USING ((select auth.uid()) = user_id);
+
+CREATE TRIGGER trg_trip_items_sync
+    BEFORE UPDATE ON trip_items
     FOR EACH ROW EXECUTE FUNCTION update_sync_metadata();

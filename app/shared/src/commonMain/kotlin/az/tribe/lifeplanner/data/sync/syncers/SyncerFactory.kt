@@ -1,5 +1,6 @@
 package az.tribe.lifeplanner.data.sync.syncers
 
+import az.tribe.lifeplanner.core.FeatureFlags
 import az.tribe.lifeplanner.data.sync.TableSyncer
 import az.tribe.lifeplanner.infrastructure.SharedDatabase
 import io.github.jan.supabase.SupabaseClient
@@ -48,5 +49,11 @@ fun createAllSyncers(
 
         // Tier 4: Depends on Tier 3
         ChatMessageTableSyncer(supabase, db)    // chat_messages.session_id → chat_sessions
-    )
+    ) + if (FeatureFlags.V4_CLOUD_SYNC) listOf(
+        // v4 life areas. trips before trip_items; life_logs and budgets point at trips by soft ref.
+        TripTableSyncer(supabase, db),
+        TripItemTableSyncer(supabase, db),
+        LifeLogTableSyncer(supabase, db),
+        BudgetTableSyncer(supabase, db),
+    ) else emptyList()
 }

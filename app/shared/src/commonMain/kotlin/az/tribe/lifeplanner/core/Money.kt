@@ -1,0 +1,41 @@
+package az.tribe.lifeplanner.core
+
+import com.russhwolf.settings.Settings
+import kotlin.math.abs
+import kotlin.math.roundToLong
+
+/** The phone's own currency (ISO 4217), or null when the locale has none (e.g. "en"). */
+expect fun platformCurrencyCode(): String?
+
+/** The user's money currency. Starts as the phone's, changeable on the Money page. */
+class CurrencyPrefs(private val settings: Settings) {
+    var code: String
+        get() = settings.getStringOrNull(KEY) ?: platformCurrencyCode() ?: "EUR"
+        set(value) = settings.putString(KEY, value)
+
+    private companion object {
+        const val KEY = "v4_currency"
+    }
+}
+
+object MoneyFormat {
+    val common = listOf("EUR", "USD", "GBP", "AZN", "TRY", "RUB", "JPY", "INR", "AUD", "SGD", "CAD")
+
+    private val symbols = mapOf(
+        "EUR" to "€", "USD" to "$", "GBP" to "£", "AZN" to "₼", "TRY" to "₺", "RUB" to "₽", "JPY" to "¥",
+        "INR" to "₹", "AUD" to "A$", "SGD" to "S$", "CAD" to "C$",
+    )
+
+    fun symbol(code: String?): String = symbols[code] ?: code?.let { "$it " } ?: ""
+
+    /** "€12.50", "€1,240", "-€8". Whole amounts drop the cents; yen never has them. */
+    fun format(amount: Double, code: String?): String {
+        val neg = amount < 0
+        val cents = (abs(amount) * 100).roundToLong()
+        val whole = cents / 100
+        val frac = cents % 100
+        val wholeText = whole.toString().reversed().chunked(3).joinToString(",").reversed()
+        val body = if (frac == 0L || code == "JPY") wholeText else "$wholeText.${frac.toString().padStart(2, '0')}"
+        return (if (neg) "-" else "") + symbol(code) + body
+    }
+}

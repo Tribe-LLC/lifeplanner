@@ -48,6 +48,7 @@ data class AreaActions(
     val onNewPlan: () -> Unit,
     val onNewRoutine: () -> Unit,
     val onRoute: (String) -> Unit,
+    val onQuickAdd: () -> Unit,
 )
 
 @Composable
@@ -75,6 +76,7 @@ fun V4AreaScreen(
         }
 
         when (area) {
+            PlanArea.MONEY -> MoneySection(onAddSpend = actions.onQuickAdd)
             PlanArea.FITNESS -> FitnessHealthCard(state.health, onOpenHealth = { actions.onRoute("health") })
             PlanArea.MIND -> MindCard(state.health, onJournal = { actions.onRoute("journal_wizard") }, onJournalList = { actions.onRoute("journal") })
             PlanArea.STUDY -> V4Card {

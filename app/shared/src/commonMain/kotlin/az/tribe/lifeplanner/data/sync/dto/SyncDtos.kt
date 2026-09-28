@@ -497,3 +497,89 @@ data class BeginnerObjectiveSyncDto(
     @SerialName("is_deleted") val isDeleted: Boolean = false,
     @SerialName("sync_version") val syncVersion: Long = 0
 )
+
+
+// v4 life areas. Local camelCase columns map to snake_case in Supabase.
+
+/** Everything logged in v4: spends, workouts, meals, study, sleep, water, mood. */
+@Serializable
+data class LifeLogSyncDto(
+    val id: String,
+    @SerialName("user_id") val userId: String,
+    val area: String,
+    val kind: String,
+    val status: String,
+    val title: String,
+    val amount: Double? = null,
+    val currency: String? = null,
+    val category: String? = null,
+    val quantity: Double? = null,
+    val unit: String? = null,
+    @SerialName("duration_min") val durationMin: Long? = null,
+    @SerialName("occurred_at") val occurredAt: String,
+    val date: String,
+    val source: String,
+    @SerialName("external_id") val externalId: String? = null,
+    @SerialName("trip_id") val tripId: String? = null,
+    val notes: String? = null,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("updated_at") val updatedAt: String? = null,
+    @SerialName("is_deleted") val isDeleted: Boolean = false,
+    @SerialName("sync_version") val syncVersion: Long = 0
+)
+
+/** One number to stay under, per week, month or trip. */
+@Serializable
+data class BudgetSyncDto(
+    val id: String,
+    @SerialName("user_id") val userId: String,
+    val area: String,
+    val metric: String,
+    val category: String? = null,
+    val amount: Double,
+    val currency: String? = null,
+    val period: String,
+    @SerialName("trip_id") val tripId: String? = null,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("updated_at") val updatedAt: String? = null,
+    @SerialName("is_deleted") val isDeleted: Boolean = false,
+    @SerialName("sync_version") val syncVersion: Long = 0
+)
+
+/** A trip: where, when, budget and travel mode. */
+@Serializable
+data class TripSyncDto(
+    val id: String,
+    @SerialName("user_id") val userId: String,
+    val destination: String,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    @SerialName("start_date") val startDate: String,
+    @SerialName("end_date") val endDate: String,
+    val budget: Double? = null,
+    val currency: String? = null,
+    @SerialName("travel_mode") val travelMode: Long,
+    val notes: String? = null,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("updated_at") val updatedAt: String? = null,
+    @SerialName("is_deleted") val isDeleted: Boolean = false,
+    @SerialName("sync_version") val syncVersion: Long = 0
+)
+
+/** A trip's checklist items and day plans. */
+@Serializable
+data class TripItemSyncDto(
+    val id: String,
+    @SerialName("user_id") val userId: String,
+    @SerialName("trip_id") val tripId: String,
+    val kind: String,
+    val title: String,
+    val notes: String? = null,
+    val date: String? = null,
+    @SerialName("is_done") val isDone: Boolean,
+    @SerialName("sort_order") val sortOrder: Long,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("updated_at") val updatedAt: String? = null,
+    @SerialName("is_deleted") val isDeleted: Boolean = false,
+    @SerialName("sync_version") val syncVersion: Long = 0
+)

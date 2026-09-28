@@ -6,6 +6,8 @@ import az.tribe.lifeplanner.domain.enum.HealthMetricType
 import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.domain.model.Habit
 import az.tribe.lifeplanner.domain.model.HabitCheckIn
+import az.tribe.lifeplanner.domain.model.LogKind
+import az.tribe.lifeplanner.domain.model.LogStatus
 import az.tribe.lifeplanner.domain.model.PlanArea
 import az.tribe.lifeplanner.domain.repository.FocusRepository
 import az.tribe.lifeplanner.domain.repository.GoalRepository
@@ -13,6 +15,10 @@ import az.tribe.lifeplanner.domain.repository.HabitRepository
 import az.tribe.lifeplanner.domain.repository.HealthRepository
 import az.tribe.lifeplanner.domain.repository.JournalRepository
 import az.tribe.lifeplanner.domain.repository.PlanAreasRepository
+import az.tribe.lifeplanner.domain.repository.BudgetRepository
+import az.tribe.lifeplanner.domain.repository.LifeLogRepository
+import az.tribe.lifeplanner.domain.service.MoneySummary
+import az.tribe.lifeplanner.core.MoneyFormat
 import az.tribe.lifeplanner.ui.v4.today.V4TodayViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -68,6 +74,8 @@ class V4LifeViewModel(
     private val journalRepository: JournalRepository,
     private val focusRepository: FocusRepository,
     private val planAreas: PlanAreasRepository,
+    private val lifeLogs: LifeLogRepository,
+    private val budgets: BudgetRepository,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -176,7 +184,17 @@ class V4LifeViewModel(
             }
             PlanArea.FITNESS -> {
                 val steps = runCatching { healthRepository.getMetricsInRange(HealthMetricType.STEPS, week.first(), today) }.getOrDefault(emptyList())
-                if (steps.isEmpty()) plansFallback("Connect Health", "Steps and workouts show up here")
+                val workouts = runCatching { lifeLogs.getInRange(week.first(), today) }.getOrDefault(emptyList())
+                    .filter { it.kind == LogKind.WORKOUT && it.status == LogStatus.DONE }
+                if (steps.isEmpty() && workouts.isNotEmpty()) {
+                    val minutes = workouts.sumOf { it.durationMin ?: 0 }
+                    AreaSummary(
+                        area,
+                        "${workouts.size} ${if (workouts.size == 1) "workout" else "workouts"}",
+                        "this week" + (if (minutes > 0) ", $minutes min" else ""),
+                        week.map { d -> workouts.count { it.date == d }.toFloat() },
+                    )
+                } else if (steps.isEmpty()) plansFallback("Connect Health", "Steps and workouts show up here")
                 else {
                     val byDay = steps.groupBy { it.date }.mapValues { (_, v) -> v.sumOf { it.value } }
                     AreaSummary(
@@ -222,7 +240,33 @@ class V4LifeViewModel(
                     )
                 }
             }
-            PlanArea.MONEY -> plansFallback("Set a budget", "Know what is left to spend this week")
+            PlanArea.MONEY -> {
+                val logs = runCatching { lifeLogs.getInRange(today.minus(DatePeriod(days = 40)), today) }.getOrDefault(emptyList())
+                val spends = logs.filter { MoneySummary.isSpend(it) }
+                val budget = MoneySummary.primary(runCatching { budgets.getAll() }.getOrDefault(emptyList()))
+                val trend = run {
+                    var running = 0.0
+                    week.map { d -> running += spends.filter { it.date == d }.sumOf { it.amount ?: 0.0 }; running.toFloat() }
+                }
+                when {
+                    budget != null -> {
+                        val st = MoneySummary.status(budget, logs, today)
+                        AreaSummary(
+                            area,
+                            MoneyFormat.format(st.spent, budget.currency),
+                            "of ${MoneyFormat.format(budget.amount, budget.currency)}${budget.category?.let { " $it" } ?: ""} budget, ${st.daysLeft} ${if (st.daysLeft == 1) "day" else "days"} left",
+                            trend,
+                        )
+                    }
+                    spends.isNotEmpty() -> AreaSummary(
+                        area,
+                        MoneyFormat.format(spends.filter { it.date >= week.first() }.sumOf { it.amount ?: 0.0 }, spends.first().currency),
+                        "spent this week. Set a budget to see what is left",
+                        trend,
+                    )
+                    else -> plansFallback("Set a budget", "Know what is left to spend this week")
+                }
+            }
             PlanArea.TRAVEL -> plansFallback("Plan a trip", "Budget, packing and days in one place")
             PlanArea.MEALS -> plansFallback("Log a meal", "Type what you ate in the box below")
             PlanArea.CAREER -> plansFallback("Add a plan", "Skills, applications, next moves")
@@ -249,6 +293,16 @@ class V4LifeViewModel(
             .sortedByDescending { it.completedAt }.take(3).forEach { s ->
                 val at = s.completedAt ?: return@forEach
                 out += RecentItem(PlanArea.STUDY, "Focus, ${s.actualMinutes} min", "Focus session", label(at.date), at)
+            }
+        runCatching { lifeLogs.getInRange(yesterday, today) }.getOrDefault(emptyList())
+            .filter { it.status == az.tribe.lifeplanner.domain.model.LogStatus.DONE }
+            .forEach { l ->
+                val meta = when {
+                    l.amount != null -> MoneyFormat.format(l.amount, l.currency) + (l.category?.let { ", $it" } ?: "")
+                    l.durationMin != null -> "${l.durationMin} min"
+                    else -> az.tribe.lifeplanner.ui.v4.components.areaName(l.area)
+                }
+                out += RecentItem(l.area, l.title, meta, "${l.occurredAt.hour.toString().padStart(2, '0')}:${l.occurredAt.minute.toString().padStart(2, '0')}".let { t -> if (l.date == today) t else label(l.date) }, l.occurredAt)
             }
         runCatching { healthRepository.getLatestMetric(HealthMetricType.SLEEP) }.getOrNull()?.takeIf { it.date >= yesterday }?.let { m ->
             out += RecentItem(PlanArea.MIND, "Slept ${V4TodayViewModel.formatHours(m.value)}", "From Health", "Last night", m.recordedAt)

@@ -73,6 +73,114 @@ internal fun migrateToVersion42(db: SupportSQLiteDatabase) {
     addColumnSafe(db, "GoalEntity", "wheelArea", "TEXT")
 }
 
+internal fun migrateToVersion43(db: SupportSQLiteDatabase) {
+    // Schema v43: v4 life areas, matches migration 43.sqm. Logs (spends, workouts, meals, study
+    // blocks, planned or done), budgets and targets, trips and their to-dos and days. All new
+    // tables, so IF NOT EXISTS is the whole of the idempotency.
+    db.execSQL(
+        """
+        CREATE TABLE IF NOT EXISTS LifeLogEntity (
+            id TEXT NOT NULL PRIMARY KEY,
+            area TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'done',
+            title TEXT NOT NULL,
+            amount REAL,
+            currency TEXT,
+            category TEXT,
+            quantity REAL,
+            unit TEXT,
+            durationMin INTEGER,
+            occurredAt TEXT NOT NULL,
+            date TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'manual',
+            externalId TEXT,
+            tripId TEXT,
+            notes TEXT,
+            createdAt TEXT NOT NULL,
+            sync_updated_at TEXT,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+            sync_version INTEGER NOT NULL DEFAULT 0,
+            last_synced_at TEXT
+        )
+        """.trimIndent()
+    )
+    db.execSQL(
+        """
+        CREATE INDEX IF NOT EXISTS idx_life_log_date ON LifeLogEntity(date)
+        """.trimIndent()
+    )
+    db.execSQL(
+        """
+        CREATE INDEX IF NOT EXISTS idx_life_log_area ON LifeLogEntity(area)
+        """.trimIndent()
+    )
+    db.execSQL(
+        """
+        CREATE TABLE IF NOT EXISTS BudgetEntity (
+            id TEXT NOT NULL PRIMARY KEY,
+            area TEXT NOT NULL,
+            metric TEXT NOT NULL,
+            category TEXT,
+            amount REAL NOT NULL,
+            currency TEXT,
+            period TEXT NOT NULL,
+            tripId TEXT,
+            createdAt TEXT NOT NULL,
+            sync_updated_at TEXT,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+            sync_version INTEGER NOT NULL DEFAULT 0,
+            last_synced_at TEXT
+        )
+        """.trimIndent()
+    )
+    db.execSQL(
+        """
+        CREATE TABLE IF NOT EXISTS TripEntity (
+            id TEXT NOT NULL PRIMARY KEY,
+            destination TEXT NOT NULL,
+            latitude REAL,
+            longitude REAL,
+            startDate TEXT NOT NULL,
+            endDate TEXT NOT NULL,
+            budget REAL,
+            currency TEXT,
+            travelMode INTEGER NOT NULL DEFAULT 1,
+            notes TEXT,
+            createdAt TEXT NOT NULL,
+            sync_updated_at TEXT,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+            sync_version INTEGER NOT NULL DEFAULT 0,
+            last_synced_at TEXT
+        )
+        """.trimIndent()
+    )
+    db.execSQL(
+        """
+        CREATE TABLE IF NOT EXISTS TripItemEntity (
+            id TEXT NOT NULL PRIMARY KEY,
+            tripId TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            title TEXT NOT NULL,
+            notes TEXT,
+            date TEXT,
+            isDone INTEGER NOT NULL DEFAULT 0,
+            sortOrder INTEGER NOT NULL DEFAULT 0,
+            createdAt TEXT NOT NULL,
+            sync_updated_at TEXT,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+            sync_version INTEGER NOT NULL DEFAULT 0,
+            last_synced_at TEXT
+        )
+        """.trimIndent()
+    )
+    db.execSQL(
+        """
+        CREATE INDEX IF NOT EXISTS idx_trip_item_trip ON TripItemEntity(tripId)
+        """.trimIndent()
+    )
+}
+
 /**
  * The whole Android migration chain, run on every database open.
  *
@@ -122,6 +230,7 @@ internal fun runAndroidMigrations(db: SupportSQLiteDatabase) {
     migrateToVersion40(db)
     migrateToVersion41(db)
     migrateToVersion42(db)
+    migrateToVersion43(db)
 }
 
 internal fun migrateToVersion5(db: SupportSQLiteDatabase) {

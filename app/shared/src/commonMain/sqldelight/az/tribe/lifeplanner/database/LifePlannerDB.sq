@@ -2675,3 +2675,227 @@ DELETE FROM WheelSnapshotEntity WHERE is_deleted = 1 AND last_synced_at IS NOT N
 upsertWheelSnapshotFromSync:
 INSERT OR REPLACE INTO WheelSnapshotEntity(id, scores, capturedAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
 VALUES (?, ?, ?, ?, ?, ?, ?);
+
+-- ============== v4 life areas (schema 43) ==============
+-- Logs, budgets and trips. Same soft-delete sync columns as every synced table.
+
+CREATE TABLE IF NOT EXISTS LifeLogEntity (
+    id TEXT NOT NULL PRIMARY KEY,
+    area TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'done',
+    title TEXT NOT NULL,
+    amount REAL,
+    currency TEXT,
+    category TEXT,
+    quantity REAL,
+    unit TEXT,
+    durationMin INTEGER,
+    occurredAt TEXT NOT NULL,
+    date TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'manual',
+    externalId TEXT,
+    tripId TEXT,
+    notes TEXT,
+    createdAt TEXT NOT NULL,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_life_log_date ON LifeLogEntity(date);
+CREATE INDEX IF NOT EXISTS idx_life_log_area ON LifeLogEntity(area);
+CREATE TABLE IF NOT EXISTS BudgetEntity (
+    id TEXT NOT NULL PRIMARY KEY,
+    area TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    category TEXT,
+    amount REAL NOT NULL,
+    currency TEXT,
+    period TEXT NOT NULL,
+    tripId TEXT,
+    createdAt TEXT NOT NULL,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
+);
+CREATE TABLE IF NOT EXISTS TripEntity (
+    id TEXT NOT NULL PRIMARY KEY,
+    destination TEXT NOT NULL,
+    latitude REAL,
+    longitude REAL,
+    startDate TEXT NOT NULL,
+    endDate TEXT NOT NULL,
+    budget REAL,
+    currency TEXT,
+    travelMode INTEGER NOT NULL DEFAULT 1,
+    notes TEXT,
+    createdAt TEXT NOT NULL,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
+);
+CREATE TABLE IF NOT EXISTS TripItemEntity (
+    id TEXT NOT NULL PRIMARY KEY,
+    tripId TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    notes TEXT,
+    date TEXT,
+    isDone INTEGER NOT NULL DEFAULT 0,
+    sortOrder INTEGER NOT NULL DEFAULT 0,
+    createdAt TEXT NOT NULL,
+    sync_updated_at TEXT,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_trip_item_trip ON TripItemEntity(tripId);
+
+-- LifeLog queries
+selectLifeLogById:
+SELECT * FROM LifeLogEntity WHERE id = ?;
+
+saveLifeLog:
+INSERT OR REPLACE INTO LifeLogEntity(id, area, kind, status, title, amount, currency, category, quantity, unit, durationMin, occurredAt, date, source, externalId, tripId, notes, createdAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 0,
+    COALESCE((SELECT sync_version FROM LifeLogEntity WHERE id = ?), 0),
+    (SELECT last_synced_at FROM LifeLogEntity WHERE id = ?));
+
+softDeleteLifeLog:
+UPDATE LifeLogEntity SET is_deleted = 1, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?;
+
+deleteAllLifeLogs:
+DELETE FROM LifeLogEntity;
+
+getUnsyncedLifeLogs:
+SELECT * FROM LifeLogEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedLifeLogs:
+SELECT * FROM LifeLogEntity WHERE is_deleted = 1;
+
+markLifeLogSynced:
+UPDATE LifeLogEntity SET last_synced_at = ? WHERE id = ?;
+
+purgeDeletedLifeLogs:
+DELETE FROM LifeLogEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+upsertLifeLogFromSync:
+INSERT OR REPLACE INTO LifeLogEntity(id, area, kind, status, title, amount, currency, category, quantity, unit, durationMin, occurredAt, date, source, externalId, tripId, notes, createdAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Budget queries
+selectBudgetById:
+SELECT * FROM BudgetEntity WHERE id = ?;
+
+saveBudget:
+INSERT OR REPLACE INTO BudgetEntity(id, area, metric, category, amount, currency, period, tripId, createdAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 0,
+    COALESCE((SELECT sync_version FROM BudgetEntity WHERE id = ?), 0),
+    (SELECT last_synced_at FROM BudgetEntity WHERE id = ?));
+
+softDeleteBudget:
+UPDATE BudgetEntity SET is_deleted = 1, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?;
+
+deleteAllBudgets:
+DELETE FROM BudgetEntity;
+
+getUnsyncedBudgets:
+SELECT * FROM BudgetEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedBudgets:
+SELECT * FROM BudgetEntity WHERE is_deleted = 1;
+
+markBudgetSynced:
+UPDATE BudgetEntity SET last_synced_at = ? WHERE id = ?;
+
+purgeDeletedBudgets:
+DELETE FROM BudgetEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+upsertBudgetFromSync:
+INSERT OR REPLACE INTO BudgetEntity(id, area, metric, category, amount, currency, period, tripId, createdAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Trip queries
+selectTripById:
+SELECT * FROM TripEntity WHERE id = ?;
+
+saveTrip:
+INSERT OR REPLACE INTO TripEntity(id, destination, latitude, longitude, startDate, endDate, budget, currency, travelMode, notes, createdAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 0,
+    COALESCE((SELECT sync_version FROM TripEntity WHERE id = ?), 0),
+    (SELECT last_synced_at FROM TripEntity WHERE id = ?));
+
+softDeleteTrip:
+UPDATE TripEntity SET is_deleted = 1, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?;
+
+deleteAllTrips:
+DELETE FROM TripEntity;
+
+getUnsyncedTrips:
+SELECT * FROM TripEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedTrips:
+SELECT * FROM TripEntity WHERE is_deleted = 1;
+
+markTripSynced:
+UPDATE TripEntity SET last_synced_at = ? WHERE id = ?;
+
+purgeDeletedTrips:
+DELETE FROM TripEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+upsertTripFromSync:
+INSERT OR REPLACE INTO TripEntity(id, destination, latitude, longitude, startDate, endDate, budget, currency, travelMode, notes, createdAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- TripItem queries
+selectTripItemById:
+SELECT * FROM TripItemEntity WHERE id = ?;
+
+saveTripItem:
+INSERT OR REPLACE INTO TripItemEntity(id, tripId, kind, title, notes, date, isDone, sortOrder, createdAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 0,
+    COALESCE((SELECT sync_version FROM TripItemEntity WHERE id = ?), 0),
+    (SELECT last_synced_at FROM TripItemEntity WHERE id = ?));
+
+softDeleteTripItem:
+UPDATE TripItemEntity SET is_deleted = 1, sync_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?;
+
+deleteAllTripItems:
+DELETE FROM TripItemEntity;
+
+getUnsyncedTripItems:
+SELECT * FROM TripItemEntity WHERE (last_synced_at IS NULL OR sync_updated_at > last_synced_at) AND is_deleted = 0;
+
+getDeletedTripItems:
+SELECT * FROM TripItemEntity WHERE is_deleted = 1;
+
+markTripItemSynced:
+UPDATE TripItemEntity SET last_synced_at = ? WHERE id = ?;
+
+purgeDeletedTripItems:
+DELETE FROM TripItemEntity WHERE is_deleted = 1 AND last_synced_at IS NOT NULL;
+
+upsertTripItemFromSync:
+INSERT OR REPLACE INTO TripItemEntity(id, tripId, kind, title, notes, date, isDone, sortOrder, createdAt, sync_updated_at, is_deleted, sync_version, last_synced_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectLifeLogsInRange:
+SELECT * FROM LifeLogEntity WHERE is_deleted = 0 AND date >= ? AND date <= ? ORDER BY occurredAt DESC;
+
+selectRecentLifeLogs:
+SELECT * FROM LifeLogEntity WHERE is_deleted = 0 AND status = 'done' ORDER BY occurredAt DESC LIMIT ?;
+
+selectLifeLogsByTrip:
+SELECT * FROM LifeLogEntity WHERE is_deleted = 0 AND tripId = ? ORDER BY occurredAt DESC;
+
+selectAllBudgets:
+SELECT * FROM BudgetEntity WHERE is_deleted = 0 ORDER BY createdAt;
+
+selectAllTrips:
+SELECT * FROM TripEntity WHERE is_deleted = 0 ORDER BY startDate;
+
+selectTripItems:
+SELECT * FROM TripItemEntity WHERE is_deleted = 0 AND tripId = ? ORDER BY kind, date, sortOrder, createdAt;

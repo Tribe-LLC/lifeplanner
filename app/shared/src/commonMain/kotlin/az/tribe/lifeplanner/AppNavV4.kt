@@ -47,6 +47,7 @@ import az.tribe.lifeplanner.ui.v4.firstrun.UpdateScreen
 import az.tribe.lifeplanner.ui.v4.firstrun.V4FirstRunViewModel
 import az.tribe.lifeplanner.ui.v4.firstrun.WelcomeScreen
 import az.tribe.lifeplanner.ui.v4.life.V4LifeScreen
+import az.tribe.lifeplanner.ui.v4.quickadd.QuickAddSheet
 import az.tribe.lifeplanner.ui.v4.shell.V4AddAnythingBar
 import az.tribe.lifeplanner.ui.v4.shell.V4BottomBar
 import az.tribe.lifeplanner.ui.v4.shell.V4Routes
@@ -142,6 +143,7 @@ internal fun V4AppRoot(
 
         var hubSelectedTab by remember { mutableStateOf(0) }
         var coachPrompt by remember { mutableStateOf<String?>(null) }
+        var showQuickAdd by remember { mutableStateOf(false) }
 
         fun openTab(route: String) {
             navController.navigate(route) {
@@ -168,6 +170,7 @@ internal fun V4AppRoot(
                     coachPrompt = { coachPrompt },
                     onCoachPrompt = { coachPrompt = it },
                     openTab = ::openTab,
+                    onQuickAdd = { showQuickAdd = true },
                 )
 
                 // v3 graphs, unchanged. Their "home" is the v4 gate.
@@ -199,14 +202,23 @@ internal fun V4AppRoot(
                 Column(Modifier.align(Alignment.BottomCenter)) {
                     if (currentRoute in V4Routes.ADD_BAR) {
                         V4AddAnythingBar(
-                            // Quick add lands in the next step of the build; until then the box
-                            // opens the coach, which can already file things for you.
-                            onClick = { openTab(V4Routes.COACH) },
+                            onClick = { showQuickAdd = true },
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                         )
                     }
                     V4BottomBar(currentRoute = currentRoute, onSelect = ::openTab)
                 }
+            }
+
+            if (showQuickAdd) {
+                QuickAddSheet(
+                    onDismiss = { showQuickAdd = false },
+                    onAskCoach = { text ->
+                        showQuickAdd = false
+                        coachPrompt = text
+                        openTab(V4Routes.COACH)
+                    },
+                )
             }
 
             overlays()
@@ -221,6 +233,7 @@ internal fun NavGraphBuilder.appNavV4(
     coachPrompt: () -> String?,
     onCoachPrompt: (String?) -> Unit,
     openTab: (String) -> Unit,
+    onQuickAdd: () -> Unit,
 ) {
     // The gate: first run or Today. Replaces itself, so Back never returns here.
     composable(V4Routes.HOME) {
@@ -354,6 +367,7 @@ internal fun NavGraphBuilder.appNavV4(
                 onNewPlan = { navController.navigate(Screen.GoalWizard.route) { launchSingleTop = true } },
                 onNewRoutine = { navController.navigate(Screen.AddHabit.route) { launchSingleTop = true } },
                 onRoute = { navController.navigate(it) { launchSingleTop = true } },
+                onQuickAdd = onQuickAdd,
             ),
         )
     }
