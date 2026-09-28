@@ -2,6 +2,8 @@ package az.tribe.lifeplanner.ui.v4.areas
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import az.tribe.lifeplanner.data.habits.HabitRow
+import az.tribe.lifeplanner.data.habits.HabitService
 import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.enum.HealthMetricType
 import az.tribe.lifeplanner.domain.model.Goal
@@ -37,7 +39,7 @@ data class AreaHealth(
 
 data class AreaUiState(
     val plans: List<Goal> = emptyList(),
-    val routines: List<Pair<Habit, Boolean>> = emptyList(),
+    val routines: List<HabitRow> = emptyList(),
     val health: AreaHealth = AreaHealth(),
 )
 
@@ -53,6 +55,7 @@ class V4AreaViewModel(
     private val checkInHabit: CheckInHabitUseCase,
     private val uncheckHabit: UncheckHabitUseCase,
     private val awardHabitCompletion: AwardHabitCompletionUseCase,
+    habitService: HabitService,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -60,13 +63,13 @@ class V4AreaViewModel(
 
     val state: StateFlow<AreaUiState> = combine(
         goalRepository.observeAllGoals(),
-        habitRepository.observeHabitsWithTodayStatus(),
+        habitService.rows,
         health,
     ) { goals, habits, h ->
         AreaUiState(
             plans = goals.filter { !it.isArchived && PlanArea.forCategory(it.category) == area }
                 .sortedWith(compareBy({ it.status == GoalStatus.COMPLETED }, { it.dueDate })),
-            routines = habits.filter { (habit, _) -> habit.isActive && belongs(habit) },
+            routines = habits.filter { r -> r.habit.isActive && belongs(r.habit) },
             health = h,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AreaUiState())

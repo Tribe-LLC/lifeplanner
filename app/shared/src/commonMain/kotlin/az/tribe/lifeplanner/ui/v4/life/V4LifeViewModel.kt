@@ -120,7 +120,7 @@ class V4LifeViewModel(
         val from = today.minus(DatePeriod(days = 69))
         val checkIns = runCatching { habitRepository.getAllCheckInsInRange(from, today) }.getOrDefault(emptyList())
             .filter { it.completed }
-        val daily = DailyHabits(runCatching { habitService.rows.first() }.getOrDefault(emptyList()))
+        val daily = DailyHabits(runCatching { habitService.rows.first() }.getOrDefault(emptyList()), today)
 
         val weekStart = today.minus(DatePeriod(days = today.dayOfWeek.ordinal))
         val (score, caption, delta, bars) = when (r) {
@@ -150,10 +150,16 @@ class V4LifeViewModel(
         val summaries = PlanArea.entries.filter { it in areas }.map { area -> summarize(area, today, daily, goals) }
         val recent = recent(today, habits, checkIns)
 
+        // Early on a Monday nothing is over yet: show today's count instead of a 0% that is not earned.
+        val fresh = score == null && daily.dueToday > 0
         return LifeUiState(
             range = r,
-            score = "${((score ?: 0f) * 100).roundToInt()}%",
-            scoreCaption = if (score == null) "Add a habit from Today and your week fills in here" else caption,
+            score = if (fresh) "${daily.doneToday} of ${daily.dueToday}" else "${((score ?: 0f) * 100).roundToInt()}%",
+            scoreCaption = when {
+                fresh -> "habits done today. The rest of the week fills in as the days end"
+                score == null -> "Add a habit from Today and your week fills in here"
+                else -> caption
+            },
             delta = delta?.first,
             deltaUp = delta?.second ?: true,
             bars = bars,
@@ -190,8 +196,12 @@ class V4LifeViewModel(
                 val rate = daily.rate(week.first(), today)
                 AreaSummary(
                     area,
-                    rate?.let { "${(it * 100).roundToInt()}%" } ?: "None yet",
-                    if (rate == null) "Add your first from Today" else "of habit days kept",
+                    rate?.let { "${(it * 100).roundToInt()}%" } ?: if (daily.dueToday > 0) "${daily.doneToday} of ${daily.dueToday}" else "None yet",
+                    when {
+                        rate != null -> "of habit days kept"
+                        daily.dueToday > 0 -> "done today"
+                        else -> "Add your first from Today"
+                    },
                     week.map { daily.rate(it, it) ?: 0f },
                 )
             }
@@ -381,7 +391,11 @@ class V4LifeViewModel(
 
     /** Habit completion by day: done check-ins over habits that existed that day. */
     /** Habit days kept: on each day, the habits that were due then (schedule, skips and breaks applied). */
-    private class DailyHabits(private val rows: List<HabitRow>) {
+    /** Habit days kept. Today only counts once it is done: a day still in progress is not a miss. */
+    private class DailyHabits(private val rows: List<HabitRow>, private val today: LocalDate) {
+        val dueToday = rows.count { it.stats.dueToday || it.doneToday }
+        val doneToday = rows.count { it.doneToday }
+
         fun rate(start: LocalDate, end: LocalDate): Float? {
             var done = 0
             var possible = 0
@@ -391,7 +405,7 @@ class V4LifeViewModel(
                     if (d < r.habit.createdAt.date || d in r.skipped) return@forEach
                     val s = HabitSchedule.normal(r.schedule)
                     val kept = d in r.done
-                    if (kept || (s !is Schedule.PerWeek && HabitSchedule.isScheduled(s, d))) {
+                    if (kept || (d != today && s !is Schedule.PerWeek && HabitSchedule.isScheduled(s, d))) {
                         possible++
                         if (kept) done++
                     }

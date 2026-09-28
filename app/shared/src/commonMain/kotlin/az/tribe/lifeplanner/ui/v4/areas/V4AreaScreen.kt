@@ -124,7 +124,9 @@ fun V4AreaScreen(
         Section("Routines", if (state.routines.isEmpty()) "Routines are the small things you repeat, like \"10 minutes of stretching\"." else null)
         if (state.routines.isNotEmpty()) {
             V4Card(contentPadding = PaddingValues(0.dp), verticalSpacing = 0.dp) {
-                state.routines.forEachIndexed { i, (habit, done) ->
+                state.routines.forEachIndexed { i, r ->
+                    val habit = r.habit
+                    val done = r.doneToday
                     if (i > 0) V4Divider()
                     Row(
                         Modifier.fillMaxWidth().clickable(role = Role.Button) { actions.onOpenHabit(habit.id) }.padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
@@ -133,7 +135,7 @@ fun V4AreaScreen(
                     ) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             OneLine(habit.title, V4.type.bodyStrong, if (done) c.ink3 else c.ink)
-                            OneLine(V4TodayViewModel.habitMeta(habit, done, 0), V4.type.caption, c.ink3)
+                            OneLine(r.meta, V4.type.caption, c.ink3)
                         }
                         CheckCircleButton(done, (if (done) "Undo: " else "Mark done: ") + habit.title, { viewModel.toggleRoutine(habit, done) }, color = ac.color)
                     }

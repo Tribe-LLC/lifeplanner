@@ -131,7 +131,7 @@ fun HabitsSection(onAskCoach: (String) -> Unit, viewModel: V4HabitsViewModel = k
         V4Card {
             Text(s.keptShare?.let { "${(it * 100).toInt()}% of habit days kept" } ?: "Your history fills in here", style = V4.type.headline, color = c.ink)
             HeatGrid(s.heat, tint.color, "Habit days kept over the last 12 weeks")
-            Text("Each column is a week, Monday at the top. Darker means more habits kept.", style = V4.type.caption, color = c.ink3)
+            Text("Each column is a week, Monday at the top. The stronger the colour, the more habits you kept.", style = V4.type.caption, color = c.ink3)
         }
     }
 

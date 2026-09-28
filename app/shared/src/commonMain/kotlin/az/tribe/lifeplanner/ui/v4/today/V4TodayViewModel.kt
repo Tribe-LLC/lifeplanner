@@ -550,7 +550,7 @@ class V4TodayViewModel(
             if (PlanArea.MIND in areas) h.sleepHours?.let { add(TodayChip("Slept ${formatHours(it)}", PlanArea.MIND)) }
         }
 
-        val nudge = pickNudge(checkable, h, habits.map { it.habit }, week).takeIf { it?.id != dismissedId }
+        val nudge = pickNudge(checkable, h, habits, week).takeIf { it?.id != dismissedId }
 
         return TodayUiState(date = today, items = sorted, done = done, total = checkable.size, chips = chips, nudge = nudge, loaded = true)
     }
@@ -561,7 +561,7 @@ class V4TodayViewModel(
             WorkoutKind.fromTitle(it.title) !in setOf(WorkoutKind.WALK, WorkoutKind.YOGA)
     }
 
-    private fun pickNudge(checkable: List<DayItem>, h: HealthToday, habits: List<Habit>, week: List<LifeLog>): CoachNudge? {
+    private fun pickNudge(checkable: List<DayItem>, h: HealthToday, habits: List<HabitRow>, week: List<LifeLog>): CoachNudge? {
         val hour = Clock.System.now().toLocalDateTime(tz).hour
         val sleep = h.sleepHours
         workouts.swapToday()?.let { swap ->
@@ -607,8 +607,11 @@ class V4TodayViewModel(
             return CoachNudge(id = "all_done", text = "Everything for today is done. That is a good day.", primary = null, secondary = "Thanks")
         }
         if (hour >= 18 && left.isNotEmpty()) {
-            val streaker = habits.filter { h -> left.any { it.refId == h.id } }.maxByOrNull { it.currentStreak }
-            val streakLine = streaker?.takeIf { it.currentStreak >= 2 }?.let { " ${it.title} is on a ${it.currentStreak} day streak." } ?: ""
+            // Live streaks from HabitService: the stored currentStreak only moves on a check-in, so it goes stale.
+            val streaker = habits.filter { r -> left.any { it.refId == r.habit.id } }.maxByOrNull { it.stats.streak }
+            val streakLine = streaker?.takeIf { it.stats.streak >= 2 }?.let { r ->
+                " ${r.habit.title} is on a ${r.stats.streak} ${if (r.stats.streakInWeeks) "week" else "day"} streak."
+            } ?: ""
             return CoachNudge(
                 id = "evening",
                 text = "${left.size} left for today.$streakLine Pick the easiest one and do it now.",
@@ -644,14 +647,6 @@ class V4TodayViewModel(
             habit.healthMetricType != null -> PlanArea.FITNESS
             habit.completionSource == HabitCompletionSource.BREATHING -> PlanArea.MIND
             else -> PlanArea.HABITS
-        }
-
-        fun habitMeta(habit: Habit, done: Boolean, count: Int): String = when {
-            habit.targetCount > 1 -> "${if (done) habit.targetCount else count} of ${habit.targetCount}${habit.unit?.let { " $it" } ?: ""}"
-            habit.currentStreak >= 2 -> "${habit.currentStreak} day streak"
-            habit.healthMetricType != null -> "Ticks itself from Health"
-            habit.type == HabitType.QUIT -> if (done) "Resisted today" else "Stay strong"
-            else -> habit.frequency.displayName
         }
 
         fun parseTime(raw: String?): LocalTime? = raw?.trim()?.takeIf { it.isNotEmpty() }?.let { s ->
