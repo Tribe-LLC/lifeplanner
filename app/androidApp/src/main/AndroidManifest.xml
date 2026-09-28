@@ -162,6 +162,11 @@
             android:name=".notification.ReminderAlarmReceiver"
             android:exported="false" />
 
+        <!-- Done / Not today / Later on a habit reminder -->
+        <receiver
+            android:name=".notification.HabitReminderActions"
+            android:exported="false" />
+
         <!-- Reschedule reminders after device reboot -->
         <receiver
             android:name=".notification.BootReceiver"

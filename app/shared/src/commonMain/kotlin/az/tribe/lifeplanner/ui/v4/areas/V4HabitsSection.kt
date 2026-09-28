@@ -47,6 +47,7 @@ import az.tribe.lifeplanner.domain.model.PlanArea
 import az.tribe.lifeplanner.domain.service.FitnessWeek
 import az.tribe.lifeplanner.domain.service.HabitSchedule
 import az.tribe.lifeplanner.domain.service.Schedule
+import az.tribe.lifeplanner.ui.v4.components.V4TimeDialog
 import az.tribe.lifeplanner.ui.v4.components.CheckCircleButton
 import az.tribe.lifeplanner.ui.v4.components.OneLine
 import az.tribe.lifeplanner.ui.v4.components.V4Card
@@ -367,11 +368,14 @@ private fun ScheduleChoices(schedule: Schedule, onChange: (Schedule) -> Unit) {
 @Composable
 private fun ReminderChoices(time: LocalTime?, onSelect: (LocalTime?) -> Unit) {
     val options = listOf<LocalTime?>(null, LocalTime(7, 0), LocalTime(8, 30), LocalTime(12, 30), LocalTime(18, 0), LocalTime(21, 0), LocalTime(22, 30))
+    var picking by remember { mutableStateOf(false) }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         (options + listOfNotNull(time?.takeIf { it !in options })).forEach { t ->
             Choice(t?.let(::fmtTime) ?: "None", time == t) { onSelect(t) }
         }
+        Choice("Other time", false) { picking = true }
     }
+    if (picking) V4TimeDialog(time, onPick = { onSelect(it); picking = false }, onDismiss = { picking = false })
 }
 
 private fun fmtTime(t: LocalTime) = "${t.hour.toString().padStart(2, '0')}:${t.minute.toString().padStart(2, '0')}"

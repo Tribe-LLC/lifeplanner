@@ -257,6 +257,45 @@ class HabitService(
         runCatching { reminders.getRemindersByHabit(habit.id) }.getOrDefault(emptyList()).forEach { runCatching { reminders.deleteReminder(it.id) } }
     }
 
+    // ── From outside the app (reminder buttons, widgets) ────────────────────
+
+    /** One tap: a counted habit goes up by one, any other is done for today. True once today is complete. */
+    suspend fun tickToday(habitId: String): Boolean {
+        val habit = habits.getHabitById(habitId) ?: return false
+        val today = today()
+        val complete = if (habit.targetCount > 1) habits.addCount(habit.id, today, 1).completed
+        else { if (habits.getCheckInByHabitAndDate(habit.id, today)?.completed != true) habits.checkIn(habit.id, today); true }
+        tick.value++
+        return complete
+    }
+
+    /** "Not today" from a reminder: skips today unless it is already skipped. */
+    suspend fun skipToday(habitId: String) {
+        val habit = habits.getHabitById(habitId) ?: return
+        val today = today()
+        if (skipsFor(habit, today, today).isEmpty()) logs.save(skipRow(habit, today))
+    }
+
+    /**
+     * Whether a reminder still has a point right now: the habit is active and not already done,
+     * skipped, or on a break or trip today. Keeps the phone quiet about things already handled.
+     */
+    suspend fun needsReminder(habitId: String): Boolean {
+        val habit = habits.getHabitById(habitId) ?: return false
+        if (!habit.isActive) return false
+        val today = today()
+        if (habits.getCheckInByHabitAndDate(habit.id, today)?.completed == true) return false
+        if (skipsFor(habit, today, today).isNotEmpty()) return false
+        return today !in runCatching { pauses.pausedDays() }.getOrDefault(emptySet())
+    }
+
+    /** "2 of 8 glasses" for a counted habit today, else null. */
+    suspend fun progressText(habitId: String): String? {
+        val habit = habits.getHabitById(habitId)?.takeIf { it.targetCount > 1 } ?: return null
+        val have = habits.getCheckInByHabitAndDate(habit.id, today())?.count ?: 0
+        return "$have of ${habit.targetCount}${habit.unit?.let { " $it" } ?: ""}"
+    }
+
     // ── Days ────────────────────────────────────────────────────────────────
 
     /** Ticks or unticks a past day, for when the tap was forgotten. Future days cannot be ticked. */

@@ -363,3 +363,22 @@ fun areaBlurb(area: PlanArea): String = when (area) {
     PlanArea.MIND -> "Sleep, mood, journal"
     PlanArea.CAREER -> "Skills and next moves"
 }
+
+/** A clock dialog for any time of day, for when the preset times do not fit. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun V4TimeDialog(initial: kotlinx.datetime.LocalTime?, onPick: (kotlinx.datetime.LocalTime) -> Unit, onDismiss: () -> Unit) {
+    val state = androidx.compose.material3.rememberTimePickerState(
+        initialHour = initial?.hour ?: 8,
+        initialMinute = initial?.minute ?: 0,
+        is24Hour = true,
+    )
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = V4.colors.surface,
+        title = { Text("Pick a time", style = V4.type.headline, color = V4.colors.ink) },
+        text = { androidx.compose.material3.TimePicker(state = state) },
+        confirmButton = { V4TextButton("Set", onClick = { onPick(kotlinx.datetime.LocalTime(state.hour, state.minute)) }) },
+        dismissButton = { V4TextButton("Cancel", onClick = onDismiss, color = V4.colors.ink2) },
+    )
+}
