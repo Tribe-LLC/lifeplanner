@@ -25,6 +25,7 @@ import az.tribe.lifeplanner.domain.service.StreakPauses
 import az.tribe.lifeplanner.domain.service.TripPlanner
 import az.tribe.lifeplanner.ui.v4.travel.V4TravelViewModel
 import az.tribe.lifeplanner.ui.v4.travel.V4TripViewModel
+import az.tribe.lifeplanner.ui.v4.travel.V4TripRecapViewModel
 import az.tribe.lifeplanner.data.meals.MealService
 import az.tribe.lifeplanner.data.plans.PlanService
 import az.tribe.lifeplanner.data.study.StudyService
@@ -70,6 +71,11 @@ val v4Module = module {
     // Resolved on each call, not here: HabitService needs the habit repository, which needs this.
     single<HabitStreakRules> { HabitStreakRules { habit -> get<HabitService>().rulesFor(habit) } }
 
+    single { az.tribe.lifeplanner.data.money.FxRates(get(), get(), get()) }
+    single { az.tribe.lifeplanner.data.money.BillService(get()) }
+    single { az.tribe.lifeplanner.ui.v4.today.TodayMoney(get(), get(), get(), get()) }
+    single { az.tribe.lifeplanner.data.travel.BookingReader(get()) }
+
     viewModelOf(::V4FirstRunViewModel)
     viewModelOf(::V4TodayViewModel)
     viewModelOf(::V4CheckInViewModel)
@@ -85,7 +91,8 @@ val v4Module = module {
     viewModelOf(::V4MindViewModel)
     viewModelOf(::V4CareerViewModel)
     viewModelOf(::V4StartersViewModel)
-    viewModel { params -> V4TripViewModel(params.get<String>(), get(), get(), get(), get(), get(), get()) }
+    viewModelOf(::V4TripRecapViewModel)
+    viewModel { params -> V4TripViewModel(params.get<String>(), get(), get(), get(), get(), get(), get(), get(), get()) }
     viewModel { params ->
         V4AreaViewModel(params.get<PlanArea>(), get(), get(), get(), get(), get(), get(), get())
     }

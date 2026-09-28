@@ -158,6 +158,18 @@ class MoneyV5Test {
         assertEquals("Every week on Friday", Bills.everyLabel(BillRule(BillRepeat.WEEKLY), LocalDate(2026, 10, 2)))
     }
 
+    @Test
+    fun todayShowsBillsTheDayBeforeAndOnTheDay() {
+        val rent = bill(600.0, LocalDate(2026, 9, 29), BillRule(BillRepeat.MONTHLY, day = 29)).copy(id = "rent", title = "Rent")
+        val later = bill(12.0, LocalDate(2026, 10, 3), BillRule(BillRepeat.MONTHLY, day = 3)).copy(id = "later")
+        val paid = spend(40.0, "EUR").copy(id = "paid", title = "Phone", category = "bills", externalId = Bills.paidMarker("phone", today))
+        val items = az.tribe.lifeplanner.ui.v4.today.TodayMoney.billItems(listOf(rent, later), listOf(paid), today)
+        assertEquals(listOf("Rent €600", "Phone €40"), items.map { it.title })
+        assertEquals("Due tomorrow", items[0].meta)
+        assertEquals(listOf(false, true), items.map { it.done })
+        assertEquals(listOf("rent", "paid"), items.map { it.refId })
+    }
+
     // ── Quick add ──
 
     private val now = LocalDateTime(today, LocalTime(13, 10))

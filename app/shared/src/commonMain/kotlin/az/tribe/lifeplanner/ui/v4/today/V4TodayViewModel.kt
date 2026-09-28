@@ -79,7 +79,7 @@ import kotlinx.datetime.todayIn
 import kotlin.time.Clock
 import kotlin.time.Instant
 
-enum class DayItemType { HABIT, STEP, EVENT, WORKOUT, TRIP, MEAL, STUDY, CAREER }
+enum class DayItemType { HABIT, STEP, EVENT, WORKOUT, TRIP, MEAL, STUDY, CAREER, BILL }
 
 /** One row of "Your day". Habits and plan steps can be ticked; calendar events are context. */
 data class DayItem(
@@ -163,6 +163,7 @@ class V4TodayViewModel(
     private val meals: MealService,
     private val habitService: HabitService,
     private val career: CareerService,
+    private val todayMoney: TodayMoney,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -198,18 +199,8 @@ class V4TodayViewModel(
     /** Habits with their schedule and skips applied, so Today only shows the ones due. */
     private val habitsWithCounts = habitService.rows
 
-    /** "€88 left for food this week", from the leading budget. Null without one. */
-    private val moneyChip = combine(
-        budgets.observeAll(),
-        lifeLogs.observeInRange(today().minus(DatePeriod(days = 40)), today()),
-    ) { bs, logs ->
-        MoneySummary.primary(bs)?.let { b ->
-            val st = MoneySummary.status(b, logs, today())
-            val what = b.category?.let { " for $it" } ?: ""
-            if (st.left >= 0) "${MoneyFormat.format(st.left, b.currency)} left$what ${MoneySummary.periodWord(b.period)}"
-            else "${MoneyFormat.format(-st.left, b.currency)} over$what ${MoneySummary.periodWord(b.period)}"
-        }
-    }
+    /** "€14 a day for the rest of the week" and the bills due, from [TodayMoney]. */
+    private val moneyChip = todayMoney.state
 
     val state: StateFlow<TodayUiState> = combine(
         combine(habitsWithCounts, goalRepository.observeAllGoals(), events, ::Triple),
@@ -221,7 +212,7 @@ class V4TodayViewModel(
         build(habits, goals, evts, x.health, stepsDone, areas, dismissedId, x.money, x.week, x.trip, x.plans, x.career)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TodayUiState(date = today()))
 
-    private data class Extras(val health: HealthToday, val money: String?, val week: List<LifeLog>, val trip: Pair<Trip, List<TripItem>>?, val plans: List<LifeLog>, val career: List<LifeLog>)
+    private data class Extras(val health: HealthToday, val money: TodayMoneyState, val week: List<LifeLog>, val trip: Pair<Trip, List<TripItem>>?, val plans: List<LifeLog>, val career: List<LifeLog>)
 
     init {
         refresh()
@@ -284,6 +275,9 @@ class V4TodayViewModel(
                     career.complete(log)
                     PostHogAnalytics.capture("v4_today_ticked", mapOf("type" to "career", "done" to !item.done))
                 }
+            }
+            DayItemType.BILL -> viewModelScope.launch {
+                runCatching { todayMoney.toggle(item) }.onFailure { Logger.w("V4Today") { "Bill toggle failed: ${it.message}" } }
             }
             DayItemType.EVENT -> {}
         }
@@ -422,7 +416,7 @@ class V4TodayViewModel(
         stepsDone: Set<String>,
         areas: Set<PlanArea>,
         dismissedId: String?,
-        money: String?,
+        money: TodayMoneyState,
         week: List<LifeLog>,
         trip: Pair<Trip, List<TripItem>>?,
         planned: List<LifeLog>,
@@ -559,6 +553,8 @@ class V4TodayViewModel(
             }
         }
 
+        items += money.bills
+
         evts.forEach { e ->
             val start = Instant.fromEpochMilliseconds(e.startEpochMillis).toLocalDateTime(tz)
             items += DayItem(
@@ -594,7 +590,7 @@ class V4TodayViewModel(
                     add(TodayChip("${StudyPlanner.dueLine(e)} ${StudyPlanner.countdown(e.date, today)}", PlanArea.STUDY))
                 }
             }
-            if (PlanArea.MONEY in areas) money?.let { add(TodayChip(it, PlanArea.MONEY)) }
+            if (PlanArea.MONEY in areas) money.chip?.let { add(TodayChip(it, PlanArea.MONEY)) }
             if (PlanArea.FITNESS in areas) h.steps?.let { add(TodayChip("${formatThousands(it.toLong())} steps", PlanArea.FITNESS)) }
             if (PlanArea.MIND in areas) h.sleepHours?.let { add(TodayChip("Slept ${formatHours(it)}", PlanArea.MIND)) }
         }

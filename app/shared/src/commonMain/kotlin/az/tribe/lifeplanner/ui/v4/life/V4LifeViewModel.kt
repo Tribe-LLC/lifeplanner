@@ -89,6 +89,7 @@ class V4LifeViewModel(
     private val budgets: BudgetRepository,
     private val trips: TripRepository,
     private val habitService: HabitService,
+    private val fx: az.tribe.lifeplanner.data.money.FxRates,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -275,13 +276,16 @@ class V4LifeViewModel(
                 val logs = runCatching { lifeLogs.getInRange(today.minus(DatePeriod(days = 40)), today) }.getOrDefault(emptyList())
                 val spends = logs.filter { MoneySummary.isSpend(it) }
                 val budget = MoneySummary.primary(runCatching { budgets.getAll() }.getOrDefault(emptyList()))
+                val rates = fx.table.value
+                val home = budget?.currency ?: spends.firstOrNull()?.currency
+                fun sum(l: List<az.tribe.lifeplanner.domain.model.LifeLog>) = az.tribe.lifeplanner.domain.service.Fx.total(l, home, rates).amount
                 val trend = run {
                     var running = 0.0
-                    week.map { d -> running += spends.filter { it.date == d }.sumOf { it.amount ?: 0.0 }; running.toFloat() }
+                    week.map { d -> running += sum(spends.filter { it.date == d }); running.toFloat() }
                 }
                 when {
                     budget != null -> {
-                        val st = MoneySummary.status(budget, logs, today)
+                        val st = MoneySummary.status(budget, logs, today, rates)
                         AreaSummary(
                             area,
                             MoneyFormat.format(st.spent, budget.currency),
@@ -291,7 +295,7 @@ class V4LifeViewModel(
                     }
                     spends.isNotEmpty() -> AreaSummary(
                         area,
-                        MoneyFormat.format(spends.filter { it.date >= week.first() }.sumOf { it.amount ?: 0.0 }, spends.first().currency),
+                        MoneyFormat.format(sum(spends.filter { it.date >= week.first() }), home),
                         "spent this week. Set a budget to see what is left",
                         trend,
                     )
@@ -303,7 +307,8 @@ class V4LifeViewModel(
                 if (t == null) plansFallback("Plan a trip", "Budget, packing and days in one place")
                 else {
                     val spent = runCatching { lifeLogs.getInRange(today.minus(DatePeriod(days = 180)), t.endDate) }.getOrDefault(emptyList())
-                        .filter { it.tripId == t.id && MoneySummary.isSpend(it) }.sumOf { it.amount ?: 0.0 }
+                        .filter { it.tripId == t.id && MoneySummary.isSpend(it) }
+                        .let { az.tribe.lifeplanner.domain.service.Fx.total(it, t.currency, fx.table.value).amount }
                     AreaSummary(
                         area,
                         t.destination,

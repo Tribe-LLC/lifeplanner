@@ -39,6 +39,9 @@ import az.tribe.lifeplanner.core.MoneyFormat
 import az.tribe.lifeplanner.domain.model.LogKind
 import az.tribe.lifeplanner.domain.model.PlanArea
 import az.tribe.lifeplanner.domain.service.ParsedEntry
+import az.tribe.lifeplanner.domain.service.Bills
+import az.tribe.lifeplanner.domain.service.TripPlanner
+import kotlinx.datetime.toLocalDateTime
 import az.tribe.lifeplanner.ui.v4.components.V4PillButton
 import az.tribe.lifeplanner.ui.v4.components.V4PrimaryButton
 import az.tribe.lifeplanner.ui.v4.components.areaName
@@ -126,6 +129,7 @@ fun QuickAddSheet(
                         color = c.ink3,
                     )
                     entries.forEach { EntryCard(it) }
+                    state.approx?.let { Text(it + (state.tripPlace?.let { p -> ". Plain amounts are in local money while you are in $p." } ?: ""), style = V4.type.caption, color = c.ink2) }
                     val saved = state.savedMessage
                     V4PrimaryButton(
                         text = saved ?: "Save to ${QuickAddViewModel.joinNames(PlanArea.entries.filter { a -> entries.any { it.area == a } }.map { areaName(it) })}",
@@ -144,7 +148,7 @@ fun QuickAddSheet(
 @Composable
 private fun Hint() {
     Text(
-        "Try: \"coffee 4.50\", \"ran 5k in 28 min\", \"slept badly\", \"studied 25 min\", \"drink water every day\".",
+        "Try: \"coffee 4.50\", \"ran 5k in 28 min\", \"netflix 12 monthly\", \"slept badly\", \"drink water every day\".",
         style = V4.type.caption,
         color = V4.colors.ink2,
     )
@@ -160,7 +164,14 @@ private fun EntryCard(e: ParsedEntry) {
     ) {
         AreaIllustration(e.area, size = 44.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(if (e.isRoutine) "${areaName(e.area)}, new routine" else areaName(e.area), style = V4.type.micro, color = ac.ink)
+            Text(
+                when {
+                    e.isRoutine -> "${areaName(e.area)}, new routine"
+                    e.isBill -> "${areaName(e.area)}, new bill"
+                    else -> areaName(e.area)
+                },
+                style = V4.type.micro, color = ac.ink,
+            )
             Text(headline(e), style = V4.type.bodyStrong, color = V4.colors.ink)
             detail(e)?.let { Text(it, style = V4.type.caption, color = V4.colors.ink2) }
         }
@@ -174,6 +185,9 @@ private fun headline(e: ParsedEntry): String = when (e.kind) {
 
 private fun detail(e: ParsedEntry): String? = when {
     e.isRoutine -> "Every day, on Today from tomorrow morning"
+    e.bill != null && e.firstDue != null -> Bills.everyLabel(e.bill, e.firstDue) + ". Next: " +
+        (if (e.firstDue == kotlinx.datetime.TimeZone.currentSystemDefault().let { kotlin.time.Clock.System.now().toLocalDateTime(it).date }) "today"
+        else "${e.firstDue.day} ${TripPlanner.monthName(e.firstDue.month)}")
     e.kind == LogKind.EXPENSE -> "Spent on ${e.category ?: "other"}"
     e.kind == LogKind.INCOME -> "Money in"
     e.kind == LogKind.WORKOUT -> listOfNotNull(e.durationMin?.let { "$it min" }, "counts toward Move").joinToString(", ")
