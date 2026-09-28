@@ -49,6 +49,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.domain.model.MessageRole
 import az.tribe.lifeplanner.ui.chat.ChatViewModel
+import az.tribe.lifeplanner.ui.chat.executeCoachSuggestion
 import az.tribe.lifeplanner.ui.v4.components.V4TextButton
 import az.tribe.lifeplanner.ui.v4.theme.V4
 import com.adamglin.PhosphorIcons
@@ -58,7 +59,6 @@ import org.koin.compose.viewmodel.koinViewModel
 
 private const val DEFAULT_COACH = "luna_general"
 
-private val starters = listOf("Plan my week", "I slept badly", "Help me spend less", "Build a new habit")
 
 /**
  * The Coach tab: one conversation with the everyday coach, in v4's look. Other coaches and
@@ -72,8 +72,13 @@ fun V4CoachScreen(
     onAllCoaches: () -> Unit,
     bottomInset: PaddingValues,
     viewModel: ChatViewModel = koinViewModel(),
+    facts: az.tribe.lifeplanner.data.life.LifeFactsService = org.koin.compose.koinInject(),
 ) {
     val ui by viewModel.uiState.collectAsState()
+    // The coach speaks first, from the user's own week. Worked out on the phone, no AI call.
+    val opener by androidx.compose.runtime.produceState<az.tribe.lifeplanner.domain.service.Opener?>(null) {
+        value = runCatching { facts.opener() }.getOrNull()
+    }
     var draft by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
     val c = V4.colors
@@ -108,21 +113,37 @@ fun V4CoachScreen(
             item(key = "header") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Sees the areas you share with it", style = V4.type.label.copy(fontSize = V4.type.body.fontSize * 0.93f), color = c.ink3)
+                        Text("Sees your last 7 days", style = V4.type.label.copy(fontSize = V4.type.body.fontSize * 0.93f), color = c.ink3)
                         Text("Coach", style = V4.type.display, color = c.ink, modifier = Modifier.semantics { heading() })
                     }
-                    V4TextButton("All coaches", onClick = onAllCoaches)
                 }
             }
             if (messages.isEmpty() && !ui.isLoading) {
                 item(key = "hello") {
                     Bubble(
-                        "Hi. I can see your habits, plans and journal. Ask me to plan your week, rethink a goal, or make a bad day lighter.",
+                        opener?.text ?: "Hi. I see a short summary of your last 7 days in the areas you picked. Ask me to plan your week, rethink a goal, or make a bad day lighter.",
                         mine = false,
                     )
                 }
             }
-            items(messages, key = { it.id }) { m -> Bubble(m.content, mine = m.role == MessageRole.USER) }
+            items(messages, key = { it.id }) { m ->
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Bubble(m.content, mine = m.role == MessageRole.USER)
+                    val sugs = m.metadata?.coachSuggestions.orEmpty()
+                    if (m.role != MessageRole.USER && sugs.isNotEmpty()) {
+                        Suggestions(
+                            sugs,
+                            done = ui.executedSuggestionIds + (m.metadata?.executedSuggestionIds ?: emptySet()),
+                            busy = ui.executingAction,
+                            onDo = { viewModel.executeCoachSuggestion(it) },
+                            onAnswer = { send(it) },
+                        )
+                    }
+                }
+            }
+            ui.actionFeedback?.let { fb ->
+                item(key = "feedback") { Text(fb, style = V4.type.caption, color = c.accentInk, modifier = Modifier.padding(start = 8.dp)) }
+            }
             if (streaming != null) {
                 item(key = "streaming") { Bubble(streaming, mine = false) }
             } else if (ui.isSending) {
@@ -133,9 +154,10 @@ fun V4CoachScreen(
             if (messages.size <= 1 && !ui.isSending) {
                 item(key = "starters") {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        starters.forEach { s ->
+                        val replies = opener?.replies ?: listOf("Plan my week" to "Plan my week", "Build a new habit" to "Help me build a new habit")
+                        replies.forEach { (label, prompt) ->
                             Text(
-                                s,
+                                label,
                                 style = V4.type.label.copy(fontSize = V4.type.body.fontSize * 0.93f),
                                 color = c.ink,
                                 modifier = Modifier
@@ -143,7 +165,7 @@ fun V4CoachScreen(
                                     .clip(RoundedCornerShape(22.dp))
                                     .border(1.5.dp, c.trackOff, RoundedCornerShape(22.dp))
                                     .background(c.surface)
-                                    .clickable(role = Role.Button) { send(s) }
+                                    .clickable(role = Role.Button) { send(prompt) }
                                     .padding(horizontal = 16.dp, vertical = 12.dp),
                             )
                         }
@@ -214,4 +236,68 @@ private fun Bubble(text: String, mine: Boolean) {
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         )
     }
+}
+
+
+/**
+ * What the coach offers to do, as buttons that really do it: add the habit or plan, save the
+ * journal entry, tick the habit. Questions show their answers as chips.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Suggestions(
+    list: List<az.tribe.lifeplanner.domain.model.CoachSuggestion>,
+    done: Set<String>,
+    busy: Boolean,
+    onDo: (az.tribe.lifeplanner.domain.model.CoachSuggestion) -> Unit,
+    onAnswer: (String) -> Unit,
+) {
+    val c = V4.colors
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.surface).border(1.dp, c.line, RoundedCornerShape(18.dp)).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        list.forEach { s ->
+            if (s is az.tribe.lifeplanner.domain.model.CoachSuggestion.AskQuestion) {
+                Text(s.question, style = V4.type.bodyStrong, color = c.ink)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    s.options.forEach { o ->
+                        Text(
+                            o.label, style = V4.type.bodyStrong, color = c.ink,
+                            modifier = Modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(22.dp)).border(1.dp, c.line, RoundedCornerShape(22.dp))
+                                .clickable(role = Role.Button) { onAnswer(o.label) }.padding(horizontal = 14.dp, vertical = 11.dp),
+                        )
+                    }
+                }
+                return@forEach
+            }
+            val (title, sub, verb) = describe(s)
+            val isDone = s.id in done
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(title, style = V4.type.bodyStrong, color = c.ink)
+                    Text(sub, style = V4.type.caption, color = c.ink3)
+                }
+                Box(
+                    Modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(22.dp))
+                        .background(if (isDone) c.surface else c.accent)
+                        .let { if (isDone) it.border(1.dp, c.accentSoft, RoundedCornerShape(22.dp)) else it }
+                        .clickable(role = Role.Button, enabled = !isDone && !busy) { onDo(s) }
+                        .semantics { contentDescription = if (isDone) "$title, done" else "$verb $title" }
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center,
+                ) { Text(if (isDone) "Done" else verb, style = V4.type.bodyStrong, color = if (isDone) c.accentInk else c.onAccent) }
+            }
+        }
+    }
+}
+
+private fun describe(s: az.tribe.lifeplanner.domain.model.CoachSuggestion): Triple<String, String, String> = when (s) {
+    is az.tribe.lifeplanner.domain.model.CoachSuggestion.CreateHabit ->
+        Triple(s.title, "New habit, ${if (s.frequency == "WEEKLY") "weekly" else "every day"}", "Add")
+    is az.tribe.lifeplanner.domain.model.CoachSuggestion.CreateGoal ->
+        Triple(s.title, if (s.milestones.isEmpty()) "New plan" else "New plan with ${s.milestones.size} steps", "Add")
+    is az.tribe.lifeplanner.domain.model.CoachSuggestion.CreateJournalEntry -> Triple(s.title, "Save to your journal", "Save")
+    is az.tribe.lifeplanner.domain.model.CoachSuggestion.CheckInHabit -> Triple(s.habitTitle, "Tick it for today", "Tick")
+    is az.tribe.lifeplanner.domain.model.CoachSuggestion.AskQuestion -> Triple(s.question, "", "Answer")
 }

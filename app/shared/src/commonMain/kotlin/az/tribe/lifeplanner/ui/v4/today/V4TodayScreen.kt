@@ -140,7 +140,19 @@ fun V4TodayScreen(
                 )
             }
         }
-        if (state.busy && state.habitsLeft >= V4TodayViewModel.CHECK_IN_AT) {
+        state.wrapUp?.let { w ->
+            item(key = "wrap") {
+                WrapUpCard(
+                    w,
+                    onDecide = { item, choice -> viewModel.decide(item.key, item.type, item.refId, choice) },
+                    onCheckIn = onCheckIn,
+                    onMood = viewModel::wrapMood,
+                    onClose = viewModel::closeWrapUp,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+        }
+        if (state.busy && state.habitsLeft >= V4TodayViewModel.CHECK_IN_AT && state.wrapUp == null) {
             item(key = "checkin") { CheckInHero(state.habitsLeft, onCheckIn, Modifier.padding(top = 8.dp)) }
         }
         if (state.slipped > 0) {
@@ -149,6 +161,15 @@ fun V4TodayScreen(
         state.tip?.let { tip ->
             item(key = "tip") {
                 LearnedTipCard(tip.text, "Move it", "Keep it", onYes = { viewModel.acceptTip(tip) }, onNo = { viewModel.declineTip(tip) }, modifier = Modifier.padding(top = 4.dp))
+            }
+        }
+        if (state.carry.isNotEmpty()) {
+            item(key = "carry") {
+                CarryCard(
+                    state.carry,
+                    onDecide = { c, choice -> viewModel.decide(c.key, c.type, c.refId, choice) },
+                    modifier = Modifier.padding(top = 4.dp).animateItem(),
+                )
             }
         }
         item(key = "your_day") {

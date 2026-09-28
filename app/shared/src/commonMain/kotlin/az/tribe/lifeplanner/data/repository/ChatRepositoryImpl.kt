@@ -39,7 +39,9 @@ class ChatRepositoryImpl(
     internal val coachRepository: CoachRepository? = null,
     private val syncManager: SyncManager? = null,
     private val userSituationRepository: UserSituationRepository? = null,
-    internal val orchestrator: CoachOrchestrator = CoachOrchestrator()
+    internal val orchestrator: CoachOrchestrator = CoachOrchestrator(),
+    /** A short summary of the user's last week across the areas, read when a message is sent. */
+    private val lifeDigest: (suspend () -> String?)? = null,
 ) : ChatRepository {
 
     internal val json = Json {
@@ -342,7 +344,8 @@ class ChatRepositoryImpl(
             personaOverride = personaOverride,
             situation = situation,
             orchestrator = orchestrator,
-            activeGoals = goalSummaries
+            activeGoals = goalSummaries,
+            lifeDigest = runCatching { lifeDigest?.invoke() }.getOrNull()
         )
 
         // Build messages for the proxy

@@ -1,5 +1,6 @@
 package az.tribe.lifeplanner.di
 
+import az.tribe.lifeplanner.ui.v4.life.V4LifeInsightsViewModel
 import az.tribe.lifeplanner.data.integrations.IntegrationPrefs
 import az.tribe.lifeplanner.data.repository.PlanAreasRepositoryImpl
 import az.tribe.lifeplanner.domain.model.PlanArea
@@ -65,6 +66,7 @@ val v4Module = module {
     single { HabitService(get(), get(), get(), get(), get()) }
     single { az.tribe.lifeplanner.data.habits.NudgePrefs(get()) }
     single { az.tribe.lifeplanner.data.habits.NudgeService(get(), get()) }
+    single { az.tribe.lifeplanner.data.life.LifeFactsService(get(), get(), get(), get(), get(), get(), get()) }
     single { MindService(get(), get(), get(), get(), get()) }
     single { CareerService(get(), get(), get()) }
     // Resolved on each call, not here: HabitService needs the habit repository, which needs this.
@@ -85,6 +87,7 @@ val v4Module = module {
     viewModelOf(::V4MindViewModel)
     viewModelOf(::V4CareerViewModel)
     viewModelOf(::V4StartersViewModel)
+    viewModelOf(::V4LifeInsightsViewModel)
     viewModel { params -> V4TripViewModel(params.get<String>(), get(), get(), get(), get(), get(), get()) }
     viewModel { params ->
         V4AreaViewModel(params.get<PlanArea>(), get(), get(), get(), get(), get(), get(), get())

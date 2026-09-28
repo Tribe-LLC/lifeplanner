@@ -41,6 +41,7 @@ import az.tribe.lifeplanner.data.health.WorkoutKind
 import az.tribe.lifeplanner.domain.model.LifeLog
 import az.tribe.lifeplanner.domain.model.LogStatus
 import az.tribe.lifeplanner.domain.service.FitnessWeek
+import az.tribe.lifeplanner.domain.service.MindCheckIns
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -138,6 +139,20 @@ data class TodayUiState(
     val habitsLeft: Int = 0,
     val slipped: Int = 0,
     val tip: LearnTip? = null,
+    /** Plans from earlier days that did not happen, waiting for Today, Tomorrow or Let it go. */
+    val carry: List<CarryItem> = emptyList(),
+    /** From 18:00: wins first, what is left, and one tap for mood. */
+    val wrapUp: WrapUp? = null,
+)
+
+/** The evening wrap-up: what got done, what is still open, and how the day felt. */
+data class WrapUp(
+    val wins: List<String>,
+    val winCount: Int,
+    /** Dated things still open, each can go to tomorrow or be let go. */
+    val open: List<DayItem>,
+    val habitsLeft: Int,
+    val mood: Int?,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -163,6 +178,7 @@ class V4TodayViewModel(
     private val meals: MealService,
     private val habitService: HabitService,
     private val career: CareerService,
+    private val mind: az.tribe.lifeplanner.data.mind.MindService,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -188,8 +204,11 @@ class V4TodayViewModel(
     private data class HealthToday(val steps: Double? = null, val sleepHours: Double? = null)
 
     /** Planned meals and study, and exams and deadlines, from today through the next two weeks. */
-    private val upcomingPlans = lifeLogs.observeInRange(today(), today().plus(DatePeriod(days = 14)))
-        .map { list -> list.filter { MealPlanner.isMeal(it) || StudyPlanner.isStudy(it) } }
+    private val upcomingPlans = lifeLogs.observeInRange(today().minus(DatePeriod(days = CarryOver.LOOKBACK_DAYS)), today().plus(DatePeriod(days = 14)))
+        .map { list -> list.filter { MealPlanner.isMeal(it) || StudyPlanner.isStudy(it) || FitnessWeek.isWorkout(it) || MindCheckIns.isCheckIn(it) } }
+
+    /** The wrap-up hides for the day once closed. */
+    private val wrapClosed = MutableStateFlow(settings.getBoolean(wrapKey(), false))
 
     /** Applications, interviews and people, whose next step can be overdue as well as today. */
     private val careerRows = lifeLogs.observeInRange(today().minus(DatePeriod(days = 365)), today().plus(DatePeriod(days = 1)))
@@ -216,10 +235,13 @@ class V4TodayViewModel(
         combine(health, moneyChip, combine(weekWorkouts, upcomingPlans, careerRows, ::Triple), swapTick, currentTrip) { h, m, (w, p, cr), _, t -> Extras(h, m, w, t, p, cr) },
         stepsDoneToday,
         planAreas.enabledAreas,
-        dismissed,
-    ) { (habits, goals, evts), x, stepsDone, areas, dismissedId ->
-        build(habits, goals, evts, x.health, stepsDone, areas, dismissedId, x.money, x.week, x.trip, x.plans, x.career)
+        combine(dismissed, wrapClosed, ::Pair),
+    ) { (habits, goals, evts), x, stepsDone, areas, (dismissedId, closed) ->
+        lastGoals = goals
+        build(habits, goals, evts, x.health, stepsDone, areas, dismissedId, x.money, x.week, x.trip, x.plans, x.career, closed)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TodayUiState(date = today()))
+
+    private var lastGoals: List<Goal> = emptyList()
 
     private data class Extras(val health: HealthToday, val money: String?, val week: List<LifeLog>, val trip: Pair<Trip, List<TripItem>>?, val plans: List<LifeLog>, val career: List<LifeLog>)
 
@@ -425,9 +447,11 @@ class V4TodayViewModel(
         money: String?,
         week: List<LifeLog>,
         trip: Pair<Trip, List<TripItem>>?,
-        planned: List<LifeLog>,
+        allPlanned: List<LifeLog>,
         careerRows: List<LifeLog>,
+        wrapClosed: Boolean,
     ): TodayUiState {
+        val planned = allPlanned.filter { !FitnessWeek.isWorkout(it) && !MindCheckIns.isCheckIn(it) }
         val today = today()
         val items = mutableListOf<DayItem>()
         val away = trip?.first?.takeIf { it.travelMode && TripPlanner.isActive(it, today) }
@@ -452,9 +476,10 @@ class V4TodayViewModel(
         goals.filter { it.status != GoalStatus.COMPLETED && !it.isArchived }.forEach { goal ->
             goal.milestones.forEach { m ->
                 val due = m.dueDate
-                val show = (!m.isCompleted && due != null && due <= today) || (m.isCompleted && m.id in stepsDone)
+                // Earlier ones wait under "From yesterday" instead of piling up here as overdue.
+                val show = (!m.isCompleted && due == today) || (m.isCompleted && m.id in stepsDone)
                 if (show) {
-                    val overdue = due != null && due < today && !m.isCompleted
+                    val overdue = false
                     items += DayItem(
                         key = "s_${m.id}",
                         type = DayItemType.STEP,
@@ -599,10 +624,25 @@ class V4TodayViewModel(
             if (PlanArea.MIND in areas) h.sleepHours?.let { add(TodayChip("Slept ${formatHours(it)}", PlanArea.MIND)) }
         }
 
+        val hourNow = Clock.System.now().toLocalDateTime(tz).hour
+        val moodToday = allPlanned.filter { MindCheckIns.isCheckIn(it) && it.date == today }.maxByOrNull { it.occurredAt }?.let { MindCheckIns.score(it) }
+        val openHabits = habits.count { it.stats.dueToday && !it.doneToday && !it.stats.skippedToday && it.habit.healthMetricType == null && (away == null || TravelMode.keeps(it.habit)) }
+        val wrapUp = if (hourNow >= WRAP_UP_HOUR && !wrapClosed && checkable.isNotEmpty()) {
+            val wins = checkable.filter { it.done }
+            WrapUp(
+                wins = wins.map { it.title },
+                winCount = wins.size,
+                open = checkable.filter { !it.done && it.type in setOf(DayItemType.STEP, DayItemType.WORKOUT, DayItemType.STUDY) },
+                habitsLeft = openHabits,
+                mood = moodToday,
+            )
+        } else null
+        // The wrap-up says what the evening coach line would, and more.
         val nudge = pickNudge(checkable, h, habits, week).takeIf { it?.id != dismissedId }
+            ?.takeUnless { wrapUp != null && it.id in setOf("evening", "all_done", "start") }
 
         val busy = checkable.size > BUSY_AT
-        val habitsLeft = habits.count { it.stats.dueToday && !it.doneToday && !it.stats.skippedToday && it.habit.healthMetricType == null && (away == null || TravelMode.keeps(it.habit)) }
+        val habitsLeft = openHabits
         // On a long day the check-in card already says how many are left; the coach would repeat it.
         val shownNudge = nudge?.takeUnless { busy && habitsLeft >= CHECK_IN_AT && it.id == "evening" }
         val tip = habits.firstOrNull { r ->
@@ -622,6 +662,8 @@ class V4TodayViewModel(
             habitsLeft = habitsLeft,
             slipped = habits.count { it.slip != null },
             tip = tip,
+            carry = CarryOver.items(goals, allPlanned, today),
+            wrapUp = wrapUp,
         )
     }
 
@@ -709,12 +751,51 @@ class V4TodayViewModel(
 
     private fun stepsKey() = "v4_steps_done_${today()}"
     private fun dismissKey() = "v4_nudge_dismissed_${today()}"
+    private fun wrapKey() = "v4_wrap_closed_${today()}"
+
+    // ── From yesterday, and the evening wrap-up ─────────────────────────────
+
+    /** Moves a carried or still-open plan to today or tomorrow, or lets it go. */
+    fun decide(key: String, type: DayItemType, refId: String, choice: CarryChoice) = viewModelScope.launch {
+        runCatching {
+            val today = today()
+            val day = if (choice == CarryChoice.TOMORROW) today.plus(DatePeriod(days = 1)) else today
+            when (type) {
+                DayItemType.STEP -> {
+                    val m = lastGoals.flatMap { it.milestones }.firstOrNull { it.id == refId } ?: return@runCatching
+                    // Letting a step go keeps it in its plan, just off the calendar of days.
+                    goalRepository.updateMilestone(m.copy(dueDate = if (choice == CarryChoice.LET_GO) null else day))
+                }
+                DayItemType.WORKOUT, DayItemType.STUDY -> {
+                    val log = lifeLogs.getById(refId) ?: return@runCatching
+                    if (choice == CarryChoice.LET_GO) lifeLogs.save(log.copy(status = LogStatus.SKIPPED))
+                    else plans.moveTo(log, kotlinx.datetime.LocalDateTime(day, log.occurredAt.time))
+                }
+                else -> {}
+            }
+            PostHogAnalytics.capture("v4_today_carry", mapOf("type" to type.name, "choice" to choice.name, "key" to key.take(2)))
+        }
+    }
+
+    fun wrapMood(score: Int) = viewModelScope.launch {
+        runCatching { mind.checkIn(score) }
+        PostHogAnalytics.capture("v4_wrap_mood", mapOf("score" to score))
+    }
+
+    fun closeWrapUp() {
+        settings.putBoolean(wrapKey(), true)
+        wrapClosed.value = true
+        PostHogAnalytics.capture("v4_wrap_closed", emptyMap())
+    }
 
     companion object {
         /** More things than this to tick and Today groups them instead of listing them all. */
         const val BUSY_AT = 10
         /** This many habits left on a long day and the check-in deck is offered. */
         const val CHECK_IN_AT = 5
+
+        /** From this hour the coach line becomes the evening wrap-up. */
+        const val WRAP_UP_HOUR = 18
 
         /** How far ahead "now" looks. */
         const val NOW_AHEAD_MIN = 90

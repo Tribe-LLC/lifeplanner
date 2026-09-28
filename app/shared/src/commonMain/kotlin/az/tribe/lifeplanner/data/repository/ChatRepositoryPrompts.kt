@@ -314,7 +314,8 @@ internal fun buildStreamingSystemPrompt(
     personaOverride: String?,
     situation: UserSituation? = null,
     orchestrator: CoachOrchestrator? = null,
-    activeGoals: List<String> = emptyList()
+    activeGoals: List<String> = emptyList(),
+    lifeDigest: String? = null,
 ): String {
     val coachName = coach?.name ?: "Luna"
     val coachPersonality = coach?.personality ?: "warm, encouraging, holistic thinker"
@@ -359,7 +360,7 @@ ${if (situationBlock.isNotEmpty()) "$situationBlock\n" else ""}User Context:
 - Goals: ${userContext.activeGoals} active, ${userContext.completedGoals} completed
 - Streak: ${userContext.currentStreak} days
 
-${if (goalsBlock.isNotEmpty()) "$goalsBlock\n" else ""}${if (historyText.isNotEmpty()) "CONVERSATION HISTORY:\n$historyText\n" else ""}
+${if (!lifeDigest.isNullOrBlank()) "THE USER'S LAST 7 DAYS IN THE APP (their own data; use it when it helps, never recite it back unasked, be kind about misses):\n$lifeDigest\n\n" else ""}${if (goalsBlock.isNotEmpty()) "$goalsBlock\n" else ""}${if (historyText.isNotEmpty()) "CONVERSATION HISTORY:\n$historyText\n" else ""}
 ${getStreamingInstructions(coachName)}
 ${if (situationBlock.isNotEmpty()) SITUATION_UPDATE_INSTRUCTION else ""}
 $TAG_ENFORCEMENT

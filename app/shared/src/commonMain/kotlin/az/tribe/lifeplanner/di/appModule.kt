@@ -322,7 +322,12 @@ val appModule = module {
     single { az.tribe.lifeplanner.domain.service.CalibrationProvider(get(), get(), get()) }
     single<az.tribe.lifeplanner.core.PremiumGate> { az.tribe.lifeplanner.core.DefaultPremiumGate() }
     single { CoachOrchestrator() }
-    single<ChatRepository> { ChatRepositoryImpl(get(), get<AiProxyService>(), get(), get(), get(), get()) }
+    single<ChatRepository> {
+        val koin = getKoin()
+        ChatRepositoryImpl(get(), get<AiProxyService>(), get(), get(), get(), get(), lifeDigest = {
+            koin.getOrNull<az.tribe.lifeplanner.data.life.LifeFactsService>()?.digest()
+        })
+    }
     single { ReviewMessageBuilder(get()) }
     single<ReminderRepository> { ReminderRepositoryImpl(get(), get(), get()) }
     single { SmartReminderManager(get()) }

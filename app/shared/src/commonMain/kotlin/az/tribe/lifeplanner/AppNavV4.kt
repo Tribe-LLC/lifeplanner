@@ -376,6 +376,7 @@ internal fun NavGraphBuilder.appNavV4(
         V4LifeScreen(
             onOpenArea = { navController.navigate(V4Routes.area(it)) { launchSingleTop = true } },
             onChangeAreas = { navController.navigate(V4Routes.areas(edit = true)) { launchSingleTop = true } },
+            onAskCoach = { prompt -> onCoachPrompt(prompt); openTab(V4Routes.COACH) },
             bottomInset = TabInset,
         )
     }

@@ -47,11 +47,14 @@ import org.koin.compose.viewmodel.koinViewModel
 fun V4LifeScreen(
     onOpenArea: (PlanArea) -> Unit,
     onChangeAreas: () -> Unit,
+    onAskCoach: (String) -> Unit,
     bottomInset: PaddingValues,
     viewModel: V4LifeViewModel = koinViewModel(),
+    insights: V4LifeInsightsViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    LaunchedEffect(Unit) { viewModel.refresh() }
+    val more by insights.state.collectAsState()
+    LaunchedEffect(Unit) { viewModel.refresh(); insights.refresh() }
     val c = V4.colors
 
     Column(
@@ -71,6 +74,8 @@ fun V4LifeScreen(
             RangeToggle(state.range, viewModel::setRange)
         }
 
+        if (more.loaded) PatternsCard(more.patterns, more.daysUntil)
+
         V4Card(contentPadding = PaddingValues(18.dp), verticalSpacing = 14.dp) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -89,6 +94,10 @@ fun V4LifeScreen(
             if (state.bars.isNotEmpty()) WeekBars(state.bars)
         }
 
+        more.review?.takeIf { !more.reviewSaved }?.let { w ->
+            WeekReviewCard(w, onSave = insights::saveReview, onAskCoach = { onAskCoach(insights.coachPrompt()) })
+        }
+
         Text("Your areas", style = V4.type.headline, color = c.ink, modifier = Modifier.padding(top = 4.dp).semantics { heading() })
         state.areas.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -97,6 +106,11 @@ fun V4LifeScreen(
             }
         }
         V4TextButton("Change areas", onClick = onChangeAreas)
+
+        if (more.month.isNotEmpty()) {
+            Text("This month", style = V4.type.headline, color = c.ink, modifier = Modifier.semantics { heading() })
+            MonthCard(more.monthName, more.month, more.today, more.currency)
+        }
 
         if (state.recent.isNotEmpty()) {
             Text("Recent", style = V4.type.headline, color = c.ink, modifier = Modifier.semantics { heading() })
