@@ -59,7 +59,7 @@ val v4Module = module {
     single { PlanService(get(), get(), get(), get()) }
     single { MealService(get(), get(), get(), get(), get(), get(), get()) }
     single { az.tribe.lifeplanner.data.meals.MealCoachService(get(), get()) }
-    single { StudyService(get(), get(), get()) }
+    single { StudyService(get(), get(), get(), get()) }
     // Trip days with travel mode on do not break habit streaks.
     single<StreakPauses> {
         val trips = get<TripRepository>()
@@ -71,7 +71,7 @@ val v4Module = module {
     single { az.tribe.lifeplanner.data.habits.NudgeService(get(), get()) }
     single { az.tribe.lifeplanner.data.life.LifeFactsService(get(), get(), get(), get(), get(), get(), get()) }
     single { MindService(get(), get(), get(), get(), get()) }
-    single { CareerService(get(), get(), get()) }
+    single { CareerService(get(), get(), get(), get()) }
     // Resolved on each call, not here: HabitService needs the habit repository, which needs this.
     single<HabitStreakRules> { HabitStreakRules { habit -> get<HabitService>().rulesFor(habit) } }
 

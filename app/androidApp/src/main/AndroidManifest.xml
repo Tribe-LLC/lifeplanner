@@ -78,6 +78,12 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="lifeplanner" android:host="ai_chat" />
             </intent-filter>
+            <!-- Career: share a job ad or link from any app to save it as an application -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -165,6 +171,11 @@
         <!-- Done / Not today / Later on a habit reminder -->
         <receiver
             android:name=".notification.HabitReminderActions"
+            android:exported="false" />
+
+        <!-- Study timer notification: Pause, Resume and Stop without opening the app -->
+        <receiver
+            android:name=".notification.StudyTimerReceiver"
             android:exported="false" />
 
         <!-- Reschedule reminders after device reboot -->

@@ -97,6 +97,7 @@ fun V4TodayScreen(
     val recapVm: V4TripRecapViewModel = koinViewModel()
     val tripRecap by recapVm.recap.collectAsState()
     var toggled by rememberSaveable { mutableStateOf(listOf<String>()) }
+    val fridayWins = az.tribe.lifeplanner.ui.v4.areas.rememberFridayWins()
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -170,6 +171,9 @@ fun V4TodayScreen(
             item(key = "tip") {
                 LearnedTipCard(tip.text, "Move it", "Keep it", onYes = { viewModel.acceptTip(tip) }, onNo = { viewModel.declineTip(tip) }, modifier = Modifier.padding(top = 4.dp))
             }
+        }
+        if (fridayWins.visible) {
+            item(key = "friday_wins") { az.tribe.lifeplanner.ui.v4.areas.FridayWinsCard(fridayWins, Modifier.padding(top = 4.dp)) }
         }
         if (state.carry.isNotEmpty()) {
             item(key = "carry") {

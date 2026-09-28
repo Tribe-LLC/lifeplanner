@@ -117,6 +117,9 @@ internal fun V4AppRoot(
         if (phase == V4AuthPhase.IN) {
             val nudges: az.tribe.lifeplanner.data.habits.NudgeService = koinInject()
             LaunchedEffect(Unit) { nudges.run() }
+            // Keeps repeating study blocks planned a week ahead.
+            val study: az.tribe.lifeplanner.data.study.StudyService = koinInject()
+            LaunchedEffect(Unit) { runCatching { study.fillRepeats() } }
         }
 
         LaunchedEffect(authState) {

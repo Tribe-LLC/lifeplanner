@@ -77,7 +77,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
                     val needed = service?.let { runCatching { it.needsReminder(habitId) }.getOrDefault(true) } ?: true
                     if (needed) {
                         val progress = service?.let { runCatching { it.progressText(habitId) }.getOrNull() }
-                        showNotification(context, reminderId, title, progress?.let { "$it so far" } ?: message, linkedGoalId, open, habitId, intent)
+                        showNotification(context, reminderId, title, progress?.let { "$it so far" } ?: message, linkedGoalId, open, habitId, intent, counted = progress != null)
                     } else {
                         Logger.i("ReminderAlarmReceiver") { "Already handled today, staying quiet: $title" }
                     }
@@ -131,6 +131,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         open: String? = null,
         habitId: String? = null,
         source: Intent? = null,
+        counted: Boolean = false,
     ) {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         ensureChannel(context)
@@ -161,7 +162,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
             .setDefaults(NotificationCompat.DEFAULT_ALL)
         if (habitId != null) {
             HabitReminderActions.all.forEach { a ->
-                builder.addAction(0, a.label, HabitReminderActions.pending(context, a, habitId, reminderId, title, source))
+                builder.addAction(0, if (counted && a == HabitReminderActions.Action.DONE) "+1" else a.label, HabitReminderActions.pending(context, a, habitId, reminderId, title, source))
             }
         }
         val notification = builder.build()
