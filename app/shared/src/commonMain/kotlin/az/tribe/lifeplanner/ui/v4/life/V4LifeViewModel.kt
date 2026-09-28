@@ -1,0 +1,278 @@
+package az.tribe.lifeplanner.ui.v4.life
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import az.tribe.lifeplanner.domain.enum.HealthMetricType
+import az.tribe.lifeplanner.domain.model.Goal
+import az.tribe.lifeplanner.domain.model.Habit
+import az.tribe.lifeplanner.domain.model.HabitCheckIn
+import az.tribe.lifeplanner.domain.model.PlanArea
+import az.tribe.lifeplanner.domain.repository.FocusRepository
+import az.tribe.lifeplanner.domain.repository.GoalRepository
+import az.tribe.lifeplanner.domain.repository.HabitRepository
+import az.tribe.lifeplanner.domain.repository.HealthRepository
+import az.tribe.lifeplanner.domain.repository.JournalRepository
+import az.tribe.lifeplanner.domain.repository.PlanAreasRepository
+import az.tribe.lifeplanner.ui.v4.today.V4TodayViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.minus
+import kotlinx.datetime.plus
+import kotlinx.datetime.toLocalDateTime
+import kotlinx.datetime.todayIn
+import kotlin.math.roundToInt
+import kotlin.time.Clock
+
+enum class LifeRange { WEEK, MONTH }
+
+data class LifeBar(val label: String, val fraction: Float?, val current: Boolean)
+
+data class AreaSummary(
+    val area: PlanArea,
+    val stat: String,
+    val caption: String,
+    val trend: List<Float>,
+)
+
+data class RecentItem(val area: PlanArea, val title: String, val meta: String, val whenLabel: String, val sortKey: LocalDateTime)
+
+data class LifeUiState(
+    val range: LifeRange = LifeRange.WEEK,
+    val score: String = "",
+    val scoreCaption: String = "",
+    val delta: String? = null,
+    val deltaUp: Boolean = true,
+    val bars: List<LifeBar> = emptyList(),
+    val areas: List<AreaSummary> = emptyList(),
+    val recent: List<RecentItem> = emptyList(),
+    val loaded: Boolean = false,
+)
+
+/**
+ * The Life tab: one score for "how much of what you planned got done", then one card per area.
+ * Everything is computed from what is already stored; nothing here writes.
+ */
+class V4LifeViewModel(
+    private val habitRepository: HabitRepository,
+    private val goalRepository: GoalRepository,
+    private val healthRepository: HealthRepository,
+    private val journalRepository: JournalRepository,
+    private val focusRepository: FocusRepository,
+    private val planAreas: PlanAreasRepository,
+) : ViewModel() {
+
+    private val tz = TimeZone.currentSystemDefault()
+    private val range = MutableStateFlow(LifeRange.WEEK)
+    private val _state = MutableStateFlow(LifeUiState())
+    val state: StateFlow<LifeUiState> = _state.asStateFlow()
+
+    init {
+        combine(
+            range,
+            planAreas.enabledAreas,
+            habitRepository.observeHabitsWithTodayStatus(),
+            goalRepository.observeAllGoals(),
+            journalRepository.observeAllEntries(),
+        ) { r, areas, _, goals, _ -> Triple(r, areas, goals) }
+            .onEach { (r, areas, goals) -> _state.value = compute(r, areas, goals) }
+            .launchIn(viewModelScope)
+    }
+
+    fun setRange(r: LifeRange) { range.value = r }
+
+    fun refresh() {
+        viewModelScope.launch { _state.value = compute(range.value, planAreas.enabledAreas.value, goalRepository.getAllGoals()) }
+    }
+
+    private suspend fun compute(r: LifeRange, areas: Set<PlanArea>, goals: List<Goal>): LifeUiState {
+        val today = Clock.System.todayIn(tz)
+        val habits = runCatching { habitRepository.getAllHabits() }.getOrDefault(emptyList()).filter { it.isActive }
+        val from = today.minus(DatePeriod(days = 69))
+        val checkIns = runCatching { habitRepository.getAllCheckInsInRange(from, today) }.getOrDefault(emptyList())
+            .filter { it.completed }
+        val daily = DailyHabits(habits, checkIns)
+
+        val weekStart = today.minus(DatePeriod(days = today.dayOfWeek.ordinal))
+        val (score, caption, delta, bars) = when (r) {
+            LifeRange.WEEK -> {
+                val thisWeek = daily.rate(weekStart, today)
+                val lastWeek = daily.rate(weekStart.minus(DatePeriod(days = 7)), weekStart.minus(DatePeriod(days = 1)))
+                val labels = listOf("M", "T", "W", "T", "F", "S", "S")
+                val bars = (0 until 7).map { i ->
+                    val d = weekStart.plus(DatePeriod(days = i))
+                    LifeBar(labels[i], if (d > today) null else daily.rate(d, d) ?: 0f, d == today)
+                }
+                Quad(thisWeek, "of your habits done this week", deltaText(thisWeek, lastWeek, "last week"), bars)
+            }
+            LifeRange.MONTH -> {
+                val start = today.minus(DatePeriod(days = 29))
+                val cur = daily.rate(start, today)
+                val prev = daily.rate(start.minus(DatePeriod(days = 30)), start.minus(DatePeriod(days = 1)))
+                val bars = (6 downTo 0).map { back ->
+                    val s = weekStart.minus(DatePeriod(days = 7 * back))
+                    val e = minOf(s.plus(DatePeriod(days = 6)), today)
+                    LifeBar(if (back == 0) "Now" else "W${7 - back}", daily.rate(s, e) ?: 0f, back == 0)
+                }
+                Quad(cur, "of your habits done in the last 30 days", deltaText(cur, prev, "the 30 before"), bars)
+            }
+        }
+
+        val summaries = PlanArea.entries.filter { it in areas }.map { area -> summarize(area, today, daily, goals) }
+        val recent = recent(today, habits, checkIns)
+
+        return LifeUiState(
+            range = r,
+            score = "${((score ?: 0f) * 100).roundToInt()}%",
+            scoreCaption = if (score == null) "Add a habit from Today and your week fills in here" else caption,
+            delta = delta?.first,
+            deltaUp = delta?.second ?: true,
+            bars = bars,
+            areas = summaries,
+            recent = recent,
+            loaded = true,
+        )
+    }
+
+    private data class Quad(val score: Float?, val caption: String, val delta: Pair<String, Boolean>?, val bars: List<LifeBar>)
+
+    private fun deltaText(now: Float?, before: Float?, vs: String): Pair<String, Boolean>? {
+        if (now == null || before == null) return null
+        val d = ((now - before) * 100).roundToInt()
+        return (if (d >= 0) "+$d vs $vs" else "$d vs $vs") to (d >= 0)
+    }
+
+    private suspend fun summarize(area: PlanArea, today: LocalDate, daily: DailyHabits, goals: List<Goal>): AreaSummary {
+        val week = (6 downTo 0).map { today.minus(DatePeriod(days = it)) }
+        val areaGoals = goals.filter { !it.isArchived && PlanArea.forCategory(it.category) == area }
+        val openGoals = areaGoals.filter { it.status != az.tribe.lifeplanner.domain.enum.GoalStatus.COMPLETED }
+        fun plansFallback(empty: String, emptyCaption: String): AreaSummary {
+            if (openGoals.isEmpty()) return AreaSummary(area, empty, emptyCaption, emptyList())
+            val next = openGoals.flatMap { g -> g.milestones.filter { !it.isCompleted } }.firstOrNull()
+            return AreaSummary(
+                area,
+                "${openGoals.size} ${if (openGoals.size == 1) "plan" else "plans"}",
+                next?.let { "Next: ${it.title}" } ?: "All steps done",
+                openGoals.map { (it.progress ?: 0L).toFloat() },
+            )
+        }
+        return when (area) {
+            PlanArea.HABITS -> {
+                val rate = daily.rate(week.first(), today)
+                AreaSummary(
+                    area,
+                    rate?.let { "${(it * 100).roundToInt()}%" } ?: "None yet",
+                    if (rate == null) "Add your first from Today" else "of habit days kept",
+                    week.map { daily.rate(it, it) ?: 0f },
+                )
+            }
+            PlanArea.FITNESS -> {
+                val steps = runCatching { healthRepository.getMetricsInRange(HealthMetricType.STEPS, week.first(), today) }.getOrDefault(emptyList())
+                if (steps.isEmpty()) plansFallback("Connect Health", "Steps and workouts show up here")
+                else {
+                    val byDay = steps.groupBy { it.date }.mapValues { (_, v) -> v.sumOf { it.value } }
+                    AreaSummary(
+                        area,
+                        V4TodayViewModel.formatThousands(byDay.values.sum().toLong()),
+                        "steps this week" + (openGoals.firstOrNull()?.let { ", ${it.title}" } ?: ""),
+                        week.map { (byDay[it] ?: 0.0).toFloat() },
+                    )
+                }
+            }
+            PlanArea.MIND -> {
+                val sleep = runCatching { healthRepository.getMetricsInRange(HealthMetricType.SLEEP, week.first().minus(DatePeriod(days = 1)), today) }.getOrDefault(emptyList())
+                val moods = runCatching { journalRepository.getEntriesInRange(week.first(), today) }.getOrDefault(emptyList()).map { it.mood.score }
+                val moodText = when {
+                    moods.isEmpty() -> null
+                    moods.average() >= 3.8 -> "mood mostly good"
+                    moods.average() >= 2.8 -> "mood steady"
+                    else -> "mood low lately"
+                }
+                if (sleep.isEmpty()) AreaSummary(
+                    area,
+                    if (moods.isEmpty()) "Check in" else "${moods.size} ${if (moods.size == 1) "entry" else "entries"}",
+                    moodText?.let { "in your journal, $it" } ?: "Sleep from Health, mood from your journal",
+                    moods.map { it.toFloat() },
+                ) else AreaSummary(
+                    area,
+                    V4TodayViewModel.formatHours(sleep.map { it.value }.average()),
+                    "average sleep" + (moodText?.let { ", $it" } ?: ""),
+                    sleep.sortedBy { it.date }.map { it.value.toFloat() },
+                )
+            }
+            PlanArea.STUDY -> {
+                val sessions = runCatching { focusRepository.getCompletedSessions() }.getOrDefault(emptyList())
+                    .filter { s -> s.completedAt?.date?.let { it >= week.first() } == true }
+                if (sessions.isEmpty()) plansFallback("Plan study", "Courses, exams and focus time")
+                else {
+                    val minutes = sessions.sumOf { it.actualMinutes }
+                    AreaSummary(
+                        area,
+                        "${minutes / 60}h ${(minutes % 60).toString().padStart(2, '0')}m",
+                        "focus time this week",
+                        week.map { d -> sessions.filter { it.completedAt?.date == d }.sumOf { it.actualMinutes }.toFloat() },
+                    )
+                }
+            }
+            PlanArea.MONEY -> plansFallback("Set a budget", "Know what is left to spend this week")
+            PlanArea.TRAVEL -> plansFallback("Plan a trip", "Budget, packing and days in one place")
+            PlanArea.MEALS -> plansFallback("Log a meal", "Type what you ate in the box below")
+            PlanArea.CAREER -> plansFallback("Add a plan", "Skills, applications, next moves")
+        }
+    }
+
+    private suspend fun recent(today: LocalDate, habits: List<Habit>, checkIns: List<HabitCheckIn>): List<RecentItem> {
+        val yesterday = today.minus(DatePeriod(days = 1))
+        fun label(d: LocalDate) = when (d) {
+            today -> "Today"
+            yesterday -> "Yesterday"
+            else -> "${d.day}/${d.month.ordinal + 1}"
+        }
+        val out = mutableListOf<RecentItem>()
+        val byId = habits.associateBy { it.id }
+        checkIns.filter { it.date >= yesterday }.forEach { ci ->
+            val h = byId[ci.habitId] ?: return@forEach
+            out += RecentItem(V4TodayViewModel.areaOf(h), h.title, "Done", label(ci.date), LocalDateTime(ci.date.year, ci.date.month, ci.date.day, 12, 0))
+        }
+        runCatching { journalRepository.getRecentEntries(5) }.getOrDefault(emptyList()).forEach { e ->
+            out += RecentItem(PlanArea.MIND, e.title.ifBlank { "Journal entry" }, "Journal, feeling ${e.mood.displayName.lowercase()}", label(e.date), e.createdAt)
+        }
+        runCatching { focusRepository.getCompletedSessions() }.getOrDefault(emptyList())
+            .sortedByDescending { it.completedAt }.take(3).forEach { s ->
+                val at = s.completedAt ?: return@forEach
+                out += RecentItem(PlanArea.STUDY, "Focus, ${s.actualMinutes} min", "Focus session", label(at.date), at)
+            }
+        runCatching { healthRepository.getLatestMetric(HealthMetricType.SLEEP) }.getOrNull()?.takeIf { it.date >= yesterday }?.let { m ->
+            out += RecentItem(PlanArea.MIND, "Slept ${V4TodayViewModel.formatHours(m.value)}", "From Health", "Last night", m.recordedAt)
+        }
+        return out.sortedByDescending { it.sortKey }.take(6)
+    }
+
+    /** Habit completion by day: done check-ins over habits that existed that day. */
+    private class DailyHabits(habits: List<Habit>, checkIns: List<HabitCheckIn>) {
+        private val created = habits.map { it.createdAt.date }
+        private val doneByDay = checkIns.groupBy { it.date }.mapValues { (_, v) -> v.map { it.habitId }.toSet().size }
+
+        fun rate(start: LocalDate, end: LocalDate): Float? {
+            var done = 0
+            var possible = 0
+            var d = start
+            while (d <= end) {
+                val existing = created.count { it <= d }
+                possible += existing
+                done += minOf(doneByDay[d] ?: 0, existing)
+                d = d.plus(DatePeriod(days = 1))
+            }
+            return if (possible == 0) null else done.toFloat() / possible
+        }
+    }
+}
+

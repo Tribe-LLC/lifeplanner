@@ -47,4 +47,11 @@ object FeatureFlags {
      * edge functions) is deployed and internal review is in place. See docs/SPEC-community-journals.md.
      */
     const val COMMUNITY_JOURNALS = false
+
+    /**
+     * LifePlanner 4: the life-areas planner (Today / Life / Coach, pick your areas, one box to add
+     * anything, two-way Health and Calendar). Replaces the v3 shell when on; every v3 screen that v4
+     * has not redesigned yet stays reachable inside it. Design: the "LifePlanner 4 redesign" canvas.
+     */
+    const val V4_SHELL = true
 }

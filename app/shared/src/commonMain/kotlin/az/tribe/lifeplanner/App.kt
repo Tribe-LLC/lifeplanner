@@ -363,6 +363,33 @@ fun App(
             currentRoute?.let { Analytics.screenViewed(it) }
         }
 
+        // v4: its own first run, tabs and navigation. Everything above this line (sync, widgets,
+        // fetchers, celebrations, tracking) is shared; everything below is the v3 shell.
+        if (FeatureFlags.V4_SHELL) {
+            V4AppRoot(
+                navController = navController,
+                currentRoute = currentRoute,
+                authState = authState,
+                authViewModel = authViewModel,
+                goalViewModel = viewModel,
+                promoRoute = promoRoute,
+                onSignedOut = { gamificationViewModel.resetState() },
+                onOpenWeather = { weatherDetail = it },
+                overlays = {
+                    CelebrationOverlay(
+                        type = globalCelebrationType,
+                        isVisible = showGlobalCelebration,
+                        message = globalCelebrationMessage,
+                        onDismiss = { showGlobalCelebration = false }
+                    )
+                    weatherDetail?.let { w ->
+                        WeatherDetailFullScreen(weather = w, onDismiss = { weatherDetail = null })
+                    }
+                },
+            )
+            return@LifePlannerTheme
+        }
+
         // The legacy Home tab is gone; For You is the home.
         val homeRoute = Screen.ForYou.route
 

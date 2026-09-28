@@ -9,6 +9,7 @@ fun initKoin(appDeclaration: KoinAppDeclaration = {}) =
         modules(
             appModule,
             networkModule,
-            supabaseModule
+            supabaseModule,
+            v4Module
         )
     }
