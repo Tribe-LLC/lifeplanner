@@ -38,6 +38,8 @@ data class Nudge(val id: String, val title: String, val body: String, val at: Lo
 object NudgePlan {
     const val CHECK_IN = "checkin"
     const val REVIEW = "review"
+    /** The Study timer's "your minutes are up" notice, and its running notification. Opens Study. */
+    const val STUDY = "study"
     const val DAYS_AHEAD = 7
     private const val CHECK_IN_ID = "v4_nudge_checkin_"
     const val SLIP_ID = "v4_nudge_slip"
@@ -93,6 +95,7 @@ object NudgePlan {
     fun routeFor(open: String): String? = when (open) {
         CHECK_IN -> V4Routes.CHECK_IN
         REVIEW -> V4Routes.REVIEW
+        STUDY -> V4Routes.area(az.tribe.lifeplanner.domain.model.PlanArea.STUDY)
         else -> null
     }
 

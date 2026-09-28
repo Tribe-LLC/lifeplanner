@@ -162,6 +162,11 @@
             android:name=".notification.ReminderAlarmReceiver"
             android:exported="false" />
 
+        <!-- Study timer notification: Pause, Resume and Stop without opening the app -->
+        <receiver
+            android:name=".notification.StudyTimerReceiver"
+            android:exported="false" />
+
         <!-- Reschedule reminders after device reboot -->
         <receiver
             android:name=".notification.BootReceiver"

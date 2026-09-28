@@ -1,6 +1,10 @@
 package az.tribe.lifeplanner.data.study
 
 import az.tribe.lifeplanner.data.analytics.PostHogAnalytics
+import az.tribe.lifeplanner.data.fitness.WorkoutService
+import az.tribe.lifeplanner.data.habits.Nudge
+import az.tribe.lifeplanner.data.habits.NudgePlan
+import az.tribe.lifeplanner.data.plans.PlanService
 import az.tribe.lifeplanner.data.network.AiProxyService
 import az.tribe.lifeplanner.domain.model.LifeLog
 import az.tribe.lifeplanner.domain.model.LogKind
@@ -8,13 +12,21 @@ import az.tribe.lifeplanner.domain.model.LogStatus
 import az.tribe.lifeplanner.domain.model.PlanArea
 import az.tribe.lifeplanner.domain.repository.LifeLogRepository
 import az.tribe.lifeplanner.domain.service.StudyKind
+import az.tribe.lifeplanner.domain.service.StudyPlanner
+import az.tribe.lifeplanner.notification.NudgeAlarms
 import co.touchlab.kermit.Logger
 import com.russhwolf.settings.Settings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.minus
+import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.datetime.todayIn
 import kotlinx.serialization.json.Json
@@ -32,45 +44,98 @@ import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
-/** A study timer running now. Kept in settings, so it survives leaving the screen or the app. */
-data class ActiveStudy(val startEpochMs: Long, val subject: String, val blockId: String?, val targetMin: Int)
+/**
+ * A study timer running now. Kept in settings, so it survives leaving the screen or the app.
+ * While paused, [pausedAtMs] is when it stopped; [pausedTotalMs] is all the earlier pauses, so the
+ * time studied never counts a break.
+ */
+data class ActiveStudy(
+    val startEpochMs: Long,
+    val subject: String,
+    val blockId: String?,
+    val targetMin: Int,
+    val pausedAtMs: Long? = null,
+    val pausedTotalMs: Long = 0,
+) {
+    val paused: Boolean get() = pausedAtMs != null
+
+    fun elapsedMs(nowMs: Long): Long = ((pausedAtMs ?: nowMs) - startEpochMs - pausedTotalMs).coerceAtLeast(0)
+
+    fun pausedAt(nowMs: Long): ActiveStudy = if (paused) this else copy(pausedAtMs = nowMs)
+
+    fun resumedAt(nowMs: Long): ActiveStudy =
+        pausedAtMs?.let { copy(pausedAtMs = null, pausedTotalMs = pausedTotalMs + (nowMs - it).coerceAtLeast(0)) } ?: this
+
+    /** When the aimed-for minutes are reached, if the timer is running and that is still ahead. */
+    fun targetAtMs(nowMs: Long): Long? = if (paused) null else (nowMs + targetMin * 60_000L - elapsedMs(nowMs)).takeIf { it > nowMs }
+
+    /** Where a stopwatch would have started had there been no pauses: what a chronometer counts from. */
+    val chronoBaseMs: Long get() = startEpochMs + pausedTotalMs
+}
 
 /** A date the AI found in a pasted syllabus, for the user to keep or drop before anything is saved. */
 data class FoundDate(val title: String, val kind: StudyKind, val date: LocalDate)
 
 /**
- * The Study timer and the syllabus reader. The timer is separate from the v3 focus screen because
- * that one needs a goal and a step; here all it needs is a subject. Its time is saved as a
- * session, or, when started from a planned block, ticks that block with the real minutes.
+ * The Study timer, repeating blocks and the syllabus reader. The timer is separate from the v3
+ * focus screen because that one needs a goal and a step; here all it needs is a subject. Its time
+ * is saved as a session, or, when started from a planned block, ticks that block with the real
+ * minutes. It can pause, here or from its notification, and paused time never counts.
  */
 @OptIn(ExperimentalUuidApi::class)
 class StudyService(
     private val logs: LifeLogRepository,
     private val settings: Settings,
     private val ai: AiProxyService,
+    private val plans: PlanService,
 ) {
     private val tz = TimeZone.currentSystemDefault()
+    private fun nowMs() = Clock.System.now().toEpochMilliseconds()
 
     private val _active = MutableStateFlow(readActive())
     val active: StateFlow<ActiveStudy?> = _active.asStateFlow()
 
+    init {
+        // A timer left running shows its notification again (after an update or a restart).
+        _active.value?.let { runCatching { StudyTimerNotice.show(it) } }
+    }
+
     fun start(subject: String, blockId: String? = null, targetMin: Int = 25) {
-        val a = ActiveStudy(Clock.System.now().toEpochMilliseconds(), subject.trim().ifEmpty { "Study" }, blockId, targetMin)
-        settings.putString(KEY_ACTIVE, listOf(a.startEpochMs, a.targetMin, a.blockId ?: "", a.subject).joinToString("|"))
-        _active.value = a
+        val a = ActiveStudy(nowMs(), subject.trim().ifEmpty { "Study" }, blockId, targetMin)
+        write(a)
         PostHogAnalytics.capture("v4_study_timer_started", mapOf("from_block" to (blockId != null), "target" to targetMin))
+    }
+
+    fun pause() {
+        val a = _active.value ?: return
+        if (a.paused) return
+        write(a.pausedAt(nowMs()))
+        PostHogAnalytics.capture("v4_study_timer_paused", mapOf("minutes" to a.elapsedMs(nowMs()) / 60_000))
+    }
+
+    fun resume() {
+        val a = _active.value ?: return
+        if (!a.paused) return
+        write(a.resumedAt(nowMs()))
+        PostHogAnalytics.capture("v4_study_timer_resumed")
     }
 
     fun cancel() {
         settings.remove(KEY_ACTIVE)
+        settings.remove(KEY_PAUSE)
         _active.value = null
+        runCatching { StudyTimerNotice.clear() }
+        runCatching { NudgeAlarms.cancel(TARGET_ID) }
     }
 
-    /** Stops and saves. Returns the minutes saved, or 0 if it ran under a minute and was dropped. */
-    suspend fun stop(): Int {
+    /**
+     * Stops and saves. Returns the minutes saved, or 0 if it ran under a minute and was dropped.
+     * Called from the page and from the notification's Stop, so both save the same way.
+     */
+    suspend fun stop(fromNotification: Boolean = false): Int {
         val a = _active.value ?: return 0
+        val minutes = (a.elapsedMs(nowMs()) / 60_000L).toInt()
         cancel()
-        val minutes = ((Clock.System.now().toEpochMilliseconds() - a.startEpochMs) / 60_000L).toInt()
         if (minutes < 1) return 0
         val block = a.blockId?.let { logs.getById(it) }
         if (block != null) {
@@ -84,13 +149,97 @@ class StudyService(
                 ),
             )
         }
-        PostHogAnalytics.capture("v4_study_timer_saved", mapOf("minutes" to minutes, "from_block" to (block != null)))
+        if (fromNotification) runCatching { StudyTimerNotice.saved(a.subject, minutes) }
+        PostHogAnalytics.capture("v4_study_timer_saved", mapOf("minutes" to minutes, "from_block" to (block != null), "from_notification" to fromNotification))
         return minutes
+    }
+
+    private fun write(a: ActiveStudy) {
+        settings.putString(KEY_ACTIVE, listOf(a.startEpochMs, a.targetMin, a.blockId ?: "", a.subject).joinToString("|"))
+        if (a.pausedAtMs != null || a.pausedTotalMs > 0) settings.putString(KEY_PAUSE, "${a.pausedAtMs ?: ""}|${a.pausedTotalMs}")
+        else settings.remove(KEY_PAUSE)
+        _active.value = a
+        runCatching { StudyTimerNotice.show(a) }
+        // A heads-up when the aimed-for minutes are up; moved by a pause, gone once stopped.
+        runCatching {
+            NudgeAlarms.cancel(TARGET_ID)
+            a.targetAtMs(nowMs())?.let { at ->
+                NudgeAlarms.schedule(
+                    Nudge(
+                        TARGET_ID, "That is your ${a.targetMin} minutes", "Keep going, or stop and save ${a.subject}.",
+                        Instant.fromEpochMilliseconds(at).toLocalDateTime(tz), NudgePlan.STUDY,
+                    ),
+                )
+            }
+        }
     }
 
     private fun readActive(): ActiveStudy? = settings.getStringOrNull(KEY_ACTIVE)?.split('|', limit = 4)?.takeIf { it.size == 4 }?.let {
         val start = it[0].toLongOrNull() ?: return null
-        ActiveStudy(start, it[3], it[2].ifEmpty { null }, it[1].toIntOrNull() ?: 25)
+        val pause = settings.getStringOrNull(KEY_PAUSE)?.split('|')
+        ActiveStudy(
+            start, it[3], it[2].ifEmpty { null }, it[1].toIntOrNull() ?: 25,
+            pausedAtMs = pause?.getOrNull(0)?.toLongOrNull(),
+            pausedTotalMs = pause?.getOrNull(1)?.toLongOrNull() ?: 0,
+        )
+    }
+
+    // ── Repeating blocks ─────────────────────────────────────────────────────
+
+    /**
+     * Saves "[subject] every [days], [time], [minutes] min" and plans its blocks for the next days.
+     * The repeat row itself is never a plan: Today, rollover and the calendar only ever see blocks.
+     */
+    suspend fun addRepeat(subject: String, days: Set<DayOfWeek>, time: LocalTime?, minutes: Int, toCalendar: Boolean) {
+        val name = subject.trim().ifEmpty { return }
+        if (days.isEmpty()) return
+        val now = Clock.System.now().toLocalDateTime(tz)
+        val through = StudyPlanner.firstFilledThrough(now.date, now.time, time)
+        val repeat = LifeLog(
+            id = Uuid.random().toString(), area = PlanArea.STUDY, kind = LogKind.STUDY, status = LogStatus.PLANNED,
+            title = name, category = StudyKind.ROUTINE.key, durationMin = minutes,
+            occurredAt = LocalDateTime(through, time ?: WorkoutService.ANY_TIME),
+            notes = StudyPlanner.daysNote(days) + if (toCalendar) "\n$CALENDAR_NOTE" else "",
+        )
+        logs.save(repeat)
+        fill(repeat, now.date)
+        PostHogAnalytics.capture("v4_study_repeat_created", mapOf("days" to days.size, "minutes" to minutes, "timed" to (time != null), "calendar" to toCalendar))
+    }
+
+    /** Stops a repeat: its blocks from today on go, the ones already done stay. */
+    suspend fun stopRepeat(repeat: LifeLog) {
+        val today = Clock.System.todayIn(tz)
+        logs.getInRange(today, today.plus(DatePeriod(days = StudyPlanner.REPEAT_DAYS + 7)))
+            .filter { it.externalId == repeat.id && it.status == LogStatus.PLANNED }
+            .forEach { plans.remove(it) }
+        logs.delete(repeat.id)
+        PostHogAnalytics.capture("v4_study_repeat_stopped")
+    }
+
+    /**
+     * Keeps every repeat's next [StudyPlanner.REPEAT_DAYS] days planned. Safe to call as often as
+     * wanted: each day is made once, so a moved or removed block stays moved or removed.
+     */
+    suspend fun fillRepeats() {
+        val today = Clock.System.todayIn(tz)
+        val repeats = runCatching { logs.getInRange(today.minus(DatePeriod(days = 3650)), today.plus(DatePeriod(days = 60))) }
+            .getOrDefault(emptyList()).filter { StudyPlanner.isRepeat(it) }
+        repeats.forEach { runCatching { fill(it, today) } }
+    }
+
+    private suspend fun fill(repeat: LifeLog, today: LocalDate) {
+        val days = StudyPlanner.datesToFill(StudyPlanner.repeatDays(repeat), repeat.date, today)
+        if (days.isEmpty()) return
+        val time = repeat.occurredAt.time
+        val blocks = days.map { d ->
+            LifeLog(
+                id = StudyPlanner.repeatBlockId(repeat.id, d), area = PlanArea.STUDY, kind = LogKind.STUDY, title = repeat.title,
+                category = StudyKind.BLOCK.key, durationMin = repeat.durationMin ?: 45, occurredAt = LocalDateTime(d, time), externalId = repeat.id,
+            )
+        }.filter { logs.getById(it.id) == null }
+        val toCalendar = repeat.notes?.lines()?.any { it == CALENDAR_NOTE } == true && time != WorkoutService.ANY_TIME
+        if (blocks.isNotEmpty()) plans.planAll(blocks, toCalendar) { "Study: ${it.title}" }
+        logs.save(repeat.copy(occurredAt = LocalDateTime(days.last(), time)))
     }
 
     /**
@@ -154,5 +303,8 @@ class StudyService(
 
     companion object {
         private const val KEY_ACTIVE = "v4_study_active"
+        private const val KEY_PAUSE = "v4_study_active_pause"
+        private const val TARGET_ID = "v4_study_target"
+        private const val CALENDAR_NOTE = "calendar: yes"
     }
 }

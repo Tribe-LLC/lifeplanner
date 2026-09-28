@@ -1,6 +1,12 @@
 package az.tribe.lifeplanner.ui.v4.areas
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.toggleable
+import kotlinx.datetime.DayOfWeek
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -82,6 +88,7 @@ fun StudySection(onOpenFocus: () -> Unit, viewModel: V4StudyViewModel = koinView
     var spreading by remember { mutableStateOf<LifeLog?>(null) }
     var dueAction by remember { mutableStateOf<DueRow?>(null) }
     var blockAction by remember { mutableStateOf<BlockRow?>(null) }
+    var repeatAction by remember { mutableStateOf<RepeatRow?>(null) }
     var editingGoal by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf<Pair<Int, String>?>(null) }
 
@@ -92,17 +99,25 @@ fun StudySection(onOpenFocus: () -> Unit, viewModel: V4StudyViewModel = koinView
         when {
             a != null -> {
                 var now by remember { mutableLongStateOf(Clock.System.now().toEpochMilliseconds()) }
-                LaunchedEffect(a.startEpochMs) { while (true) { now = Clock.System.now().toEpochMilliseconds(); delay(1_000) } }
-                val ms = now - a.startEpochMs
-                Text("${a.subject} now", style = V4.type.label, color = tint.ink)
-                Text(clock(ms), style = V4.type.number, color = c.ink, modifier = Modifier.semantics { contentDescription = "Studied for ${ms / 60_000} minutes" })
+                LaunchedEffect(a.startEpochMs, a.paused) { while (true) { now = Clock.System.now().toEpochMilliseconds(); delay(1_000) } }
+                val ms = a.elapsedMs(now)
+                Text(if (a.paused) "${a.subject}, paused" else "${a.subject} now", style = V4.type.label, color = tint.ink)
+                Text(
+                    clock(ms), style = V4.type.number, color = if (a.paused) c.ink3 else c.ink,
+                    modifier = Modifier.semantics { contentDescription = (if (a.paused) "Paused at " else "Studied for ") + "${ms / 60_000} minutes" },
+                )
                 V4ProgressBar((ms / 60_000f) / a.targetMin, tint.color)
                 Text(
-                    if (ms / 60_000 >= a.targetMin) "That is your ${a.targetMin} minutes. Keep going or stop and save." else "Aiming for ${a.targetMin} minutes.",
+                    when {
+                        a.paused -> "Paused. The clock waits for you."
+                        ms / 60_000 >= a.targetMin -> "That is your ${a.targetMin} minutes. Keep going or stop and save."
+                        else -> "Aiming for ${a.targetMin} minutes. You can pause or stop it from the notification too."
+                    },
                     style = V4.type.caption, color = c.ink2,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     V4PillButton("Stop and save", onClick = { viewModel.stop { m, subj -> saved = m to subj } }, container = tint.color)
+                    V4PillButton(if (a.paused) "Resume" else "Pause", onClick = { if (a.paused) viewModel.resume() else viewModel.pause() }, filled = false)
                     V4TextButton("Cancel", onClick = viewModel::cancel, color = c.ink2)
                 }
             }
@@ -178,10 +193,9 @@ fun StudySection(onOpenFocus: () -> Unit, viewModel: V4StudyViewModel = koinView
                 FormLabel("Hours a week")
                 CountChoices(listOf(2, 4, 6, 8, 10, 15, 20), (s.targetMinutes ?: 0) / 60, { "${it}h" }) { viewModel.setTarget(it); editingGoal = false }
             }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 V4PillButton("Log time", onClick = { loggingTime = true }, filled = false)
-                if (active == null && (s.todayBlocks.any { !it.done })) V4PillButton("Start something else", onClick = { starting = true }, filled = false)
-                V4PillButton("Deep focus mode", onClick = onOpenFocus, filled = false)
+                V4TextButton("Deep focus mode", onClick = onOpenFocus, color = c.ink2)
             }
         }
         if (w.bySubject.isNotEmpty()) {
@@ -204,6 +218,7 @@ fun StudySection(onOpenFocus: () -> Unit, viewModel: V4StudyViewModel = koinView
     if (s.due.isEmpty()) {
         Text("Add the dates that matter and spread study before them. Or paste a syllabus and the dates are found for you.", style = V4.type.caption, color = c.ink2)
     } else {
+        Text("Tap one to change the hours it needs. Exams start at ${StudyPlanner.defaultHours(StudyKind.EXAM)}h, deadlines at ${StudyPlanner.defaultHours(StudyKind.DEADLINE)}h.", style = V4.type.caption, color = c.ink3)
         V4Card(contentPadding = PaddingValues(0.dp), verticalSpacing = 0.dp) {
             s.due.forEachIndexed { i, d ->
                 if (i > 0) V4Divider()
@@ -211,14 +226,24 @@ fun StudySection(onOpenFocus: () -> Unit, viewModel: V4StudyViewModel = koinView
                     Modifier.fillMaxWidth().clickable(role = Role.Button) { dueAction = d }.padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    val done = d.log.status == LogStatus.DONE
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            OneLine(StudyPlanner.dueLine(d.log), V4.type.bodyStrong, if (d.log.status == LogStatus.DONE) c.ink3 else c.ink)
+                            OneLine(StudyPlanner.dueLine(d.log), V4.type.bodyStrong, if (done) c.ink3 else c.ink)
                             OneLine("${d.log.date.day} ${monthShort(d.log.date)}, ${d.countdown}" + if (d.onCalendar) ", in your calendar" else "", V4.type.caption, c.ink3)
                         }
-                        if (d.blocksTotal > 0) Text("${d.blocksDone} of ${d.blocksTotal}", style = V4.type.label, color = tint.ink)
+                        if (!done) TrackPill(d.track)
                     }
-                    if (d.blocksTotal > 0) V4ProgressBar(d.blocksDone.toFloat() / d.blocksTotal, tint.color, height = 6.dp)
+                    if (!done) {
+                        TrackBar(d.track, tint.color)
+                        Text(StudyPlanner.trackLine(d.track), style = V4.type.caption, color = c.ink2)
+                        if (d.track.blocksToAdd > 0) {
+                            V4PillButton(
+                                "Add ${d.track.blocksToAdd} ${if (d.track.blocksToAdd == 1) "block" else "blocks"}",
+                                onClick = { viewModel.addTrackBlocks(d) }, container = tint.color,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -253,28 +278,30 @@ fun StudySection(onOpenFocus: () -> Unit, viewModel: V4StudyViewModel = koinView
             }
         }
     }
-    V4PillButton("Plan a block", onClick = { planningBlock = true }, filled = false)
-
-    if (s.recent.isNotEmpty()) {
-        Text("Studied lately", style = V4.type.headline, color = c.ink, modifier = Modifier.semantics { heading() })
+    if (s.repeats.isNotEmpty()) {
         V4Card(contentPadding = PaddingValues(0.dp), verticalSpacing = 0.dp) {
-            s.recent.forEachIndexed { i, l ->
+            s.repeats.forEachIndexed { i, r ->
                 if (i > 0) V4Divider()
-                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        OneLine(l.title, V4.type.bodyStrong, c.ink)
-                        OneLine(FitnessWeek.dayName(l.date.dayOfWeek) + (if (l.source == LifeLog.SOURCE_TIMER) ", timer" else ""), V4.type.caption, c.ink3)
-                    }
-                    Text(StudyPlanner.formatMinutes(l.durationMin ?: 0), style = V4.type.bodyStrong, color = c.ink)
+                Column(
+                    Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(role = Role.Button, onClickLabel = "Stop repeating") { repeatAction = r }
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    OneLine("${r.log.title} every ${r.days}", V4.type.bodyStrong, c.ink)
+                    OneLine(listOfNotNull(r.time, r.log.durationMin?.let { "$it min" }).joinToString(", ") + ". The next 7 days stay planned.", V4.type.caption, c.ink3)
                 }
             }
         }
     }
+    V4PillButton("Plan a block", onClick = { planningBlock = true }, filled = false)
 
     // ── Sheets and dialogs ──
     if (starting) StartDialog(s.subjects, onDismiss = { starting = false }) { subject, minutes -> viewModel.start(subject, null, minutes); starting = false }
     if (loggingTime) LogTimeSheet(s.subjects, onDismiss = { loggingTime = false }) { subject, m, d -> viewModel.logTime(subject, m, d); loggingTime = false }
-    if (planningBlock) PlanBlockSheet(s.subjects, s.canCalendar, onDismiss = { planningBlock = false }) { subject, d, t, m, cal ->
+    if (planningBlock) PlanBlockSheet(
+        s.subjects, s.canCalendar, onDismiss = { planningBlock = false },
+        onRepeat = { subject, days, t, m, cal -> viewModel.addRepeat(subject, days, t, m, cal); planningBlock = false },
+    ) { subject, d, t, m, cal ->
         viewModel.planBlock(subject, d, t, m, cal); planningBlock = false
     }
     if (addingDue) AddDueSheet(s.canCalendar, onDismiss = { addingDue = false }) { title, kind, date, blocks, minutes, time, cal ->
@@ -293,6 +320,8 @@ fun StudySection(onOpenFocus: () -> Unit, viewModel: V4StudyViewModel = koinView
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("${FitnessWeek.dayName(d.log.date.dayOfWeek)} ${d.log.date.day} ${monthShort(d.log.date)}, ${d.countdown}.")
                     Text(if (d.blocksTotal == 0) "No study planned for it yet." else "${d.blocksDone} of ${d.blocksTotal} study blocks done.")
+                    FormLabel("Hours it needs")
+                    CountChoices(listOf(2, 4, 6, 8, 10, 15, 20, 30), StudyPlanner.neededHours(d.log), { "${it}h" }) { viewModel.setNeededHours(d, it); dueAction = null }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (s.canCalendar) V4PillButton(if (d.onCalendar) "Off calendar" else "To calendar", onClick = { viewModel.toggleDueCalendar(d); dueAction = null }, filled = false)
                         V4PillButton(if (d.log.status == LogStatus.DONE) "Not done" else "Done", onClick = { viewModel.markDueDone(d); dueAction = null }, filled = false)
@@ -301,6 +330,16 @@ fun StudySection(onOpenFocus: () -> Unit, viewModel: V4StudyViewModel = koinView
             },
             confirmButton = { TextButton(onClick = { spreading = d.log; dueAction = null }) { Text(if (d.blocksTotal == 0) "Plan study" else "Add blocks") } },
             dismissButton = { TextButton(onClick = { viewModel.remove(d.log); dueAction = null }) { Text("Remove") } },
+        )
+    }
+
+    repeatAction?.let { r ->
+        AlertDialog(
+            onDismissRequest = { repeatAction = null },
+            title = { Text("${r.log.title} every ${r.days}") },
+            text = { Text("Stopping it removes the blocks planned from today on. Done ones stay. To skip one day, open that day's block instead.") },
+            confirmButton = { TextButton(onClick = { viewModel.stopRepeat(r); repeatAction = null }) { Text("Stop repeating") } },
+            dismissButton = { TextButton(onClick = { repeatAction = null }) { Text("Keep it") } },
         )
     }
 
@@ -376,11 +415,18 @@ private fun LogTimeSheet(subjects: List<String>, onDismiss: () -> Unit, onSave: 
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PlanBlockSheet(subjects: List<String>, canCalendar: Boolean, onDismiss: () -> Unit, onSave: (String, LocalDate, LocalTime?, Int, Boolean) -> Unit) {
+private fun PlanBlockSheet(
+    subjects: List<String>, canCalendar: Boolean, onDismiss: () -> Unit,
+    onRepeat: (String, Set<DayOfWeek>, LocalTime?, Int, Boolean) -> Unit,
+    onSave: (String, LocalDate, LocalTime?, Int, Boolean) -> Unit,
+) {
     val today = remember { Clock.System.todayIn(TimeZone.currentSystemDefault()) }
     var subject by remember { mutableStateOf("") }
     var day by remember { mutableStateOf(today) }
+    var repeat by remember { mutableStateOf(false) }
+    var days by remember { mutableStateOf(setOf(today.dayOfWeek)) }
     var time by remember { mutableStateOf<LocalTime?>(LocalTime(18, 0)) }
     var minutes by remember { mutableStateOf(45) }
     var toCalendar by remember { mutableStateOf(canCalendar) }
@@ -388,13 +434,76 @@ private fun PlanBlockSheet(subjects: List<String>, canCalendar: Boolean, onDismi
         FormLabel("What")
         SubjectField(subject, { subject = it }, subjects)
         FormLabel("When")
-        DayChoices(day, { day = it }, allowPicker = true)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Choice("Once", !repeat) { repeat = false }
+            Choice("Repeat", repeat) { repeat = true; days = days.ifEmpty { setOf(day.dayOfWeek) } }
+        }
+        if (repeat) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                DayOfWeek.entries.forEach { d -> WeekdayToggle(d, d in days) { days = if (d in days) days - d else days + d } }
+            }
+        } else {
+            DayChoices(day, { day = it }, allowPicker = true)
+        }
         TimeChoices(time) { time = it }
         FormLabel("How long")
         CountChoices(listOf(25, 45, 60, 90), minutes, { "$it min" }) { minutes = it }
-        if (canCalendar) V4SwitchRow("Add to your calendar", toCalendar, { toCalendar = it })
-        V4PrimaryButton("Plan it", onClick = { onSave(subject, day, time, minutes, toCalendar) }, enabled = subject.isNotBlank(), modifier = Modifier.fillMaxWidth())
-        SheetNote("It shows on Today on the day, with a Start button for the timer.")
+        if (canCalendar && (!repeat || time != null)) V4SwitchRow("Add to your calendar", toCalendar, { toCalendar = it })
+        if (repeat) {
+            V4PrimaryButton(
+                "Repeat it", onClick = { onRepeat(subject, days, time, minutes, toCalendar) },
+                enabled = subject.isNotBlank() && days.isNotEmpty(), modifier = Modifier.fillMaxWidth(),
+            )
+            SheetNote(
+                if (days.isEmpty()) "Pick the days it repeats on."
+                else "${subject.trim().ifEmpty { "It" }} every ${StudyPlanner.describeDays(days)}" + (time?.let { ", ${V4FitnessViewModel.fmt(it)}" } ?: "") +
+                    ", $minutes min. The next 7 days stay planned, and you can move or remove one day on its own.",
+            )
+        } else {
+            V4PrimaryButton("Plan it", onClick = { onSave(subject, day, time, minutes, toCalendar) }, enabled = subject.isNotBlank(), modifier = Modifier.fillMaxWidth())
+            SheetNote("It shows on Today on the day, with a Start button for the timer.")
+        }
+    }
+}
+
+/** A round day toggle, "M" to "S", read out in full. */
+@Composable
+private fun WeekdayToggle(day: DayOfWeek, on: Boolean, onClick: () -> Unit) {
+    val c = V4.colors
+    val tint = c.area(PlanArea.STUDY)
+    Box(
+        Modifier.size(44.dp).clip(CircleShape).background(if (on) tint.color else c.surface)
+            .border(1.5.dp, if (on) tint.color else c.line, CircleShape)
+            .toggleable(value = on, role = Role.Checkbox, onValueChange = { onClick() })
+            .semantics { contentDescription = FitnessWeek.dayName(day) },
+        contentAlignment = Alignment.Center,
+    ) { Text(FitnessWeek.dayLetter(day), style = V4.type.bodyStrong, color = if (on) c.onAccent else c.ink) }
+}
+
+/** "On track" or "3h short", for an exam row. */
+@Composable
+private fun TrackPill(t: StudyPlanner.Track) {
+    val c = V4.colors
+    val (bg, fg) = if (t.onTrack) c.successSoft to c.success else c.area(PlanArea.MEALS).soft to c.area(PlanArea.MEALS).ink
+    Text(
+        if (t.onTrack) "On track" else StudyPlanner.shortLine(t.shortMin), style = V4.type.label, color = fg,
+        modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(bg).padding(horizontal = 10.dp, vertical = 4.dp),
+    )
+}
+
+/** Done, then planned, against the hours needed. */
+@Composable
+private fun TrackBar(t: StudyPlanner.Track, color: androidx.compose.ui.graphics.Color) {
+    val need = t.neededMin.coerceAtLeast(1).toFloat()
+    val done = (t.doneMin / need).coerceIn(0f, 1f)
+    val planned = (t.plannedMin / need).coerceIn(0f, 1f - done)
+    Row(
+        Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(V4.colors.trackOff)
+            .semantics { contentDescription = StudyPlanner.trackLine(t) },
+    ) {
+        if (done > 0f) Box(Modifier.weight(done).fillMaxHeight().background(color))
+        if (planned > 0f) Box(Modifier.weight(planned).fillMaxHeight().background(color.copy(alpha = 0.35f)))
+        if (1f - done - planned > 0.001f) Box(Modifier.weight(1f - done - planned).fillMaxHeight())
     }
 }
 

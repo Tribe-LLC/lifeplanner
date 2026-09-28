@@ -5,7 +5,9 @@ import az.tribe.lifeplanner.domain.model.LogKind
 import az.tribe.lifeplanner.domain.model.LogStatus
 import az.tribe.lifeplanner.domain.model.PlanArea
 import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalTime
 import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 
@@ -16,7 +18,12 @@ enum class StudyKind(val key: String) {
     /** A block of study planned for a day, ticked off on Today. */
     BLOCK("block"),
     EXAM("exam"),
-    DEADLINE("deadline");
+    DEADLINE("deadline"),
+    /**
+     * A repeating block ("Maths every Mon and Wed, 18:00, 45 min"). Never shown as a plan itself:
+     * it keeps the next days' [BLOCK]s generated. See [StudyPlanner.datesToFill].
+     */
+    ROUTINE("routine");
 
     companion object {
         fun fromKey(key: String?) = entries.firstOrNull { it.key == key } ?: SESSION
@@ -162,4 +169,114 @@ object StudyPlanner {
 
     /** "2h 05m", "45 min". */
     fun formatMinutes(m: Int): String = if (m < 60) "$m min" else "${m / 60}h ${(m % 60).toString().padStart(2, '0')}m"
+
+    // ── Repeating blocks ─────────────────────────────────────────────────────
+    //
+    // A repeat is one ROUTINE row: title the subject, durationMin the length, notes "days: MON,WED",
+    // and occurredAt's time the block time. Its date is how far blocks have been made ("filled
+    // through"), so every day is generated once: a block moved or removed on its own day stays that
+    // way, and a second run the same day makes nothing. Block ids are fixed per repeat and day, so
+    // two phones filling the same day write the same row.
+
+    /** How many days ahead, today included, repeats keep planned. */
+    const val REPEAT_DAYS = 7
+
+    fun isRepeat(l: LifeLog) = isStudy(l) && kindOf(l) == StudyKind.ROUTINE
+
+    fun repeatDays(l: LifeLog): Set<DayOfWeek> =
+        l.notes?.lineSequence()?.firstOrNull { it.startsWith(DAYS_KEY) }?.removePrefix(DAYS_KEY)
+            ?.split(',')?.mapNotNull { k -> DayOfWeek.entries.firstOrNull { it.name.take(3) == k.trim().uppercase() } }?.toSet().orEmpty()
+
+    fun daysNote(days: Set<DayOfWeek>): String = DAYS_KEY + days.sortedBy { it.ordinal }.joinToString(",") { it.name.take(3) }
+
+    /** "every day", "weekdays", "Mon and Wed", "Mon, Wed and Fri". */
+    fun describeDays(days: Set<DayOfWeek>): String {
+        val sorted = days.sortedBy { it.ordinal }
+        return when {
+            sorted.size == 7 -> "every day"
+            sorted.toSet() == WEEKDAYS -> "weekdays"
+            sorted.toSet() == setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY) -> "weekends"
+            else -> sorted.map { FitnessWeek.shortDay(it) }.let { n -> if (n.size <= 1) n.joinToString() else n.dropLast(1).joinToString(", ") + " and " + n.last() }
+        }
+    }
+
+    private const val DAYS_KEY = "days: "
+    private val WEEKDAYS = setOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY)
+
+    /**
+     * The days a repeat still needs blocks for: its weekdays after [filledThrough], up to
+     * [REPEAT_DAYS] days from [today]. Days before today are never filled in afterwards.
+     */
+    fun datesToFill(days: Set<DayOfWeek>, filledThrough: LocalDate, today: LocalDate, ahead: Int = REPEAT_DAYS): List<LocalDate> {
+        if (days.isEmpty()) return emptyList()
+        val last = today.plus(DatePeriod(days = ahead - 1))
+        var d = maxOf(today, filledThrough.plus(DatePeriod(days = 1)))
+        val out = mutableListOf<LocalDate>()
+        while (d <= last) {
+            if (d.dayOfWeek in days) out += d
+            d = d.plus(DatePeriod(days = 1))
+        }
+        return out
+    }
+
+    /**
+     * Where a new repeat starts: today when there is still time for it (or it has no time), else
+     * tomorrow. Returned as the "filled through" day, the day before the first block.
+     */
+    fun firstFilledThrough(today: LocalDate, now: LocalTime, time: LocalTime?): LocalDate =
+        if (time == null || time > now) today.minus(DatePeriod(days = 1)) else today
+
+    /** The block a repeat makes on [date]. The same on every phone, so it never doubles. */
+    fun repeatBlockId(repeatId: String, date: LocalDate) = "$repeatId-$date"
+
+    // ── Am I on track ────────────────────────────────────────────────────────
+
+    /** Hours an exam or deadline needs when the user has not said: a fair start they can change. */
+    fun defaultHours(kind: StudyKind) = if (kind == StudyKind.EXAM) 10 else 6
+
+    fun neededHours(due: LifeLog): Int = due.quantity?.toInt()?.takeIf { it > 0 } ?: defaultHours(kindOf(due))
+
+    data class Track(val neededMin: Int, val doneMin: Int, val plannedMin: Int, val blockMin: Int, val daysLeft: Int) {
+        val shortMin: Int get() = (neededMin - doneMin - plannedMin).coerceAtLeast(0)
+        val onTrack: Boolean get() = shortMin == 0
+        /** Blocks that would close the gap, as many as there are days left for (at most two a day). */
+        val blocksToAdd: Int get() = if (onTrack || daysLeft <= 0) 0 else ((shortMin + blockMin - 1) / blockMin).coerceIn(1, (daysLeft * 2).coerceAtMost(12))
+    }
+
+    /**
+     * Preparation for [due]: minutes done (its ticked blocks, and sessions on the same subject before
+     * it) and minutes still planned (its blocks from today on), against the hours it needs.
+     */
+    fun track(due: LifeLog, logs: List<LifeLog>, today: LocalDate): Track {
+        val blocks = blocksFor(due, logs)
+        val name = due.title.trim().lowercase()
+        val doneBlocks = blocks.filter { it.status == LogStatus.DONE }.sumOf { it.durationMin ?: 0 }
+        val sessions = logs.filter {
+            isStudy(it) && kindOf(it) == StudyKind.SESSION && it.status == LogStatus.DONE && it.date <= due.date && it.title.trim().lowercase() == name
+        }.sumOf { it.durationMin ?: 0 }
+        val planned = blocks.filter { it.status == LogStatus.PLANNED && it.date >= today }
+        val blockMin = blocks.mapNotNull { it.durationMin }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: 45
+        val daysLeft = (due.date.toEpochDays() - today.toEpochDays()).toInt()
+        return Track(neededHours(due) * 60, doneBlocks + sessions, planned.sumOf { it.durationMin ?: blockMin }, blockMin, daysLeft)
+    }
+
+    /** "3h short", "1h 30m short", "40 min short": rounded up so it never looks smaller than it is. */
+    fun shortLine(minutes: Int): String {
+        if (minutes < 60) return "${((minutes + 4) / 5 * 5).coerceAtLeast(5)} min short"
+        val half = (minutes + 29) / 30
+        return if (half % 2 == 0) "${half / 2}h short" else "${half / 2}h 30m short"
+    }
+
+    /** "4h done, 6h planned, of 10h". */
+    fun trackLine(t: Track): String = listOfNotNull(
+        hours(t.doneMin) + " done",
+        t.plannedMin.takeIf { it > 0 }?.let { hours(it) + " planned" },
+    ).joinToString(", ") + ", of ${t.neededMin / 60}h"
+
+    private fun hours(m: Int): String = when {
+        m == 0 -> "0h"
+        m < 60 -> "$m min"
+        m % 60 == 0 -> "${m / 60}h"
+        else -> formatMinutes(m)
+    }
 }

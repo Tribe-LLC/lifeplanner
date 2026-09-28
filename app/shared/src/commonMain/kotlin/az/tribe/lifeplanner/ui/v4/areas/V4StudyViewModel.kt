@@ -42,8 +42,11 @@ import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
-/** An exam or deadline with how its preparation is going. */
-data class DueRow(val log: LifeLog, val countdown: String, val blocksDone: Int, val blocksTotal: Int, val onCalendar: Boolean)
+/** An exam or deadline with how its preparation is going, in blocks and against the hours it needs. */
+data class DueRow(val log: LifeLog, val countdown: String, val blocksDone: Int, val blocksTotal: Int, val onCalendar: Boolean, val track: StudyPlanner.Track)
+
+/** A repeating block: "Maths every Mon and Wed, 18:00, 45 min". */
+data class RepeatRow(val log: LifeLog, val days: String, val time: String?)
 
 /** A planned study block, with the words to show beside it. */
 data class BlockRow(val log: LifeLog, val day: String, val time: String, val forWhat: String?, val done: Boolean)
@@ -55,7 +58,7 @@ data class StudyState(
     val missed: Int = 0,
     val due: List<DueRow> = emptyList(),
     val comingUp: List<BlockRow> = emptyList(),
-    val recent: List<LifeLog> = emptyList(),
+    val repeats: List<RepeatRow> = emptyList(),
     val subjects: List<String> = emptyList(),
     val canCalendar: Boolean = false,
     val loaded: Boolean = false,
@@ -101,12 +104,14 @@ class V4StudyViewModel(
         val target = bs.firstOrNull { it.area == PlanArea.STUDY && it.metric == METRIC_MINUTES }?.amount?.toInt()
         val studyRows = all.filter { StudyPlanner.isStudy(it) }
         val exams = studyRows.filter { StudyPlanner.isDated(it) }.associateBy { it.id }
+        val repeats = studyRows.filter { StudyPlanner.isRepeat(it) }.associateBy { it.id }
         fun block(l: LifeLog) = BlockRow(
             log = l,
             day = if (l.date == today) "Today" else if (l.date == today.plus(DatePeriod(days = 1))) "Tomorrow" else FitnessWeek.shortDay(l.date.dayOfWeek),
             time = if (WorkoutService.hasTime(l)) V4FitnessViewModel.fmt(l.occurredAt.time) else "Any",
             forWhat = l.notes?.let { exams[it] }?.let { e -> "For ${StudyPlanner.dueName(e)}" }
-                ?: l.notes?.takeIf { it.startsWith(REVIEW_NOTE) }?.let { "Review" },
+                ?: l.notes?.takeIf { it.startsWith(REVIEW_NOTE) }?.let { "Review" }
+                ?: l.externalId?.let { repeats[it] }?.let { r -> "Repeats " + StudyPlanner.describeDays(StudyPlanner.repeatDays(r)) },
             done = l.status == LogStatus.DONE,
         )
         val blocks = studyRows.filter { StudyPlanner.kindOf(it) == StudyKind.BLOCK }
@@ -117,11 +122,13 @@ class V4StudyViewModel(
             missed = StudyPlanner.missed(all, today).size,
             due = StudyPlanner.upcoming(all, today).map { e ->
                 val prep = StudyPlanner.blocksFor(e, all)
-                DueRow(e, StudyPlanner.countdown(e.date, today), prep.count { it.status == LogStatus.DONE }, prep.size, plans.hasEvent(e))
+                DueRow(e, StudyPlanner.countdown(e.date, today), prep.count { it.status == LogStatus.DONE }, prep.size, plans.hasEvent(e), StudyPlanner.track(e, all, today))
             },
             comingUp = blocks.filter { it.status == LogStatus.PLANNED && it.date > today && it.date <= today.plus(DatePeriod(days = 7)) }
                 .sortedBy { it.occurredAt }.take(8).map(::block),
-            recent = studyRows.filter { it.status == LogStatus.DONE && !StudyPlanner.isDated(it) }.sortedByDescending { it.occurredAt }.take(6),
+            repeats = repeats.values.sortedBy { it.title.lowercase() }.map { r ->
+                RepeatRow(r, StudyPlanner.describeDays(StudyPlanner.repeatDays(r)), r.occurredAt.time.takeIf { WorkoutService.hasTime(r) }?.let { V4FitnessViewModel.fmt(it) })
+            },
             subjects = studyRows.filter { !StudyPlanner.isDated(it) }.map { it.title.trim() }.filter { it.isNotEmpty() && !it.startsWith("Review:") }
                 .groupingBy { it.lowercase() }.eachCount().entries.sortedByDescending { it.value }
                 .mapNotNull { e -> studyRows.firstOrNull { it.title.trim().lowercase() == e.key }?.title?.trim() }.take(6),
@@ -132,6 +139,7 @@ class V4StudyViewModel(
 
     init {
         viewModelScope.launch { canCalendar.value = plans.canAddToCalendar() }
+        viewModelScope.launch { runCatching { study.fillRepeats() } }
     }
 
     // ── Timer ────────────────────────────────────────────────────────────────
@@ -139,6 +147,10 @@ class V4StudyViewModel(
     fun start(subject: String, block: LifeLog? = null, targetMin: Int = block?.durationMin ?: 25) = study.start(subject, block?.id, targetMin)
 
     fun cancel() = study.cancel()
+
+    fun pause() = study.pause()
+
+    fun resume() = study.resume()
 
     /** Stops and saves; [onSaved] gets the minutes and the subject, for the "review later" offer. */
     fun stop(onSaved: (Int, String) -> Unit) {
@@ -186,6 +198,18 @@ class V4StudyViewModel(
             enable()
             PostHogAnalytics.capture("v4_study_block_planned", mapOf("in_days" to (date.toEpochDays() - today().toEpochDays()), "calendar" to toCalendar))
         }
+    }
+
+    /** "Maths every Mon and Wed, 18:00, 45 min": saved once, its blocks kept a week ahead. */
+    fun addRepeat(subject: String, days: Set<kotlinx.datetime.DayOfWeek>, time: LocalTime?, minutes: Int, toCalendar: Boolean) {
+        viewModelScope.launch {
+            study.addRepeat(subject, days, time, minutes, toCalendar)
+            enable()
+        }
+    }
+
+    fun stopRepeat(row: RepeatRow) {
+        viewModelScope.launch { study.stopRepeat(row.log) }
     }
 
     fun toggleBlock(row: BlockRow) {
@@ -265,6 +289,30 @@ class V4StudyViewModel(
         viewModelScope.launch {
             plans.toggleCalendar(row.log, StudyPlanner.dueEvent(row.log))
             calendarTick.value++
+        }
+    }
+
+    /** How many hours [row] needs, kept on the exam row itself. */
+    fun setNeededHours(row: DueRow, hours: Int) {
+        viewModelScope.launch {
+            logs.save(row.log.copy(quantity = hours.toDouble()))
+            PostHogAnalytics.capture("v4_study_hours_needed", mapOf("hours" to hours, "kind" to StudyPlanner.kindOf(row.log).key))
+        }
+    }
+
+    /**
+     * Closes the gap for [row] with the blocks its track asks for, spread like any other plan, at
+     * the time and length its blocks already use.
+     */
+    fun addTrackBlocks(row: DueRow) {
+        val n = row.track.blocksToAdd
+        if (n <= 0) return
+        viewModelScope.launch {
+            val existing = StudyPlanner.blocksFor(row.log, logs.getInRange(today().minus(DatePeriod(days = 60)), row.log.date))
+            val time = existing.filter { WorkoutService.hasTime(it) }.groupingBy { it.occurredAt.time }.eachCount().maxByOrNull { it.value }?.key
+            spreadFor(row.log, n, row.track.blockMin, time, toCalendar = existing.any { plans.hasEvent(it) })
+            enable()
+            PostHogAnalytics.capture("v4_study_track_blocks", mapOf("blocks" to n, "short_min" to row.track.shortMin))
         }
     }
 
