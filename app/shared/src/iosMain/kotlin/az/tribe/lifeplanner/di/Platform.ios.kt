@@ -22,6 +22,8 @@ actual fun onApplicationStartPlatformSpecific() {
             notificationSoundName = "custom_notification_sound.wav"
         )
     )
+    // After KMPNotifier sets its delegate: adds the habit reminder buttons and wraps that delegate.
+    az.tribe.lifeplanner.notification.HabitNotificationActions.install()
 
     // PostHog product analytics
     if (BuildKonfig.POSTHOG_API_KEY.isNotBlank()) {

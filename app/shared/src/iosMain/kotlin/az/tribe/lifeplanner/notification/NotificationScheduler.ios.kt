@@ -27,9 +27,13 @@ object IOSNotificationScheduler : NotificationSchedulerInterface {
             setTitle(reminder.title)
             setBody(reminder.message.ifEmpty { reminder.title })
             setSound(platform.UserNotifications.UNNotificationSound.defaultSound())
-            reminder.linkedGoalId?.let { goalId ->
-                setUserInfo(mapOf("linked_goal_id" to goalId))
+            val info = buildMap<Any?, Any?> {
+                reminder.linkedGoalId?.let { put("linked_goal_id", it) }
+                reminder.linkedHabitId?.let { put(HabitNotificationActions.HABIT_ID, it) }
             }
+            if (info.isNotEmpty()) setUserInfo(info)
+            // Habit reminders get Done / Not today / In 1 hour.
+            if (reminder.linkedHabitId != null) setCategoryIdentifier(HabitNotificationActions.CATEGORY)
         }
 
         val triggers = createTriggers(reminder)
