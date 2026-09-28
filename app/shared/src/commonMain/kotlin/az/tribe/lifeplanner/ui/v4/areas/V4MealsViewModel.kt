@@ -1,5 +1,6 @@
 package az.tribe.lifeplanner.ui.v4.areas
 
+import kotlinx.coroutines.flow.map
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import az.tribe.lifeplanner.core.CurrencyPrefs
@@ -124,6 +125,7 @@ class V4MealsViewModel(
     private val planAreas: PlanAreasRepository,
     private val prefs: IntegrationPrefs,
     private val coach: MealCoachService,
+    private val habitService: az.tribe.lifeplanner.data.habits.HabitService,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -142,8 +144,9 @@ class V4MealsViewModel(
         budgets.observeAll(),
         planAreas.enabledAreas,
         prefs.state,
-        extras,
-    ) { all, bs, areas, p, ex ->
+        // The water habit's count today, so a glass ticked on the habit shows here too.
+        combine(extras, habitService.rows.map { rows -> rows.firstOrNull { "water" in it.habit.title.lowercase() }?.let { if (it.doneToday) maxOf(it.countToday, it.habit.targetCount) else it.countToday } }, ::Pair),
+    ) { all, bs, areas, p, (ex, waterHabit) ->
         val today = today()
         val out = MealPlanner.eatenOut(all)
         fun row(l: LifeLog): MealRow {
@@ -172,7 +175,7 @@ class V4MealsViewModel(
         val nowHour = Clock.System.now().toLocalDateTime(tz).hour
         MealsState(
             today = MealPlanner.day(all, today).mapValues { (_, v) -> v.map(::row) },
-            water = all.filter { it.kind == LogKind.WATER && it.date == today }.sumOf { (it.quantity ?: 1.0).toInt() },
+            water = maxOf(all.filter { it.kind == LogKind.WATER && it.date == today }.sumOf { (it.quantity ?: 1.0).toInt() }, waterHabit ?: 0),
             waterTarget = ex.waterTarget,
             week = MealPlanner.week(all, today),
             plan = (0..6).map { i ->

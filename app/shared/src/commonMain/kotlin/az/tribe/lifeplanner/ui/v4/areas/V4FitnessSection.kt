@@ -173,7 +173,10 @@ fun FitnessSection(health: AreaHealth, onOpenHealth: () -> Unit, viewModel: V4Fi
                 Text("Nothing planned", style = V4.type.headline, color = c.ink)
                 Text(
                     if (s.week?.slots.isNullOrEmpty()) "Start one now, or set your week once and every week plans itself."
-                    else if (s.streak?.onBreak != null) "You are on a break. Rest well." else "A rest day in your week. Start one anyway if you feel like it.",
+                    else if (s.streak?.onBreak != null) "You are on a break. Rest well."
+                    else if (s.week?.slotFor(kotlin.time.Clock.System.todayIn(kotlinx.datetime.TimeZone.currentSystemDefault()).dayOfWeek) != null)
+                        "Today's slot has passed. Start one anyway, or rest and pick it up next time."
+                    else "A rest day in your week. Start one anyway if you feel like it.",
                     style = V4.type.caption, color = c.ink2,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
