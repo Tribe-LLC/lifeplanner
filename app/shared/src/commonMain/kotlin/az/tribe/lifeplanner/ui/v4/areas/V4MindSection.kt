@@ -149,8 +149,12 @@ fun MindSection(onRoute: (String) -> Unit, viewModel: V4MindViewModel = koinView
     SectionHeading("Your year in moods")
     V4Card {
         Text(
-            if (s.checkInDays14 == 0) "Check in a few times and your days fill in here"
-            else "${s.moodSummary} lately, ${s.checkInDays14} of the last 14 days",
+            when {
+                s.checkInDays14 == 0 -> "Check in a few times and your days fill in here"
+                // One or two days is not a pattern yet, so no "mostly" until there are a few.
+                s.checkInDays14 < 3 -> "${s.checkInDays14} of the last 14 days so far. A few more and a picture forms."
+                else -> "${s.moodSummary} lately, ${s.checkInDays14} of the last 14 days"
+            },
             style = V4.type.bodyStrong, color = c.ink,
         )
         MoodYearGrid(s.year, pickedDay, tint.color) { d -> pickedDay = d; viewModel.tappedDay() }
