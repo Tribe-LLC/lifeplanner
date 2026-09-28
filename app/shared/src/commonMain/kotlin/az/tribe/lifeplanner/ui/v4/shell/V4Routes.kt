@@ -26,6 +26,10 @@ object V4Routes {
 
     const val YOU = "v4_you"
 
+    /** The swipe decks: check in on what is left today, and review habits that slipped. */
+    const val CHECK_IN = "v4_checkin"
+    const val REVIEW = "v4_review"
+
     const val AREA = "v4_area/{area}"
     fun area(area: PlanArea) = "v4_area/${area.key}"
 

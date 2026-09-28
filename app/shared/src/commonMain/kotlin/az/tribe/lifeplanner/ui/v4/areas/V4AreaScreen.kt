@@ -85,7 +85,7 @@ fun V4AreaScreen(
             PlanArea.MIND -> MindSection(onRoute = actions.onRoute)
             PlanArea.STUDY -> StudySection(onOpenFocus = { actions.onRoute("focus_setup") })
             PlanArea.MEALS -> MealsSection(onAskCoach = actions.onAskCoach)
-            PlanArea.HABITS -> HabitsSection(onAskCoach = actions.onAskCoach)
+            PlanArea.HABITS -> HabitsSection(onAskCoach = actions.onAskCoach, onRoute = actions.onRoute)
             PlanArea.CAREER -> CareerSection(onNewPlan = actions.onNewPlan, onOpenGoal = actions.onOpenGoal, onRoute = actions.onRoute)
             else -> {}
         }

@@ -323,8 +323,18 @@ internal fun NavGraphBuilder.appNavV4(
                     DayItemType.EVENT -> {}
                 }
             },
+            onCheckIn = { navController.navigate(V4Routes.CHECK_IN) { launchSingleTop = true } },
+            onReview = { navController.navigate(V4Routes.REVIEW) { launchSingleTop = true } },
             bottomInset = TabInset,
         )
+    }
+
+    composable(V4Routes.CHECK_IN) {
+        az.tribe.lifeplanner.ui.v4.habits.V4CheckInScreen(onClose = { navController.popBackStack() })
+    }
+
+    composable(V4Routes.REVIEW) {
+        az.tribe.lifeplanner.ui.v4.habits.V4ReviewScreen(onClose = { navController.popBackStack() })
     }
 
     composable(V4Routes.LIFE) {

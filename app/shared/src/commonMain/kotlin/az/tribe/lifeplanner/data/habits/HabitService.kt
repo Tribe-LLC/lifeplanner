@@ -18,6 +18,7 @@ import az.tribe.lifeplanner.domain.repository.BudgetRepository
 import az.tribe.lifeplanner.domain.repository.HabitRepository
 import az.tribe.lifeplanner.domain.repository.LifeLogRepository
 import az.tribe.lifeplanner.domain.repository.ReminderRepository
+import az.tribe.lifeplanner.domain.service.HabitLearning
 import az.tribe.lifeplanner.domain.service.HabitRules
 import az.tribe.lifeplanner.domain.service.HabitSchedule
 import az.tribe.lifeplanner.domain.service.Schedule
@@ -50,7 +51,28 @@ data class HabitRow(
     val done: Set<LocalDate>,
     val skipped: Set<LocalDate>,
     val notes: List<LifeLog>,
+    /** The minute of the day this habit usually gets ticked, once there are enough ticks. */
+    val usualMinute: Int? = null,
+    /** Set when the habit has quietly stopped and should come up for review. */
+    val slip: HabitLearning.Slip? = null,
+    /** Weekdays it really happens on, when clearly fewer than it is set for. */
+    val learnedDays: Set<kotlinx.datetime.DayOfWeek>? = null,
 ) {
+    val reminderMinute: Int? get() = habit.reminderTime?.let { t ->
+        val h = t.substringBefore(':').trim().toIntOrNull() ?: return@let null
+        h * 60 + (t.substringAfter(':', "0").take(2).toIntOrNull() ?: 0)
+    }
+
+    /** Where it sits in the day: its reminder if it has one, else when it usually happens. */
+    val slot: HabitSchedule.Slot get() = when {
+        habit.reminderTime != null -> HabitSchedule.slot(habit.reminderTime)
+        usualMinute != null -> HabitLearning.slotOf(usualMinute)
+        else -> HabitSchedule.Slot.ANYTIME
+    }
+
+    /** For ordering inside a slot. */
+    val minute: Int get() = reminderMinute ?: usualMinute ?: (24 * 60)
+
     val meta: String get() = when {
         habit.targetCount > 1 && !stats.skippedToday -> "${if (doneToday) habit.targetCount else countToday} of ${habit.targetCount}${habit.unit?.let { " $it" } ?: ""}"
         habit.healthMetricType != null && !doneToday -> "Ticks itself from Health"
@@ -92,10 +114,15 @@ class HabitService(
         val trip = runCatching { pauses.pausedDays() }.getOrDefault(emptySet())
         val skipsBy = ls.filter { it.area == PlanArea.HABITS && it.category == HabitSchedule.SKIP }.groupBy { it.externalId }
         val notesBy = ls.filter { it.area == PlanArea.HABITS && it.category == HabitSchedule.NOTE }.groupBy { it.externalId }
+        val reviewedBy = ls.filter { it.area == PlanArea.HABITS && it.category == HabitLearning.REVIEW }
+            .groupBy { it.externalId }.mapValues { (_, v) -> v.maxOf { it.date } }
+        val ticksBy = checkIns.filter { it.completed && it.checkedAt != null }.groupBy { it.habitId }
+            .mapValues { (_, v) -> v.map { it.date to it.checkedAt!!.toLocalDateTime(tz) } }
         hs.filter { (h, _) -> h.isActive }.map { (h, doneToday) ->
             val schedule = HabitSchedule.of(h, bs)
             val skipped = skipsBy[h.id].orEmpty().map { it.date }.toSet()
             val done = doneBy[h.id].orEmpty() + if (doneToday) setOf(today) else emptySet()
+            val since = h.createdAt.date
             HabitRow(
                 habit = h,
                 schedule = schedule,
@@ -105,6 +132,11 @@ class HabitService(
                 done = done,
                 skipped = skipped,
                 notes = notesBy[h.id].orEmpty().sortedByDescending { it.occurredAt },
+                usualMinute = HabitLearning.usualMinute(ticksBy[h.id].orEmpty()),
+                // Health and in-app sessions tick these by themselves, so a miss there is not the user's.
+                slip = if (h.healthMetricType != null || h.completionSource != HabitCompletionSource.MANUAL) null
+                    else HabitLearning.slip(schedule, done, skipped, trip, today, since, reviewedBy[h.id]),
+                learnedDays = HabitLearning.learnedDays(schedule, done, skipped + trip, today, since),
             )
         }
     }
@@ -254,6 +286,75 @@ class HabitService(
                 category = HabitSchedule.NOTE, occurredAt = now(), externalId = habit.id,
             )
         )
+    }
+
+    // ── Review ───────────────────────────────────────────────────────────────
+
+    /** Ways to make a slipped habit lighter, best first. */
+    sealed interface Easier {
+        val title: String
+        val detail: String
+        data class OnlyDays(val days: Set<kotlinx.datetime.DayOfWeek>, override val title: String, override val detail: String) : Easier
+        data class TimesAWeek(val times: Int, override val title: String, override val detail: String) : Easier
+        data class Smaller(val target: Int, override val title: String, override val detail: String) : Easier
+        data class Pause(val days: Int, override val title: String, override val detail: String) : Easier
+    }
+
+    fun easierOptions(r: HabitRow): List<Easier> {
+        val out = mutableListOf<Easier>()
+        val schedule = HabitSchedule.normal(r.schedule)
+        r.learnedDays?.let { days ->
+            out += Easier.OnlyDays(days, "Only on ${HabitSchedule.describe(Schedule.Days(days)).let { if (it == "Weekdays" || it == "Weekends") it.lowercase() else it }}", "The days you already do it. Other days stop counting")
+        }
+        if (schedule !is Schedule.PerWeek) {
+            val times = if (schedule is Schedule.Days) (schedule.days.size - 1).coerceAtLeast(1) else 3
+            out += Easier.TimesAWeek(times, "$times times a week", "Any days you like")
+        } else if (schedule.times > 1) {
+            out += Easier.TimesAWeek(schedule.times - 1, "${schedule.times - 1} times a week", "One fewer than now")
+        }
+        if (r.habit.targetCount > 1) {
+            val half = (r.habit.targetCount / 2).coerceAtLeast(1)
+            out += Easier.Smaller(half, "$half ${r.habit.unit ?: "instead of ${r.habit.targetCount}"}".trim(), "Same habit, a smaller start")
+        }
+        val back = today().plus(DatePeriod(days = 14))
+        out += Easier.Pause(14, "Pause for 2 weeks", "Back on ${back.day} ${back.month.name.lowercase().replaceFirstChar { it.uppercase() }}, the streak waits")
+        return out.take(3)
+    }
+
+    suspend fun keep(habit: Habit) = review(habit, "kept")
+
+    /** Stops the habit and remembers why. Its history stays under Habits. */
+    suspend fun letGo(habit: Habit) {
+        stop(habit)
+        review(habit, "let go")
+    }
+
+    suspend fun makeEasier(r: HabitRow, how: Easier) {
+        val h = r.habit
+        val time = h.reminderTime?.let { runCatching { LocalTime.parse(it) }.getOrNull() }
+        when (how) {
+            is Easier.OnlyDays -> update(h, h.title, Schedule.Days(how.days), h.targetCount, h.unit, time)
+            is Easier.TimesAWeek -> update(h, h.title, Schedule.PerWeek(how.times), h.targetCount, h.unit, time)
+            is Easier.Smaller -> update(h, h.title, r.schedule, how.target, h.unit, time)
+            is Easier.Pause -> takeBreak(h, how.days)
+        }
+        review(h, "easier: ${how.title}")
+    }
+
+    /** Moves the reminder to when the habit really happens. */
+    suspend fun moveReminder(r: HabitRow, minute: Int) {
+        val h = r.habit
+        update(h, h.title, r.schedule, h.targetCount, h.unit, LocalTime(minute / 60, minute % 60))
+    }
+
+    private suspend fun review(habit: Habit, decision: String) {
+        logs.save(
+            LifeLog(
+                id = Uuid.random().toString(), area = PlanArea.HABITS, kind = LogKind.NOTE, status = LogStatus.DONE,
+                title = "Reviewed ${habit.title}: $decision", category = HabitLearning.REVIEW, occurredAt = now(), externalId = habit.id,
+            )
+        )
+        tick.value++
     }
 
     private suspend fun skipsFor(habit: Habit, from: LocalDate, to: LocalDate) =

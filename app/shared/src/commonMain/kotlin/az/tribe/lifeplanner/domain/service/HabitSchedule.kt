@@ -213,7 +213,7 @@ object HabitSchedule {
     }
 
     /** True when a week reached its target, false when it missed, null when it does not count yet. */
-    private fun weekResult(week: LocalDate, times: Int, done: Set<LocalDate>, neutral: Set<LocalDate>, today: LocalDate): Boolean? {
+    internal fun weekResult(week: LocalDate, times: Int, done: Set<LocalDate>, neutral: Set<LocalDate>, today: LocalDate): Boolean? {
         val days = (0 until 7).map { week.plus(DatePeriod(days = it)) }
         val count = days.count { it in done }
         val needed = (times - days.count { it in neutral }).coerceAtLeast(0)

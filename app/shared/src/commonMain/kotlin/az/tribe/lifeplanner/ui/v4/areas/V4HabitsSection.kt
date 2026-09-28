@@ -1,6 +1,9 @@
 package az.tribe.lifeplanner.ui.v4.areas
 
 import androidx.compose.foundation.background
+import az.tribe.lifeplanner.ui.v4.habits.CheckInHero
+import az.tribe.lifeplanner.ui.v4.habits.SlippedCard
+import az.tribe.lifeplanner.ui.v4.shell.V4Routes
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -66,13 +69,22 @@ import org.koin.compose.viewmodel.koinViewModel
  * the habits not due today and why, and twelve weeks of history. Tapping a habit opens its sheet
  * with the schedule, reminder, past days to fix, skip days and breaks.
  */
+/** More habits due than this and the page folds the done ones away. */
+private const val LONG_LIST = 10
+
 @Composable
-fun HabitsSection(onAskCoach: (String) -> Unit, viewModel: V4HabitsViewModel = koinViewModel()) {
+fun HabitsSection(onAskCoach: (String) -> Unit, onRoute: (String) -> Unit, viewModel: V4HabitsViewModel = koinViewModel()) {
     val s by viewModel.state.collectAsState()
     val c = V4.colors
     val tint = c.area(PlanArea.HABITS)
     var open by remember { mutableStateOf<String?>(null) }
     var adding by remember { mutableStateOf(false) }
+    var showDone by remember { mutableStateOf(false) }
+    // With many habits, done ones fold away so what is left stays in reach.
+    val long = s.dueToday > LONG_LIST
+
+    if (s.left >= 5 && long) CheckInHero(s.left, onStart = { onRoute(V4Routes.CHECK_IN) })
+    if (s.toReview > 0) SlippedCard(s.toReview, onReview = { onRoute(V4Routes.REVIEW) })
 
     V4Card(modifier = Modifier.fillMaxWidth(), color = tint.soft, bordered = false, verticalSpacing = 6.dp) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -94,7 +106,22 @@ fun HabitsSection(onAskCoach: (String) -> Unit, viewModel: V4HabitsViewModel = k
                 if (s.today.size > 1 || slot != HabitSchedule.Slot.ANYTIME) {
                     Text(slot.label, style = V4.type.caption, color = c.ink3, modifier = Modifier.padding(top = 6.dp).semantics { heading() })
                 }
-                rows.forEach { r -> TodayHabitRow(r, tint.color, onOpen = { open = r.habit.id }, onToggle = { viewModel.toggle(r) }, onPlus = { viewModel.plusOne(r) }) }
+                rows.filter { !long || !it.doneToday }.forEach { r -> TodayHabitRow(r, tint.color, onOpen = { open = r.habit.id }, onToggle = { viewModel.toggle(r) }, onPlus = { viewModel.plusOne(r) }) }
+            }
+        }
+        if (long && s.doneToday > 0) {
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = Role.Button, onClickLabel = if (showDone) "Hide" else "Show") { showDone = !showDone }.padding(top = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("Done today, ${s.doneToday}", style = V4.type.bodyStrong, color = c.ink2)
+                Text(if (showDone) "Hide" else "Show", style = V4.type.bodyStrong, color = tint.ink)
+            }
+            if (showDone) {
+                s.today.flatMap { it.second }.filter { it.doneToday }.forEach { r ->
+                    TodayHabitRow(r, tint.color, onOpen = { open = r.habit.id }, onToggle = { viewModel.toggle(r) }, onPlus = { viewModel.plusOne(r) })
+                }
             }
         }
     }

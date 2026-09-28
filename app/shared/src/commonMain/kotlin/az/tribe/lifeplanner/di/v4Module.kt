@@ -32,6 +32,8 @@ import az.tribe.lifeplanner.ui.v4.areas.V4StudyViewModel
 import az.tribe.lifeplanner.data.habits.HabitService
 import az.tribe.lifeplanner.domain.service.HabitStreakRules
 import az.tribe.lifeplanner.ui.v4.areas.V4HabitsViewModel
+import az.tribe.lifeplanner.ui.v4.habits.V4CheckInViewModel
+import az.tribe.lifeplanner.ui.v4.habits.V4ReviewViewModel
 import az.tribe.lifeplanner.data.mind.MindService
 import az.tribe.lifeplanner.ui.v4.areas.V4MindViewModel
 import az.tribe.lifeplanner.data.career.CareerService
@@ -67,6 +69,8 @@ val v4Module = module {
 
     viewModelOf(::V4FirstRunViewModel)
     viewModelOf(::V4TodayViewModel)
+    viewModelOf(::V4CheckInViewModel)
+    viewModelOf(::V4ReviewViewModel)
     viewModelOf(::V4LifeViewModel)
     viewModelOf(::QuickAddViewModel)
     viewModelOf(::V4MoneyViewModel)

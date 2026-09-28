@@ -78,7 +78,8 @@ fun HabitCheckInEntity.toDomain(): HabitCheckIn {
         date = LocalDate.parse(date),
         completed = completed == 1L,
         notes = notes,
-        count = count.toInt()
+        count = count.toInt(),
+        checkedAt = sync_updated_at?.let { runCatching { kotlin.time.Instant.parse(it) }.getOrNull() },
     )
 }
 

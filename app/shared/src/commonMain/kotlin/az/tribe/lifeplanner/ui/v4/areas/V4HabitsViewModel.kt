@@ -42,6 +42,10 @@ data class HabitsState(
     val heat: List<HeatDay> = emptyList(),
     val keptShare: Float? = null,
     val all: List<HabitRow> = emptyList(),
+    /** Still open today, for the check-in deck. */
+    val left: Int = 0,
+    /** Missed 3 times in a row, for the review deck. */
+    val toReview: Int = 0,
     val loaded: Boolean = false,
 )
 
@@ -125,13 +129,15 @@ class V4HabitsViewModel(
 
         fun build(rows: List<HabitRow>, today: LocalDate): HabitsState {
             val due = rows.filter { it.stats.dueToday }
-            val grouped = due.groupBy { HabitSchedule.slot(it.habit.reminderTime) }
+            // Grouped by the reminder, or by when it usually gets done once that is learned.
+            val grouped = due.groupBy { it.slot }
                 .toList().sortedBy { it.first.ordinal }
-                .map { (slot, list) -> slot to list.sortedWith(compareBy({ it.doneToday }, { it.habit.reminderTime ?: "99" }, { it.habit.title })) }
+                .map { (slot, list) -> slot to list.sortedWith(compareBy({ it.doneToday }, { it.minute }, { it.habit.title })) }
             val notToday = rows.filter { !it.stats.dueToday }.map { r -> r to whyNotToday(r, today) }
             val yesterday = today.minus(DatePeriod(days = 1))
+            // The one-miss note is for a single slip; habits missed 3 times in a row go to the review instead.
             val slipped = rows.firstOrNull { r ->
-                r.schedule !is Schedule.PerWeek && HabitSchedule.isScheduled(HabitSchedule.normal(r.schedule), yesterday) &&
+                r.slip == null && r.schedule !is Schedule.PerWeek && HabitSchedule.isScheduled(HabitSchedule.normal(r.schedule), yesterday) &&
                     yesterday !in r.done && yesterday !in r.skipped && r.habit.createdAt.date < yesterday &&
                     r.habit.type == HabitType.BUILD && r.habit.healthMetricType == null
             }
@@ -145,6 +151,8 @@ class V4HabitsViewModel(
                 heat = heat,
                 keptShare = share,
                 all = rows,
+                left = due.count { !it.doneToday && !it.stats.skippedToday && it.habit.healthMetricType == null },
+                toReview = rows.count { it.slip != null },
                 loaded = true,
             )
         }

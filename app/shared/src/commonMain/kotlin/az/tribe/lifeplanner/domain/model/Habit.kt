@@ -39,5 +39,7 @@ data class HabitCheckIn(
     val date: LocalDate,
     val completed: Boolean,
     val notes: String = "",
-    val count: Int = 0
+    val count: Int = 0,
+    /** When the row was last written, used to learn what time of day a habit gets done. Null when unknown. */
+    val checkedAt: kotlin.time.Instant? = null,
 )

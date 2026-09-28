@@ -1,5 +1,26 @@
 package az.tribe.lifeplanner.ui.v4.today
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import az.tribe.lifeplanner.domain.service.HabitLearning
+import az.tribe.lifeplanner.ui.v4.habits.CheckInHero
+import az.tribe.lifeplanner.ui.v4.habits.LearnedTipCard
+import az.tribe.lifeplanner.ui.v4.habits.SlippedCard
+import com.adamglin.phosphoricons.regular.CaretDown
+import com.adamglin.phosphoricons.regular.CaretRight
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -63,10 +84,13 @@ fun V4TodayScreen(
     onOpenYou: () -> Unit,
     onAskCoach: (String) -> Unit,
     onOpenItem: (DayItem) -> Unit,
+    onCheckIn: () -> Unit,
+    onReview: () -> Unit,
     bottomInset: PaddingValues,
     viewModel: V4TodayViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    var toggled by rememberSaveable { mutableStateOf(listOf<String>()) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -116,6 +140,17 @@ fun V4TodayScreen(
                 )
             }
         }
+        if (state.busy && state.habitsLeft >= V4TodayViewModel.CHECK_IN_AT) {
+            item(key = "checkin") { CheckInHero(state.habitsLeft, onCheckIn, Modifier.padding(top = 8.dp)) }
+        }
+        if (state.slipped > 0) {
+            item(key = "slipped") { SlippedCard(state.slipped, onReview, Modifier.padding(top = 4.dp)) }
+        }
+        state.tip?.let { tip ->
+            item(key = "tip") {
+                LearnedTipCard(tip.text, "Move it", "Keep it", onYes = { viewModel.acceptTip(tip) }, onNo = { viewModel.declineTip(tip) }, modifier = Modifier.padding(top = 4.dp))
+            }
+        }
         item(key = "your_day") {
             Text(
                 "Your day",
@@ -134,9 +169,115 @@ fun V4TodayScreen(
                 )
             }
         }
-        items(state.items, key = { it.key }) { item ->
-            DayRow(item, onToggle = { viewModel.toggle(item) }, onOpen = { onOpenItem(item) }, modifier = Modifier.animateItem())
+        if (state.busy) {
+            state.groups.forEach { g ->
+                val open = (g.id in toggled) != g.openByDefault
+                item(key = "group_${g.id}") {
+                    GroupHeader(g, open, onToggle = { toggled = if (g.id in toggled) toggled - g.id else toggled + g.id }, modifier = Modifier.animateItem())
+                }
+                if (open) {
+                    items(g.items, key = { it.key }) { item ->
+                        SwipeableDayRow(item, viewModel, onOpenItem, Modifier.animateItem())
+                    }
+                }
+            }
+        } else {
+            items(state.items, key = { it.key }) { item ->
+                SwipeableDayRow(item, viewModel, onOpenItem, Modifier.animateItem())
+            }
         }
+    }
+}
+
+@Composable
+private fun GroupHeader(g: DayGroup, open: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+    val c = V4.colors
+    val count = if (g.id == "done") g.items.size else g.items.count { !it.done }
+    Row(
+        modifier.fillMaxWidth().heightIn(min = 52.dp).clip(RoundedCornerShape(16.dp))
+            .clickable(role = Role.Button, onClickLabel = if (open) "Collapse" else "Expand", onClick = onToggle)
+            .padding(horizontal = 4.dp, vertical = 6.dp)
+            .semantics { heading() },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(g.title, style = V4.type.headline, color = c.ink)
+            g.sub?.let { Text(it, style = V4.type.caption, color = c.ink3) }
+        }
+        Text(
+            "$count",
+            style = V4.type.label,
+            color = c.ink2,
+            modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(c.surfaceMuted).padding(horizontal = 10.dp, vertical = 4.dp),
+        )
+        Icon(
+            if (open) PhosphorIcons.Regular.CaretDown else PhosphorIcons.Regular.CaretRight,
+            contentDescription = null, tint = c.ink2, modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+/**
+ * A day row that can be swiped: right ticks it (or unticks a done one), left on a habit means
+ * "not today", a skip that never breaks the streak. The tick button still works for anyone who
+ * does not swipe, and both are also offered as accessibility actions.
+ */
+@Composable
+private fun SwipeableDayRow(item: DayItem, viewModel: V4TodayViewModel, onOpenItem: (DayItem) -> Unit, modifier: Modifier = Modifier) {
+    val c = V4.colors
+    if (!item.checkable) {
+        DayRow(item, onToggle = {}, onOpen = { onOpenItem(item) }, modifier = modifier)
+        return
+    }
+    val canSkip = item.type == DayItemType.HABIT && !item.done
+    val scope = rememberCoroutineScope()
+    val offset = remember(item.key, item.done) { Animatable(0f) }
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val w = constraints.maxWidth.toFloat()
+        val x = offset.value
+        if (x != 0f) {
+            val right = x > 0
+            Box(
+                Modifier.matchParentSize().clip(V4RowShape).background(if (right) c.success else c.surfaceMuted).padding(horizontal = 20.dp),
+                contentAlignment = if (right) Alignment.CenterStart else Alignment.CenterEnd,
+            ) {
+                Text(
+                    if (right) (if (item.done) "Undo" else "Done") else "Not today",
+                    style = V4.type.bodyStrong,
+                    color = if (right) Color.White else c.ink,
+                )
+            }
+        }
+        DayRow(
+            item,
+            onToggle = { viewModel.toggle(item) },
+            onOpen = { onOpenItem(item) },
+            modifier = Modifier
+                .graphicsLayer { translationX = x }
+                .semantics {
+                    if (canSkip) customActions = listOf(CustomAccessibilityAction("Not today") { viewModel.notToday(item); true })
+                }
+                .pointerInput(item.key, item.done) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            val v = offset.value
+                            scope.launch {
+                                when {
+                                    v > w * 0.3f -> { offset.animateTo(w, tween(160)); viewModel.toggle(item); offset.snapTo(0f) }
+                                    v < -w * 0.3f && canSkip -> { offset.animateTo(-w, tween(160)); viewModel.notToday(item) }
+                                    else -> offset.animateTo(0f, tween(180))
+                                }
+                            }
+                        },
+                        onDragCancel = { scope.launch { offset.animateTo(0f, tween(180)) } },
+                    ) { change, dx ->
+                        change.consume()
+                        val next = offset.value + dx
+                        scope.launch { offset.snapTo(if (canSkip) next else next.coerceAtLeast(0f)) }
+                    }
+                },
+        )
     }
 }
 
@@ -196,12 +337,15 @@ private fun DayRow(item: DayItem, onToggle: () -> Unit, onOpen: () -> Unit, modi
             when {
                 item.allDay -> "All day"
                 item.time != null -> "${item.time.hour.toString().padStart(2, '0')}:${item.time.minute.toString().padStart(2, '0')}"
+                item.usualMinute != null -> "~" + HabitLearning.roughly(item.usualMinute)
                 else -> "Any"
             },
             style = V4.type.label,
             color = c.ink2,
             textAlign = TextAlign.Center,
-            modifier = Modifier.width(46.dp),
+            maxLines = 1,
+            // Wide enough for a learned "~08:00" on one line.
+            modifier = Modifier.width(54.dp),
         )
         if (item.area == null) {
             Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(c.surfaceMuted), contentAlignment = Alignment.Center) {

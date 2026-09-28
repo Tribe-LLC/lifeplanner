@@ -68,6 +68,8 @@ import kotlinx.coroutines.launch
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
+import az.tribe.lifeplanner.domain.service.HabitLearning
+import az.tribe.lifeplanner.domain.service.HabitSchedule
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.minus
@@ -92,7 +94,18 @@ data class DayItem(
     val done: Boolean,
     val checkable: Boolean,
     val goalId: String? = null,
-)
+    /** When a habit usually gets done, learned from its ticks; shown when it has no set time. */
+    val usualMinute: Int? = null,
+) {
+    /** The minute of the day it belongs to: its set time, else its usual one. */
+    val minute: Int? get() = time?.let { it.hour * 60 + it.minute } ?: usualMinute
+}
+
+/** A part of a long day: what is due now, later, at no set time, and what is done. */
+data class DayGroup(val id: String, val title: String, val sub: String?, val items: List<DayItem>, val openByDefault: Boolean)
+
+/** Something learned from the user's ticks, offered as a yes or no. */
+data class LearnTip(val habitId: String, val text: String, val minute: Int)
 
 /** A chip in the row under the title. [area] picks its tint; null is the dark "done" chip. */
 data class TodayChip(val text: String, val area: PlanArea?)
@@ -119,6 +132,12 @@ data class TodayUiState(
     val chips: List<TodayChip> = emptyList(),
     val nudge: CoachNudge? = null,
     val loaded: Boolean = false,
+    /** A long day: shown as groups with a check-in deck instead of one long list. */
+    val busy: Boolean = false,
+    val groups: List<DayGroup> = emptyList(),
+    val habitsLeft: Int = 0,
+    val slipped: Int = 0,
+    val tip: LearnTip? = null,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -142,7 +161,7 @@ class V4TodayViewModel(
     private val trips: TripRepository,
     private val plans: PlanService,
     private val meals: MealService,
-    habitService: HabitService,
+    private val habitService: HabitService,
     private val career: CareerService,
 ) : ViewModel() {
 
@@ -269,6 +288,35 @@ class V4TodayViewModel(
             DayItemType.EVENT -> {}
         }
     }
+
+    /** Left swipe on a habit row: not today. The streak waits. */
+    fun notToday(item: DayItem) {
+        if (item.type != DayItemType.HABIT) return
+        viewModelScope.launch {
+            runCatching {
+                val habit = habitRepository.getHabitById(item.refId) ?: return@launch
+                habitService.toggleSkip(habit)
+                PostHogAnalytics.capture("v4_today_not_today")
+            }
+        }
+    }
+
+    fun acceptTip(tip: LearnTip) {
+        viewModelScope.launch {
+            runCatching {
+                val row = habitService.rows.first().firstOrNull { it.habit.id == tip.habitId } ?: return@launch
+                habitService.moveReminder(row, tip.minute)
+                PostHogAnalytics.capture("v4_learned_reminder_moved")
+            }
+        }
+    }
+
+    fun declineTip(tip: LearnTip) {
+        settings.putBoolean(tipKey(tip.habitId), true)
+        swapTick.value++
+    }
+
+    private fun tipKey(habitId: String) = "v4_tip_no_$habitId"
 
     private fun toggleHabit(item: DayItem) {
         viewModelScope.launch {
@@ -397,6 +445,7 @@ class V4TodayViewModel(
                 meta = r.meta,
                 done = done,
                 checkable = true,
+                usualMinute = r.usualMinute,
             )
         }
 
@@ -527,7 +576,7 @@ class V4TodayViewModel(
         }
 
         // Things for "any time" first, then the timed day in order.
-        val sorted = items.sortedWith(compareBy<DayItem>({ it.time != null }, { it.time }, { it.type.ordinal }))
+        val sorted = items.sortedWith(compareBy<DayItem>({ it.minute != null }, { it.minute }, { it.type.ordinal }))
         val checkable = sorted.filter { it.checkable }
         val done = checkable.count { it.done }
 
@@ -552,7 +601,28 @@ class V4TodayViewModel(
 
         val nudge = pickNudge(checkable, h, habits, week).takeIf { it?.id != dismissedId }
 
-        return TodayUiState(date = today, items = sorted, done = done, total = checkable.size, chips = chips, nudge = nudge, loaded = true)
+        val busy = checkable.size > BUSY_AT
+        val habitsLeft = habits.count { it.stats.dueToday && !it.doneToday && !it.stats.skippedToday && it.habit.healthMetricType == null && (away == null || TravelMode.keeps(it.habit)) }
+        // On a long day the check-in card already says how many are left; the coach would repeat it.
+        val shownNudge = nudge?.takeUnless { busy && habitsLeft >= CHECK_IN_AT && it.id == "evening" }
+        val tip = habits.firstOrNull { r ->
+            HabitLearning.reminderIsOff(r.reminderMinute, r.usualMinute) && !settings.getBoolean(tipKey(r.habit.id), false)
+        }?.let { r ->
+            val usual = r.usualMinute!!
+            LearnTip(
+                r.habit.id,
+                "You set ${r.habit.title} for ${r.habit.reminderTime}, but tick it around ${HabitLearning.roughly(usual)} most days. Move the reminder there?",
+                ((usual + 7) / 15 * 15) % (24 * 60),
+            )
+        }
+        return TodayUiState(
+            date = today, items = sorted, done = done, total = checkable.size, chips = chips, nudge = shownNudge, loaded = true,
+            busy = busy,
+            groups = if (busy) groups(sorted, Clock.System.now().toLocalDateTime(tz).let { it.hour * 60 + it.minute }) else emptyList(),
+            habitsLeft = habitsLeft,
+            slipped = habits.count { it.slip != null },
+            tip = tip,
+        )
     }
 
     /** Today's planned workout that is too much after a short night: anything but a walk or yoga. */
@@ -641,6 +711,42 @@ class V4TodayViewModel(
     private fun dismissKey() = "v4_nudge_dismissed_${today()}"
 
     companion object {
+        /** More things than this to tick and Today groups them instead of listing them all. */
+        const val BUSY_AT = 10
+        /** This many habits left on a long day and the check-in deck is offered. */
+        const val CHECK_IN_AT = 5
+
+        /** How far ahead "now" looks. */
+        const val NOW_AHEAD_MIN = 90
+
+        /**
+         * Splits a long day: what is due now (anything overdue and the next hour and a half), later
+         * today, at no set time, and done. Calendar events that ended over an hour ago drop out.
+         */
+        fun groups(sorted: List<DayItem>, nowMinute: Int): List<DayGroup> {
+            val now = mutableListOf<DayItem>()
+            val later = mutableListOf<DayItem>()
+            val any = mutableListOf<DayItem>()
+            val done = mutableListOf<DayItem>()
+            sorted.forEach { item ->
+                val m = item.minute
+                when {
+                    item.checkable && item.done -> done += item
+                    !item.checkable && (m == null || m < nowMinute - 60) -> Unit
+                    m == null || item.allDay -> any += item
+                    m <= nowMinute + NOW_AHEAD_MIN -> now += item
+                    else -> later += item
+                }
+            }
+            val nowLabel = HabitLearning.slotOf(nowMinute).label.lowercase()
+            return listOf(
+                DayGroup("now", "Now, $nowLabel", null, now, true),
+                DayGroup("later", "Later today", "After ${HabitLearning.clock(((nowMinute + NOW_AHEAD_MIN) / 30 * 30).coerceAtMost(23 * 60 + 30))}", later, false),
+                DayGroup("any", "Anytime today", "No set or usual time yet", any, now.isEmpty()),
+                DayGroup("done", "Done", "Tap to see or undo", done, false),
+            ).filter { it.items.isNotEmpty() }
+        }
+
         /** Which area a habit belongs to on Today. Plain habits stay under Habits. */
         fun areaOf(habit: Habit): PlanArea = when {
             habit.healthMetricType == HealthMetricType.SLEEP -> PlanArea.MIND
