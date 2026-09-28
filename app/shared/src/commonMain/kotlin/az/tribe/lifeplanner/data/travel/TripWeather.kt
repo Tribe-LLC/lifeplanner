@@ -14,7 +14,7 @@ import kotlinx.serialization.Serializable
 import kotlin.math.roundToInt
 
 /** A place found by name, for a trip's weather. */
-data class Place(val name: String, val country: String?, val latitude: Double, val longitude: Double)
+data class Place(val name: String, val country: String?, val latitude: Double, val longitude: Double, val countryCode: String? = null)
 
 /**
  * Where a trip is and what the weather will be, from Open-Meteo (free, keyless, same source as the
@@ -31,7 +31,7 @@ class TripWeather(private val client: HttpClient) {
             parameter("count", 1)
             parameter("format", "json")
         }.body()
-        r.results?.firstOrNull()?.let { Place(it.name, it.country, it.latitude, it.longitude) }
+        r.results?.firstOrNull()?.let { Place(it.name, it.country, it.latitude, it.longitude, it.countryCode) }
     } catch (e: Exception) {
         Logger.w("TripWeather") { "Geocoding failed: ${e.message}" }
         null
@@ -70,6 +70,25 @@ class TripWeather(private val client: HttpClient) {
         }
     }
 
+    /**
+     * The average daytime high over days that have passed, for a trip's recap. Open-Meteo keeps
+     * about three months of past days on the same forecast endpoint. Null when it cannot say.
+     */
+    suspend fun averageHigh(latitude: Double, longitude: Double, start: LocalDate, end: LocalDate): Int? = try {
+        val r: ForecastResponse = client.get(FORECAST_URL) {
+            parameter("latitude", latitude)
+            parameter("longitude", longitude)
+            parameter("daily", "temperature_2m_max")
+            parameter("start_date", start.toString())
+            parameter("end_date", end.toString())
+            parameter("timezone", "auto")
+        }.body()
+        r.daily?.max?.filterNotNull()?.takeIf { it.isNotEmpty() }?.average()?.roundToInt()
+    } catch (e: Exception) {
+        Logger.w("TripWeather") { "Past weather failed: ${e.message}" }
+        null
+    }
+
     private companion object {
         const val GEO_URL = "https://geocoding-api.open-meteo.com/v1/search"
         const val FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
@@ -86,6 +105,7 @@ private data class GeoResult(
     val latitude: Double,
     val longitude: Double,
     val country: String? = null,
+    @SerialName("country_code") val countryCode: String? = null,
 )
 
 @Serializable

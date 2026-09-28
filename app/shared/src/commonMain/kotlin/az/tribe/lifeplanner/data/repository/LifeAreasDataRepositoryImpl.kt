@@ -169,10 +169,13 @@ internal fun TripEntity.toDomain() = Trip(
     notes = notes,
 )
 
-internal fun TripItemEntity.toDomain() = TripItem(
+/** Null for an item kind this version does not know (a newer app wrote it), so it is not shown as a to-do. */
+internal fun TripItemEntity.toDomain() = TripItemKind.fromKeyOrNull(kind)?.let { k -> toDomain(k) }
+
+private fun TripItemEntity.toDomain(k: TripItemKind) = TripItem(
     id = id,
     tripId = tripId,
-    kind = TripItemKind.fromKey(kind),
+    kind = k,
     title = title,
     notes = notes,
     date = date?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
@@ -186,7 +189,7 @@ class TripRepositoryImpl(
 ) : TripRepository {
     override fun observeAll(): Flow<List<Trip>> = db.observe { it.selectAllTrips() }.map { rows -> rows.mapNotNull { runCatching { it.toDomain() }.getOrNull() } }
 
-    override fun observeItems(tripId: String): Flow<List<TripItem>> = db.observe { it.selectTripItems(tripId) }.map { rows -> rows.map { it.toDomain() } }
+    override fun observeItems(tripId: String): Flow<List<TripItem>> = db.observe { it.selectTripItems(tripId) }.map { rows -> rows.mapNotNull { it.toDomain() } }
 
     override suspend fun getAll(): List<Trip> = db { it.lifePlannerDBQueries.selectAllTrips().executeAsList() }.mapNotNull { runCatching { it.toDomain() }.getOrNull() }
 
