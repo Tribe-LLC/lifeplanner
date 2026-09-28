@@ -314,6 +314,7 @@ internal fun NavGraphBuilder.appNavV4(
                 when (item.type) {
                     DayItemType.HABIT -> navController.navigate("habit_detail_redesign/${item.refId}") { launchSingleTop = true }
                     DayItemType.STEP -> item.goalId?.let { navController.navigate("goal_detail/$it") { launchSingleTop = true } }
+                    DayItemType.WORKOUT -> navController.navigate(V4Routes.area(PlanArea.FITNESS)) { launchSingleTop = true }
                     DayItemType.EVENT -> {}
                 }
             },

@@ -219,8 +219,9 @@ private fun BudgetForm(
 
 private val MoneyFormatCodes = MoneyFormat.common
 
+/** A single-choice pill, shared by the forms on area pages. */
 @Composable
-private fun Choice(label: String, on: Boolean, onClick: () -> Unit) {
+internal fun Choice(label: String, on: Boolean, onClick: () -> Unit) {
     val c = V4.colors
     Text(
         label,

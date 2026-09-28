@@ -110,8 +110,8 @@ fun V4TodayScreen(
             item(key = "coach") {
                 CoachCard(
                     nudge = nudge,
-                    onPrimary = { nudge.coachPrompt?.let(onAskCoach); viewModel.dismissNudge(nudge) },
-                    onSecondary = { viewModel.dismissNudge(nudge) },
+                    onPrimary = { viewModel.onNudgePrimary(nudge, onAskCoach) },
+                    onSecondary = { viewModel.onNudgeSecondary(nudge) },
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }

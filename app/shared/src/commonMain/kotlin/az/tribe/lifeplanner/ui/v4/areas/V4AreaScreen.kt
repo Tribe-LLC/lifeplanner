@@ -77,7 +77,7 @@ fun V4AreaScreen(
 
         when (area) {
             PlanArea.MONEY -> MoneySection(onAddSpend = actions.onQuickAdd)
-            PlanArea.FITNESS -> FitnessHealthCard(state.health, onOpenHealth = { actions.onRoute("health") })
+            PlanArea.FITNESS -> FitnessSection(state.health, onOpenHealth = { actions.onRoute("health") })
             PlanArea.MIND -> MindCard(state.health, onJournal = { actions.onRoute("journal_wizard") }, onJournalList = { actions.onRoute("journal") })
             PlanArea.STUDY -> V4Card {
                 Text("Focus time", style = V4.type.bodyStrong, color = c.ink)
@@ -144,32 +144,6 @@ private fun Section(title: String, hint: String?) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
         Text(title, style = V4.type.headline, color = V4.colors.ink, modifier = Modifier.semantics { heading() })
         if (hint != null) Text(hint, style = V4.type.caption, color = V4.colors.ink2)
-    }
-}
-
-@Composable
-private fun FitnessHealthCard(h: AreaHealth, onOpenHealth: () -> Unit) {
-    val c = V4.colors
-    V4Card {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("From Health", style = V4.type.bodyStrong, color = c.ink)
-            Text("Steps, heart rate and weight from Health Connect or Apple Health.", style = V4.type.caption, color = c.ink2)
-        }
-        if (h.stepsToday == null && h.restingHr == null && h.weightKg == null) {
-            Text("Nothing from Health yet. Connect it under You, Connected apps.", style = V4.type.body, color = c.ink2)
-        }
-        h.stepsToday?.let { steps ->
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Steps today", style = V4.type.body, color = c.ink)
-                    Text("${V4TodayViewModel.formatThousands(steps.toLong())} of ${V4TodayViewModel.formatThousands(h.stepsTarget.toLong())}", style = V4.type.bodyStrong, color = c.ink)
-                }
-                V4ProgressBar((steps / h.stepsTarget).toFloat(), c.area(PlanArea.FITNESS).color)
-            }
-        }
-        h.restingHr?.let { StatRow("Heart rate", "7 day average", "${it.toInt()} bpm") }
-        h.weightKg?.let { StatRow("Weight", "Latest", "${(it * 10).toInt() / 10.0} kg") }
-        V4PillButton("Open health details", onClick = onOpenHealth, filled = false)
     }
 }
 

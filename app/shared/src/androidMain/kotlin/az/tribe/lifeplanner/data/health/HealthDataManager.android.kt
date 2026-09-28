@@ -6,7 +6,9 @@ import android.content.Context
 import android.os.Build
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
+import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.metadata.Metadata
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.WeightRecord
@@ -226,12 +228,102 @@ actual class HealthDataManager {
         }
     }
 
+    actual suspend fun readWorkouts(days: Int): List<HealthWorkout> {
+        val client = getClient() ?: return emptyList()
+        return try {
+            val now = Instant.now()
+            val response = client.readRecords(
+                ReadRecordsRequest(
+                    recordType = ExerciseSessionRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(now.minus(Duration.ofDays(days.toLong())), now)
+                )
+            )
+            response.records.map { r ->
+                HealthWorkout(
+                    id = r.metadata.id,
+                    kind = r.exerciseType.toKind(),
+                    title = r.title,
+                    startEpochMs = r.startTime.toEpochMilli(),
+                    endEpochMs = r.endTime.toEpochMilli(),
+                    fromThisApp = r.metadata.dataOrigin.packageName == context.packageName,
+                )
+            }
+        } catch (e: Exception) {
+            Logger.w("HealthDataManager") { "Failed to read workouts: ${e.message}" }
+            emptyList()
+        }
+    }
+
+    actual suspend fun canWriteWorkouts(): Boolean {
+        val client = getClient() ?: return false
+        return try {
+            WRITE_EXERCISE in client.permissionController.getGrantedPermissions()
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    actual suspend fun writeWorkout(kind: WorkoutKind, title: String, startEpochMs: Long, endEpochMs: Long, clientId: String): Boolean {
+        val client = getClient() ?: return false
+        if (endEpochMs <= startEpochMs) return false
+        return try {
+            val start = Instant.ofEpochMilli(startEpochMs)
+            val end = Instant.ofEpochMilli(endEpochMs)
+            val rules = java.time.ZoneId.systemDefault().rules
+            client.insertRecords(
+                listOf(
+                    ExerciseSessionRecord(
+                        startTime = start,
+                        startZoneOffset = rules.getOffset(start),
+                        endTime = end,
+                        endZoneOffset = rules.getOffset(end),
+                        metadata = Metadata.manualEntry(clientRecordId = clientId),
+                        exerciseType = kind.toExerciseType(),
+                        title = title,
+                    )
+                )
+            )
+            true
+        } catch (e: Exception) {
+            Logger.w("HealthDataManager") { "Failed to write workout: ${e.message}" }
+            false
+        }
+    }
+
     companion object {
+        private val WRITE_EXERCISE = HealthPermission.getWritePermission(ExerciseSessionRecord::class)
+
         val REQUIRED_PERMISSIONS = setOf(
             HealthPermission.getReadPermission(StepsRecord::class),
             HealthPermission.getReadPermission(WeightRecord::class),
             HealthPermission.getReadPermission(HeartRateRecord::class),
-            HealthPermission.getReadPermission(SleepSessionRecord::class)
+            HealthPermission.getReadPermission(SleepSessionRecord::class),
+            HealthPermission.getReadPermission(ExerciseSessionRecord::class),
+            WRITE_EXERCISE,
         )
+
+        private fun Int.toKind(): WorkoutKind = when (this) {
+            ExerciseSessionRecord.EXERCISE_TYPE_RUNNING, ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL -> WorkoutKind.RUN
+            ExerciseSessionRecord.EXERCISE_TYPE_WALKING, ExerciseSessionRecord.EXERCISE_TYPE_HIKING -> WorkoutKind.WALK
+            ExerciseSessionRecord.EXERCISE_TYPE_BIKING, ExerciseSessionRecord.EXERCISE_TYPE_BIKING_STATIONARY -> WorkoutKind.BIKE
+            ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING, ExerciseSessionRecord.EXERCISE_TYPE_WEIGHTLIFTING,
+            ExerciseSessionRecord.EXERCISE_TYPE_CALISTHENICS -> WorkoutKind.STRENGTH
+            ExerciseSessionRecord.EXERCISE_TYPE_YOGA, ExerciseSessionRecord.EXERCISE_TYPE_PILATES,
+            ExerciseSessionRecord.EXERCISE_TYPE_STRETCHING -> WorkoutKind.YOGA
+            ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_POOL, ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_OPEN_WATER -> WorkoutKind.SWIM
+            ExerciseSessionRecord.EXERCISE_TYPE_HIGH_INTENSITY_INTERVAL_TRAINING -> WorkoutKind.HIIT
+            else -> WorkoutKind.OTHER
+        }
+
+        private fun WorkoutKind.toExerciseType(): Int = when (this) {
+            WorkoutKind.RUN -> ExerciseSessionRecord.EXERCISE_TYPE_RUNNING
+            WorkoutKind.WALK -> ExerciseSessionRecord.EXERCISE_TYPE_WALKING
+            WorkoutKind.BIKE -> ExerciseSessionRecord.EXERCISE_TYPE_BIKING
+            WorkoutKind.STRENGTH -> ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING
+            WorkoutKind.YOGA -> ExerciseSessionRecord.EXERCISE_TYPE_YOGA
+            WorkoutKind.SWIM -> ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_POOL
+            WorkoutKind.HIIT -> ExerciseSessionRecord.EXERCISE_TYPE_HIGH_INTENSITY_INTERVAL_TRAINING
+            WorkoutKind.OTHER -> ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT
+        }
     }
 }

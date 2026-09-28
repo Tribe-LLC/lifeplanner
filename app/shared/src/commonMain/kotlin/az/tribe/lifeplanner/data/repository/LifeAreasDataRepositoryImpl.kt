@@ -82,6 +82,9 @@ class LifeLogRepositoryImpl(
     override suspend fun getById(id: String): LifeLog? =
         db { it.lifePlannerDBQueries.selectLifeLogById(id).executeAsOneOrNull() }?.takeIf { it.is_deleted == 0L }?.toDomain()
 
+    override suspend fun hasExternalId(externalId: String): Boolean =
+        db { it.lifePlannerDBQueries.selectLifeLogByExternalId(externalId).executeAsOneOrNull() } != null
+
     override suspend fun save(log: LifeLog) {
         write(log)
         syncManager.requestSync()

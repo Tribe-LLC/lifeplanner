@@ -16,6 +16,8 @@ import az.tribe.lifeplanner.domain.repository.BudgetRepository
 import az.tribe.lifeplanner.domain.repository.LifeLogRepository
 import az.tribe.lifeplanner.domain.repository.TripRepository
 import az.tribe.lifeplanner.ui.v4.areas.V4MoneyViewModel
+import az.tribe.lifeplanner.ui.v4.areas.V4FitnessViewModel
+import az.tribe.lifeplanner.data.fitness.WorkoutService
 import az.tribe.lifeplanner.ui.v4.quickadd.QuickAddViewModel
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
@@ -29,12 +31,14 @@ val v4Module = module {
     single<LifeLogRepository> { LifeLogRepositoryImpl(get(), get()) }
     single<BudgetRepository> { BudgetRepositoryImpl(get(), get()) }
     single<TripRepository> { TripRepositoryImpl(get(), get()) }
+    single { WorkoutService(get(), get(), get(), get(), get()) }
 
     viewModelOf(::V4FirstRunViewModel)
     viewModelOf(::V4TodayViewModel)
     viewModelOf(::V4LifeViewModel)
     viewModelOf(::QuickAddViewModel)
     viewModelOf(::V4MoneyViewModel)
+    viewModelOf(::V4FitnessViewModel)
     viewModel { params ->
         V4AreaViewModel(params.get<PlanArea>(), get(), get(), get(), get(), get(), get())
     }

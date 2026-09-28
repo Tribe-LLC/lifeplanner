@@ -25,6 +25,13 @@ import az.tribe.lifeplanner.domain.repository.BudgetRepository
 import az.tribe.lifeplanner.domain.repository.LifeLogRepository
 import az.tribe.lifeplanner.domain.service.MoneySummary
 import az.tribe.lifeplanner.core.MoneyFormat
+import az.tribe.lifeplanner.data.fitness.WorkoutService
+import az.tribe.lifeplanner.data.health.WorkoutKind
+import az.tribe.lifeplanner.domain.model.LifeLog
+import az.tribe.lifeplanner.domain.model.LogStatus
+import az.tribe.lifeplanner.domain.service.FitnessWeek
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import az.tribe.lifeplanner.usecases.habit.AwardHabitCompletionUseCase
 import az.tribe.lifeplanner.usecases.habit.CheckInHabitUseCase
 import az.tribe.lifeplanner.usecases.habit.UncheckHabitUseCase
@@ -51,7 +58,7 @@ import kotlinx.datetime.todayIn
 import kotlin.time.Clock
 import kotlin.time.Instant
 
-enum class DayItemType { HABIT, STEP, EVENT }
+enum class DayItemType { HABIT, STEP, EVENT, WORKOUT }
 
 /** One row of "Your day". Habits and plan steps can be ticked; calendar events are context. */
 data class DayItem(
@@ -79,7 +86,11 @@ data class CoachNudge(
     val secondary: String?,
     /** What to say to the coach when the primary button is tapped; null means just dismiss. */
     val coachPrompt: String? = null,
+    /** Something the primary button does right here instead, like swapping today's workout. */
+    val action: NudgeAction? = null,
 )
+
+enum class NudgeAction { SWAP_WORKOUT, UNDO_SWAP }
 
 data class TodayUiState(
     val date: LocalDate,
@@ -106,8 +117,9 @@ class V4TodayViewModel(
     private val integrationPrefs: IntegrationPrefs,
     private val planAreas: PlanAreasRepository,
     private val settings: Settings,
-    lifeLogs: LifeLogRepository,
+    private val lifeLogs: LifeLogRepository,
     budgets: BudgetRepository,
+    private val workouts: WorkoutService,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -117,6 +129,12 @@ class V4TodayViewModel(
     private val health = MutableStateFlow(HealthToday())
     private val stepsDoneToday = MutableStateFlow(readStepsDone())
     private val dismissed = MutableStateFlow(settings.getStringOrNull(dismissKey()))
+    /** Bumped when a swap is made or undone, since that lives in settings, not the database. */
+    private val swapTick = MutableStateFlow(0)
+
+    /** Workouts from today through next week: today's go on the day, the rest pick a swap day. */
+    private val weekWorkouts = lifeLogs.observeInRange(today(), today().plus(DatePeriod(days = 7)))
+        .map { list -> list.filter { FitnessWeek.isWorkout(it) } }
 
     private data class HealthToday(val steps: Double? = null, val sleepHours: Double? = null)
 
@@ -141,12 +159,12 @@ class V4TodayViewModel(
 
     val state: StateFlow<TodayUiState> = combine(
         combine(habitsWithCounts, goalRepository.observeAllGoals(), events, ::Triple),
-        combine(health, moneyChip, ::Pair),
+        combine(health, moneyChip, weekWorkouts, swapTick) { h, m, w, _ -> Triple(h, m, w) },
         stepsDoneToday,
         planAreas.enabledAreas,
         dismissed,
-    ) { (habits, goals, evts), (h, money), stepsDone, areas, dismissedId ->
-        build(habits, goals, evts, h, stepsDone, areas, dismissedId, money)
+    ) { (habits, goals, evts), (h, money, week), stepsDone, areas, dismissedId ->
+        build(habits, goals, evts, h, stepsDone, areas, dismissedId, money, week)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TodayUiState(date = today()))
 
     init {
@@ -158,7 +176,10 @@ class V4TodayViewModel(
         viewModelScope.launch {
             val prefs = integrationPrefs.state.value
             if (prefs.calendar) loadEvents()
-            if (prefs.health) runCatching { syncHealthData() }
+            if (prefs.health) {
+                runCatching { syncHealthData() }
+                runCatching { workouts.importFromHealth() }
+            }
             loadHealth()
         }
     }
@@ -186,6 +207,7 @@ class V4TodayViewModel(
         when (item.type) {
             DayItemType.HABIT -> toggleHabit(item)
             DayItemType.STEP -> toggleStep(item)
+            DayItemType.WORKOUT -> toggleWorkout(item)
             DayItemType.EVENT -> {}
         }
     }
@@ -239,6 +261,45 @@ class V4TodayViewModel(
         }
     }
 
+    private fun toggleWorkout(item: DayItem) {
+        viewModelScope.launch {
+            runCatching {
+                val log = lifeLogs.getById(item.refId) ?: return@launch
+                if (item.done) workouts.undoDone(log) else workouts.markDone(log)
+                PostHogAnalytics.capture("v4_today_ticked", mapOf("type" to "workout", "done" to !item.done))
+            }.onFailure { Logger.w("V4Today") { "Workout toggle failed: ${it.message}" } }
+        }
+    }
+
+    /** The coach card's main button: a swap happens here, anything else goes to the coach. */
+    fun onNudgePrimary(nudge: CoachNudge, askCoach: (String) -> Unit) {
+        when (nudge.action) {
+            NudgeAction.SWAP_WORKOUT -> viewModelScope.launch {
+                val w = hardWorkoutToday(weekWorkoutsNow()) ?: return@launch
+                workouts.swapForWalk(w, health.value.sleepHours?.let { formatHours(it) } ?: "badly")
+                swapTick.value++
+            }
+            NudgeAction.UNDO_SWAP -> viewModelScope.launch {
+                workouts.swapToday()?.let { workouts.undoSwap(it) }
+                swapTick.value++
+            }
+            null -> {
+                nudge.coachPrompt?.let(askCoach)
+                dismissNudge(nudge)
+            }
+        }
+    }
+
+    fun onNudgeSecondary(nudge: CoachNudge) {
+        if (nudge.action == NudgeAction.SWAP_WORKOUT) {
+            workouts.keepToday()
+            swapTick.value++
+        }
+        dismissNudge(nudge)
+    }
+
+    private suspend fun weekWorkoutsNow(): List<LifeLog> = weekWorkouts.first()
+
     fun dismissNudge(nudge: CoachNudge) {
         settings.putString(dismissKey(), nudge.id)
         dismissed.value = nudge.id
@@ -256,6 +317,7 @@ class V4TodayViewModel(
         areas: Set<PlanArea>,
         dismissedId: String?,
         money: String?,
+        week: List<LifeLog>,
     ): TodayUiState {
         val today = today()
         val items = mutableListOf<DayItem>()
@@ -296,6 +358,20 @@ class V4TodayViewModel(
             }
         }
 
+        week.filter { it.date == today && it.source == LifeLog.SOURCE_PLAN && it.status != LogStatus.SKIPPED }.forEach { w ->
+            items += DayItem(
+                key = "w_${w.id}",
+                type = DayItemType.WORKOUT,
+                refId = w.id,
+                time = if (WorkoutService.hasTime(w)) w.occurredAt.time else null,
+                title = w.title,
+                area = PlanArea.FITNESS,
+                meta = listOfNotNull(w.durationMin?.let { "$it min" }, w.notes).joinToString(", ").ifEmpty { "Workout" },
+                done = w.status == LogStatus.DONE,
+                checkable = true,
+            )
+        }
+
         evts.forEach { e ->
             val start = Instant.fromEpochMilliseconds(e.startEpochMillis).toLocalDateTime(tz)
             items += DayItem(
@@ -324,14 +400,41 @@ class V4TodayViewModel(
             if (PlanArea.MIND in areas) h.sleepHours?.let { add(TodayChip("Slept ${formatHours(it)}", PlanArea.MIND)) }
         }
 
-        val nudge = pickNudge(checkable, h, habits.map { it.first }).takeIf { it?.id != dismissedId }
+        val nudge = pickNudge(checkable, h, habits.map { it.first }, week).takeIf { it?.id != dismissedId }
 
         return TodayUiState(date = today, items = sorted, done = done, total = checkable.size, chips = chips, nudge = nudge, loaded = true)
     }
 
-    private fun pickNudge(checkable: List<DayItem>, h: HealthToday, habits: List<Habit>): CoachNudge? {
+    /** Today's planned workout that is too much after a short night: anything but a walk or yoga. */
+    private fun hardWorkoutToday(week: List<LifeLog>): LifeLog? = week.firstOrNull {
+        it.date == today() && it.status == LogStatus.PLANNED && it.source == LifeLog.SOURCE_PLAN &&
+            WorkoutKind.fromTitle(it.title) !in setOf(WorkoutKind.WALK, WorkoutKind.YOGA)
+    }
+
+    private fun pickNudge(checkable: List<DayItem>, h: HealthToday, habits: List<Habit>, week: List<LifeLog>): CoachNudge? {
         val hour = Clock.System.now().toLocalDateTime(tz).hour
         val sleep = h.sleepHours
+        workouts.swapToday()?.let { swap ->
+            val moved = week.firstOrNull { it.id == swap.originalId }
+            return CoachNudge(
+                id = "swapped",
+                text = "Done. ${moved?.title ?: "Your workout"} is on ${FitnessWeek.dayName(swap.movedTo.dayOfWeek)}, and today is a 20 minute walk.",
+                primary = "Put it back",
+                secondary = "Thanks",
+                action = NudgeAction.UNDO_SWAP,
+            )
+        }
+        val hard = hardWorkoutToday(week)
+        if (sleep != null && sleep < 6.0 && hard != null && !workouts.swapDecidedToday()) {
+            val to = FitnessWeek.nextFreeDay(week, today())
+            return CoachNudge(
+                id = "swap",
+                text = "You slept ${formatHours(sleep)}. Swap ${hard.title} for a 20 minute walk today? ${hard.title} moves to ${FitnessWeek.dayName(to.dayOfWeek)}.",
+                primary = "Swap it",
+                secondary = "Keep it",
+                action = NudgeAction.SWAP_WORKOUT,
+            )
+        }
         if (sleep != null && sleep < 6.0) {
             return CoachNudge(
                 id = "low_sleep",

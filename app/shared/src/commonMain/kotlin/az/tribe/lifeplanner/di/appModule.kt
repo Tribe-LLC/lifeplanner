@@ -83,6 +83,7 @@ import az.tribe.lifeplanner.notification.getNotificationScheduler
 import az.tribe.lifeplanner.util.NetworkConnectivityObserver
 import az.tribe.lifeplanner.widget.WidgetDataSyncService
 import az.tribe.lifeplanner.data.calendar.CalendarReader
+import az.tribe.lifeplanner.data.calendar.CalendarWriter
 import az.tribe.lifeplanner.data.health.HealthDataManager
 import az.tribe.lifeplanner.ui.ability.AbilityDetailViewModel
 import az.tribe.lifeplanner.ui.ability.AbilityViewModel
@@ -336,6 +337,7 @@ val appModule = module {
     single { HealthDataManager() }
     single<HealthRepository> { HealthRepositoryImpl(get(), get(), get()) }
     single { CalendarReader() }
+    single { CalendarWriter() }
     single { az.tribe.lifeplanner.data.calendar.CalendarPreferences(get()) }
 
     // Behavior tracking

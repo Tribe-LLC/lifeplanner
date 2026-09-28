@@ -55,6 +55,8 @@
 	<string>Life Planner reads your calendar to surface upcoming events alongside your goals and habits, and can create events for your goal milestones.</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>Life Planner reads your calendar to surface upcoming events alongside your goals and habits.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Life Planner saves the workouts you finish in the app to Apple Health, so your rings and other apps count them.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Life Planner reads your steps, heart rate, sleep and weight to show your health trends alongside your goals and habits.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

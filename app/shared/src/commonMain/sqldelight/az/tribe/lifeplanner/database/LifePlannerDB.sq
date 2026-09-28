@@ -2888,6 +2888,9 @@ SELECT * FROM LifeLogEntity WHERE is_deleted = 0 AND date >= ? AND date <= ? ORD
 selectRecentLifeLogs:
 SELECT * FROM LifeLogEntity WHERE is_deleted = 0 AND status = 'done' ORDER BY occurredAt DESC LIMIT ?;
 
+selectLifeLogByExternalId:
+SELECT * FROM LifeLogEntity WHERE externalId = ? LIMIT 1;
+
 selectLifeLogsByTrip:
 SELECT * FROM LifeLogEntity WHERE is_deleted = 0 AND tripId = ? ORDER BY occurredAt DESC;
 

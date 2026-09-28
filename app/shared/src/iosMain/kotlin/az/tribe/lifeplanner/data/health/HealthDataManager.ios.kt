@@ -6,7 +6,11 @@ import co.touchlab.kermit.Logger
 import com.viktormykhailiv.kmp.health.HealthDataType
 import com.viktormykhailiv.kmp.health.HealthManagerFactory
 import com.viktormykhailiv.kmp.health.aggregateSteps
+import com.viktormykhailiv.kmp.health.readExercise
 import com.viktormykhailiv.kmp.health.readHeartRate
+import com.viktormykhailiv.kmp.health.records.ExerciseSessionRecord
+import com.viktormykhailiv.kmp.health.records.ExerciseType
+import com.viktormykhailiv.kmp.health.records.metadata.Metadata
 import com.viktormykhailiv.kmp.health.readSleep
 import com.viktormykhailiv.kmp.health.readSteps
 import com.viktormykhailiv.kmp.health.readWeight
@@ -45,9 +49,10 @@ actual class HealthDataManager {
                 HealthDataType.Steps,
                 HealthDataType.Weight,
                 HealthDataType.HeartRate,
-                HealthDataType.Sleep
+                HealthDataType.Sleep,
+                HealthDataType.Exercise(),
             ),
-            writeTypes = emptyList()
+            writeTypes = listOf(HealthDataType.Exercise())
         ).onSuccess { authorized = it }
             .onFailure { Logger.w(TAG) { "Authorization failed: ${it.message}" } }
         return authorized
@@ -185,4 +190,73 @@ actual class HealthDataManager {
         }
         return result
     }
+
+    actual suspend fun readWorkouts(days: Int): List<HealthWorkout> {
+        val now = Clock.System.now()
+        var result = emptyList<HealthWorkout>()
+        manager.readExercise(startTime = now - days.days, endTime = now)
+            .onSuccess { records ->
+                result = records.map { r ->
+                    HealthWorkout(
+                        id = r.metadata.id.ifEmpty { "hk@${r.startTime.toEpochMilliseconds()}" },
+                        kind = r.exerciseType.toKind(),
+                        title = r.title,
+                        startEpochMs = r.startTime.toEpochMilliseconds(),
+                        endEpochMs = r.endTime.toEpochMilliseconds(),
+                        fromThisApp = r.metadata.id.startsWith("lp-"),
+                    )
+                }
+            }
+            .onFailure { Logger.w(TAG) { "Failed to read workouts: ${it.message}" } }
+        return result
+    }
+
+    actual suspend fun canWriteWorkouts(): Boolean {
+        if (!isAvailable()) return false
+        var ok = false
+        manager.isAuthorized(readTypes = emptyList(), writeTypes = listOf(HealthDataType.Exercise()))
+            .onSuccess { ok = it }
+        return ok
+    }
+
+    actual suspend fun writeWorkout(kind: WorkoutKind, title: String, startEpochMs: Long, endEpochMs: Long, clientId: String): Boolean {
+        if (endEpochMs <= startEpochMs) return false
+        var ok = false
+        manager.writeData(
+            listOf(
+                ExerciseSessionRecord(
+                    startTime = Instant.fromEpochMilliseconds(startEpochMs),
+                    endTime = Instant.fromEpochMilliseconds(endEpochMs),
+                    exerciseType = kind.toExerciseType(),
+                    title = title,
+                    exerciseRoute = null,
+                    metadata = Metadata.manualEntry(id = clientId),
+                )
+            )
+        ).onSuccess { ok = true }
+            .onFailure { Logger.w(TAG) { "Failed to write workout: ${it.message}" } }
+        return ok
+    }
+}
+
+private fun ExerciseType.toKind(): WorkoutKind = when (this) {
+    ExerciseType.Running, ExerciseType.RunningTreadmill -> WorkoutKind.RUN
+    ExerciseType.Walking, ExerciseType.Hiking -> WorkoutKind.WALK
+    ExerciseType.Biking, ExerciseType.BikingStationary -> WorkoutKind.BIKE
+    ExerciseType.StrengthTraining, ExerciseType.Calisthenics -> WorkoutKind.STRENGTH
+    ExerciseType.Yoga, ExerciseType.Pilates -> WorkoutKind.YOGA
+    ExerciseType.SwimmingPool, ExerciseType.SwimmingOpenWater -> WorkoutKind.SWIM
+    ExerciseType.HighIntensityIntervalTraining -> WorkoutKind.HIIT
+    else -> WorkoutKind.OTHER
+}
+
+private fun WorkoutKind.toExerciseType(): ExerciseType = when (this) {
+    WorkoutKind.RUN -> ExerciseType.Running
+    WorkoutKind.WALK -> ExerciseType.Walking
+    WorkoutKind.BIKE -> ExerciseType.Biking
+    WorkoutKind.STRENGTH -> ExerciseType.StrengthTraining
+    WorkoutKind.YOGA -> ExerciseType.Yoga
+    WorkoutKind.SWIM -> ExerciseType.SwimmingPool
+    WorkoutKind.HIIT -> ExerciseType.HighIntensityIntervalTraining
+    WorkoutKind.OTHER -> ExerciseType.OtherWorkout
 }

@@ -13,6 +13,8 @@ interface LifeLogRepository {
     fun observeForTrip(tripId: String): Flow<List<LifeLog>>
     suspend fun getInRange(from: LocalDate, to: LocalDate): List<LifeLog>
     suspend fun getById(id: String): LifeLog?
+    /** Whether any row, deleted ones included, already carries [externalId]. Keeps imports from repeating. */
+    suspend fun hasExternalId(externalId: String): Boolean
     suspend fun save(log: LifeLog)
     suspend fun saveAll(logs: List<LifeLog>)
     suspend fun delete(id: String)

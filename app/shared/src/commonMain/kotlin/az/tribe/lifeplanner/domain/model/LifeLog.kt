@@ -53,6 +53,8 @@ data class LifeLog(
         const val SOURCE_HEALTH = "health"
         const val SOURCE_TIMER = "timer"
         const val SOURCE_IMPORT = "import"
+        /** Planned ahead. Stays on the row once done, so un-ticking puts it back to planned. */
+        const val SOURCE_PLAN = "plan"
     }
 }
 
