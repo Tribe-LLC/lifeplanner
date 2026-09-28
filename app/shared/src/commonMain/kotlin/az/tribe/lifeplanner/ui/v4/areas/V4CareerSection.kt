@@ -13,7 +13,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -31,7 +38,9 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import az.tribe.lifeplanner.di.createFileSharer
+import az.tribe.lifeplanner.data.career.JobInbox
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import az.tribe.lifeplanner.domain.model.LifeLog
 import az.tribe.lifeplanner.domain.model.LogStatus
 import az.tribe.lifeplanner.domain.model.PlanArea
@@ -50,7 +59,6 @@ import az.tribe.lifeplanner.ui.v4.components.V4TextButton
 import az.tribe.lifeplanner.ui.v4.theme.V4
 import az.tribe.lifeplanner.ui.v4.today.V4TodayViewModel
 import az.tribe.lifeplanner.ui.v4.travel.TravelField
-import kotlinx.coroutines.delay
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
@@ -69,11 +77,21 @@ fun CareerSection(onNewPlan: () -> Unit, onOpenGoal: (String) -> Unit, onRoute: 
     val s by viewModel.state.collectAsState()
     val c = V4.colors
     val tint = c.area(PlanArea.CAREER)
-    val sharer = remember { createFileSharer() }
-    var copied by remember { mutableStateOf(false) }
     var filter by remember { mutableStateOf<Stage?>(null) }
     var addingWin by remember { mutableStateOf(false) }
     var addingApp by remember { mutableStateOf(false) }
+    var talking by remember { mutableStateOf<LifeLog?>(null) }
+    // A job shared from another app opens "Add an application" with it, read and filled in.
+    var sharedJob by remember { mutableStateOf<String?>(null) }
+    val pendingJob by JobInbox.pending.collectAsState()
+    // Only the screen in front takes it: a second copy of the app left in the background must not.
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
+    LaunchedEffect(pendingJob, lifecycleState) {
+        if (pendingJob != null && lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) {
+            sharedJob = JobInbox.take()
+            addingApp = true
+        }
+    }
     var openApp by remember { mutableStateOf<String?>(null) }
     var addingPerson by remember { mutableStateOf(false) }
     var openPerson by remember { mutableStateOf<String?>(null) }
@@ -111,17 +129,22 @@ fun CareerSection(onNewPlan: () -> Unit, onOpenGoal: (String) -> Unit, onRoute: 
             }
         }
 
+        // ── Funnel ──
+        s.funnel?.let { f -> FunnelCard(f, onShare = { shareText(CareerPlanner.funnelText(f), "My job search"); viewModel.sharedFunnel() }) }
+
         // ── Applications ──
         Heading("Applications")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val active = s.applications.count { CareerPlanner.isActive(it) }
-            Choice("Active $active", filter == null) { filter = null }
+            Choice("Active $active", filter?.takeIf { (s.stageCounts[it] ?: 0) > 0 } == null) { filter = null }
             listOf(Stage.SAVED, Stage.APPLIED, Stage.INTERVIEW, Stage.OFFER, Stage.CLOSED).forEach { st ->
                 val n = s.stageCounts[st] ?: 0
-                if (n > 0 || st == Stage.INTERVIEW) Choice("${st.label} $n", filter == st) { filter = st }
+                if (n > 0) Choice("${st.label} $n", filter == st) { filter = st }
             }
         }
-        val shown = s.applications.filter { a -> filter?.let { CareerPlanner.stage(a) == it } ?: CareerPlanner.isActive(a) }
+        // A filter whose last application moved on falls back to the active list.
+        val shownStage = filter?.takeIf { (s.stageCounts[it] ?: 0) > 0 }
+        val shown = s.applications.filter { a -> shownStage?.let { CareerPlanner.stage(a) == it } ?: CareerPlanner.isActive(a) }
         if (shown.isNotEmpty()) {
             V4Card(contentPadding = PaddingValues(0.dp), verticalSpacing = 0.dp) {
                 shown.forEachIndexed { i, a ->
@@ -174,18 +197,14 @@ fun CareerSection(onNewPlan: () -> Unit, onOpenGoal: (String) -> Unit, onRoute: 
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             V4PillButton("Log a win", onClick = { addingWin = true }, container = tint.color)
-            if (s.wins.isNotEmpty()) {
-                V4PillButton(if (copied) "Copied" else "Copy for review", onClick = { sharer.copyToClipboard(s.review); copied = true }, filled = false)
-                V4TextButton("Share", onClick = { sharer.shareFile(s.review, "wins.txt", "text/plain") })
-            }
+            if (s.wins.isNotEmpty()) V4PillButton("Share", onClick = { shareText(s.review, "My wins"); viewModel.sharedWins() }, filled = false)
         }
-        if (copied) LaunchedEffect(Unit) { delay(2_000); copied = false }
-        Text("What you did and what it changed. Small ones count: they are the ones you forget by review time.", style = V4.type.caption, color = c.ink3)
+        Text("What you did and what it changed. Small ones count: they are the ones you forget by review time. Share sends the quarter by month.", style = V4.type.caption, color = c.ink3)
     }
 
-    // ── Skills ──
-    Heading("Skills")
-    if (s.skills.isNotEmpty()) {
+    // ── Skills (growing where you are) ──
+    if (!s.searching) Heading("Skills")
+    if (!s.searching && s.skills.isNotEmpty()) {
         V4Card(contentPadding = PaddingValues(0.dp), verticalSpacing = 0.dp) {
             s.skills.forEachIndexed { i, k ->
                 if (i > 0) V4Divider()
@@ -207,7 +226,7 @@ fun CareerSection(onNewPlan: () -> Unit, onOpenGoal: (String) -> Unit, onRoute: 
             }
         }
     }
-    V4PillButton("Add a skill", onClick = { addingSkill = true }, filled = false)
+    if (!s.searching) V4PillButton("Add a skill", onClick = { addingSkill = true }, filled = false)
 
     // ── People ──
     Heading("People")
@@ -227,7 +246,7 @@ fun CareerSection(onNewPlan: () -> Unit, onOpenGoal: (String) -> Unit, onRoute: 
                             style = V4.type.caption, color = if (due) tint.ink else c.ink3,
                         )
                     }
-                    V4PillButton("Talked", onClick = { viewModel.talked(p) }, filled = false)
+                    V4PillButton("Talked", onClick = { talking = p }, filled = false)
                 }
             }
         }
@@ -237,10 +256,13 @@ fun CareerSection(onNewPlan: () -> Unit, onOpenGoal: (String) -> Unit, onRoute: 
 
     // ── Sheets ──
     if (addingWin) WinSheet(onDismiss = { addingWin = false }, onSave = { w, i, d -> viewModel.logWin(w, i, d); addingWin = false })
-    if (addingApp) ApplicationSheet(null, null, s.canCalendar, viewModel, onDismiss = { addingApp = false })
+    if (addingApp) ApplicationSheet(null, null, s.canCalendar, viewModel, shared = sharedJob, onDismiss = { addingApp = false; sharedJob = null })
     openApp?.let { id -> s.applications.firstOrNull { it.id == id }?.let { ApplicationSheet(it, s.interviews[id], s.canCalendar, viewModel, onDismiss = { openApp = null }) } ?: run { openApp = null } }
-    if (addingPerson) PersonSheet(null, viewModel, onDismiss = { addingPerson = false })
-    openPerson?.let { id -> s.people.firstOrNull { it.id == id }?.let { PersonSheet(it, viewModel, onDismiss = { openPerson = null }) } ?: run { openPerson = null } }
+    if (addingPerson) PersonSheet(null, emptyList(), viewModel, onTalked = {}, onDismiss = { addingPerson = false })
+    openPerson?.let { id ->
+        s.people.firstOrNull { it.id == id }?.let { PersonSheet(it, s.talks[id].orEmpty(), viewModel, onTalked = { talking = it }, onDismiss = { openPerson = null }) } ?: run { openPerson = null }
+    }
+    talking?.let { p -> TalkedDialog(p, onDismiss = { talking = null }) { about -> viewModel.talked(p, about); talking = null } }
     if (addingSkill) SkillSheet(null, viewModel, onRoute, onDismiss = { addingSkill = false })
     openSkill?.let { id -> s.skills.firstOrNull { it.log.id == id }?.let { SkillSheet(it, viewModel, onRoute, onDismiss = { openSkill = null }) } ?: run { openSkill = null } }
 }
@@ -267,7 +289,10 @@ private fun StagePill(st: Stage) {
 private fun appMeta(a: LifeLog, interview: LifeLog?): String {
     val today = today()
     return when (CareerPlanner.stage(a)) {
-        Stage.SAVED -> if (a.date <= today) "Apply today" else "Apply by ${V4TodayViewModel.dayLabel(a.date)}"
+        Stage.SAVED -> listOfNotNull(
+            CareerPlanner.location(a),
+            CareerPlanner.closes(a)?.let { "Closes ${V4TodayViewModel.dayLabel(it)}" } ?: if (a.date <= today) "Apply today" else "Apply by ${V4TodayViewModel.dayLabel(a.date)}",
+        ).joinToString(". ")
         Stage.APPLIED -> if (a.date <= today) "Follow up today" else "Follow up ${V4TodayViewModel.dayLabel(a.date)}"
         Stage.INTERVIEW -> interview?.let { "Interview ${V4TodayViewModel.dayLabel(it.date)} ${V4TodayViewModel.hhmm(it.occurredAt)}" } ?: "Interview stage. Add the date"
         Stage.OFFER -> "Offer. Reply by ${V4TodayViewModel.dayLabel(a.date)}"
@@ -298,20 +323,53 @@ private fun WinSheet(onDismiss: () -> Unit, onSave: (String, String?, LocalDate)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ApplicationSheet(app: LifeLog?, interview: LifeLog?, canCalendar: Boolean, vm: V4CareerViewModel, onDismiss: () -> Unit) {
+private fun ApplicationSheet(app: LifeLog?, interview: LifeLog?, canCalendar: Boolean, vm: V4CareerViewModel, shared: String? = null, onDismiss: () -> Unit) {
     val c = V4.colors
     val tint = c.area(PlanArea.CAREER)
     var role by remember { mutableStateOf(app?.title ?: "") }
     var company by remember { mutableStateOf(app?.let { CareerPlanner.company(it) } ?: "") }
     var link by remember { mutableStateOf(app?.let { CareerPlanner.link(it) } ?: "") }
+    var location by remember { mutableStateOf(app?.let { CareerPlanner.location(it) } ?: "") }
+    var closes by remember { mutableStateOf(app?.let { CareerPlanner.closes(it) }) }
     var stage by remember { mutableStateOf(app?.let { CareerPlanner.stage(it) } ?: Stage.SAVED) }
     var planning by remember { mutableStateOf(false) }
     var closing by remember { mutableStateOf(false) }
+    var pasted by remember { mutableStateOf(shared ?: "") }
+    var reading by remember { mutableStateOf(false) }
+    var readNote by remember { mutableStateOf<String?>(null) }
+    fun read(text: String, fromShare: Boolean) {
+        if (text.isBlank() || reading) return
+        reading = true
+        readNote = null
+        vm.readJob(text, fromShare) { d ->
+            reading = false
+            if (d == null) { readNote = "Could not read that just now. Fill it in below."; return@readJob }
+            d.role?.let { role = it }
+            d.company?.let { company = it }
+            d.link?.let { link = it }
+            d.location?.let { location = it }
+            d.closes?.let { closes = it }
+            readNote = if (d.role == null && d.company == null) "Only the link was clear. Add the rest below." else "Filled in. Check it and change anything."
+        }
+    }
+    LaunchedEffect(shared) { if (shared != null) read(shared, true) }
     AreaSheet(if (app == null) "Add an application" else CareerPlanner.roleLine(app), onDismiss) {
+        if (app == null) {
+            FormLabel("Paste a job link or text")
+            MultiLineField(pasted, { pasted = it }, "A link from the job site, or the text of the ad", "Job link or text", minLines = 2)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                V4PillButton(if (reading) "Reading" else if (readNote != null) "Read again" else "Fill it in", onClick = { read(pasted, false) }, filled = false)
+                Text(readNote ?: if (shared != null) "Shared from another app" else "The coach reads it for you", style = V4.type.caption, color = c.ink3, modifier = Modifier.weight(1f))
+            }
+        }
         FormLabel("Role")
         TravelField(role, { role = it }, "Android engineer", "Role")
         FormLabel("Company")
         TravelField(company, { company = it }, "Wolt", "Company")
+        FormLabel("Where")
+        TravelField(location, { location = it }, "City, or Remote", "Where")
+        FormLabel("Closes")
+        OptionalDate(closes) { closes = it }
         FormLabel("Link to the job, if you have it")
         TravelField(link, { link = it }, "https://", "Link")
         FormLabel("Stage")
@@ -325,13 +383,22 @@ private fun ApplicationSheet(app: LifeLog?, interview: LifeLog?, canCalendar: Bo
         }
         if (app == null) {
             V4PrimaryButton(
-                "Save", onClick = { vm.addApplication(role, company, link.ifBlank { null }, stage); onDismiss() },
+                "Save",
+                onClick = {
+                    vm.addApplication(role, company, link.ifBlank { null }, stage, location.ifBlank { null }, closes, from = if (shared != null) "share" else if (readNote != null) "paste" else "manual")
+                    onDismiss()
+                },
                 enabled = role.isNotBlank() || company.isNotBlank(), container = tint.color, modifier = Modifier.fillMaxWidth(),
             )
-            SheetNote(if (stage == Stage.SAVED) "It shows on Today until you apply." else "A follow-up lands on Today a week after applying.")
+            SheetNote(if (stage == Stage.SAVED) "Everything stays editable. It shows on Today until you apply." else "A follow-up lands on Today a week after applying.")
         } else {
-            if (role != app.title || company != (CareerPlanner.company(app) ?: "") || link != (CareerPlanner.link(app) ?: "")) {
-                V4PrimaryButton("Save changes", onClick = { vm.updateApplication(app, role, company, link.ifBlank { null }) }, container = tint.color, modifier = Modifier.fillMaxWidth())
+            val changed = role != app.title || company != (CareerPlanner.company(app) ?: "") || link != (CareerPlanner.link(app) ?: "") ||
+                location != (CareerPlanner.location(app) ?: "") || closes != CareerPlanner.closes(app)
+            if (changed) {
+                V4PrimaryButton(
+                    "Save changes", onClick = { vm.updateApplication(app, role, company, link.ifBlank { null }, location.ifBlank { null }, closes) },
+                    container = tint.color, modifier = Modifier.fillMaxWidth(),
+                )
             }
             interview?.let { Text("Interview ${V4TodayViewModel.dayLabel(it.date)} at ${V4TodayViewModel.hhmm(it.occurredAt)}", style = V4.type.bodyStrong, color = c.ink) }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -344,12 +411,104 @@ private fun ApplicationSheet(app: LifeLog?, interview: LifeLog?, canCalendar: Bo
             if (closing) {
                 FormLabel("Why is it closing?")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("No reply", "Not selected", "I withdrew", "Took another offer", "Accepted this one").forEach { r ->
+                    listOf("No reply", "Not selected", "I withdrew", "Took another offer", CareerPlanner.ACCEPTED).forEach { r ->
                         Choice(r, false) { vm.setStage(app, Stage.CLOSED, r); closing = false; onDismiss() }
                     }
                 }
             }
         }
+    }
+}
+
+/** "No date" or a picked day, for a closing date that is often not given. */
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+private fun OptionalDate(date: LocalDate?, onChange: (LocalDate?) -> Unit) {
+    var picking by remember { mutableStateOf(false) }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Choice("No date", date == null) { onChange(null) }
+        Choice(date?.let { V4TodayViewModel.dayLabel(it) } ?: "Pick a date", date != null) { picking = true }
+    }
+    if (picking) {
+        val start = date ?: today()
+        val state = rememberDatePickerState(initialSelectedDateMillis = start.toEpochDays().toLong() * 86_400_000L)
+        DatePickerDialog(
+            onDismissRequest = { picking = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { onChange(LocalDate.fromEpochDays((it / 86_400_000L).toInt())) }
+                    picking = false
+                }) { Text("Done") }
+            },
+            dismissButton = { TextButton(onClick = { picking = false }) { Text("Cancel") } },
+        ) { DatePicker(state = state, showModeToggle = false) }
+    }
+}
+
+/** "Talked": an optional line on what it was about, kept in the person's history. */
+@Composable
+private fun TalkedDialog(person: LifeLog, onDismiss: () -> Unit, onSave: (String?) -> Unit) {
+    var about by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = V4.colors.surface,
+        title = { Text("Talked with ${person.title}", style = V4.type.title, color = V4.colors.ink) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FormLabel("What did you talk about? (optional)")
+                TravelField(about, { about = it }, "An intro to her team lead", "What you talked about")
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(about.trim().ifEmpty { null }) }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** Applied, replied, interviews, offers as falling bars, with the few facts worth knowing. */
+@Composable
+private fun FunnelCard(f: CareerPlanner.Funnel, onShare: () -> Unit) {
+    val c = V4.colors
+    val tint = c.area(PlanArea.CAREER)
+    V4Card {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Your search so far", style = V4.type.label, color = c.ink2, modifier = Modifier.semantics { heading() })
+            V4TextButton("Share", onClick = onShare)
+        }
+        val steps = listOf(
+            f.applied to "applied", f.replied to "replied",
+            f.interviews to if (f.interviews == 1) "interview" else "interviews", f.offers to if (f.offers == 1) "offer" else "offers",
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            steps.forEachIndexed { i, (n, label) ->
+                Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Box(Modifier.fillMaxWidth().height(64.dp), contentAlignment = Alignment.BottomStart) {
+                        Box(
+                            Modifier.fillMaxWidth().height((6 + 58 * n / f.applied.coerceAtLeast(1)).dp).clip(RoundedCornerShape(8.dp))
+                                .background(tint.color.copy(alpha = 1f - i * 0.22f)),
+                        )
+                    }
+                    Text("$n", style = V4.type.headline, color = c.ink)
+                    Text(label, style = V4.type.caption, color = c.ink2)
+                }
+            }
+        }
+        Text(
+            listOfNotNull(
+                "${f.replied} of ${f.applied} replied (${f.replyPercent}%).",
+                f.medianReplyDays?.let { "Half of first replies came within ${CareerPlanner.daysWord(it)}." },
+                f.topCloseReason?.let { "Most often closed: ${it.lowercase()}." },
+            ).joinToString(" "),
+            style = V4.type.caption, color = c.ink2,
+        )
+    }
+}
+
+private fun talkDay(d: LocalDate): String {
+    val t = today()
+    return when {
+        d == t -> "Today"
+        d.year == t.year -> "${d.day} ${CareerPlanner.monthName(d.month)}"
+        else -> "${d.day} ${CareerPlanner.monthName(d.month)} ${d.year}"
     }
 }
 
@@ -375,7 +534,7 @@ private fun InterviewForm(canCalendar: Boolean, onSave: (LocalDate, LocalTime, I
 }
 
 @Composable
-private fun PersonSheet(person: LifeLog?, vm: V4CareerViewModel, onDismiss: () -> Unit) {
+private fun PersonSheet(person: LifeLog?, talks: List<LifeLog>, vm: V4CareerViewModel, onTalked: (LifeLog) -> Unit, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf(person?.title ?: "") }
     var about by remember { mutableStateOf(person?.let { CareerPlanner.about(it) } ?: "") }
     var every by remember { mutableIntStateOf(person?.quantity?.toInt() ?: 30) }
@@ -393,7 +552,16 @@ private fun PersonSheet(person: LifeLog?, vm: V4CareerViewModel, onDismiss: () -
         if (person == null) {
             V4PrimaryButton("Save", onClick = { vm.addContact(name, about.ifBlank { null }, every); onDismiss() }, enabled = name.isNotBlank(), container = V4.colors.area(PlanArea.CAREER).color, modifier = Modifier.fillMaxWidth())
         } else {
-            V4PillButton("Talked today", onClick = { vm.talked(person); onDismiss() }, container = V4.colors.area(PlanArea.CAREER).color)
+            V4PillButton("Talked today", onClick = { onTalked(person); onDismiss() }, container = V4.colors.area(PlanArea.CAREER).color)
+            if (talks.isNotEmpty()) {
+                FormLabel("Catch-ups")
+                talks.take(8).forEach { t ->
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(t.notes ?: "Talked", style = V4.type.body, color = V4.colors.ink)
+                        Text(talkDay(t.date), style = V4.type.caption, color = V4.colors.ink3)
+                    }
+                }
+            }
             V4TextButton("Remove", onClick = { vm.remove(person); onDismiss() }, color = Color(0xFFB42318))
         }
     }

@@ -78,6 +78,12 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="lifeplanner" android:host="ai_chat" />
             </intent-filter>
+            <!-- Career: share a job ad or link from any app to save it as an application -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

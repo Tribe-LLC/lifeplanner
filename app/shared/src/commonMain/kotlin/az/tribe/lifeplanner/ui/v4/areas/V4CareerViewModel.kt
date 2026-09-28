@@ -46,6 +46,10 @@ data class CareerState(
     val review: String = "",
     val skills: List<SkillRow> = emptyList(),
     val people: List<LifeLog> = emptyList(),
+    /** Each person's catch-ups, newest first, by person id. */
+    val talks: Map<String, List<LifeLog>> = emptyMap(),
+    /** How the search is going. Null until an application has been sent. */
+    val funnel: CareerPlanner.Funnel? = null,
     val interviews: Map<String, LifeLog> = emptyMap(),
     val canCalendar: Boolean = false,
     val loaded: Boolean = false,
@@ -92,6 +96,9 @@ class V4CareerViewModel(
                 SkillRow(s, s.quantity?.toInt() ?: 1, CareerPlanner.wantLevel(s) ?: 4, CareerPlanner.practiceMinutes(s.title, times, today))
             },
             people = rows.filter { CareerKind.of(it) == CareerKind.CONTACT }.sortedBy { it.occurredAt },
+            talks = rows.filter { CareerKind.of(it) == CareerKind.TALK }.groupBy { it.externalId ?: "" }
+                .mapValues { (_, v) -> v.sortedByDescending { it.occurredAt } },
+            funnel = CareerPlanner.funnel(rows).takeIf { it.applied > 0 },
             interviews = rows.filter { CareerKind.of(it) == CareerKind.INTERVIEW && it.date >= today }.mapNotNull { i -> i.externalId?.let { it to i } }.toMap(),
             canCalendar = cal,
             loaded = true,
@@ -113,15 +120,33 @@ class V4CareerViewModel(
         PostHogAnalytics.capture("v4_career_win")
     }
     fun remove(l: LifeLog) = launch { career.remove(l) }
-    fun addApplication(role: String, company: String, link: String?, stage: Stage) = launch {
-        career.addApplication(role, company, link, stage)
-        PostHogAnalytics.capture("v4_career_application", mapOf("stage" to stage.name))
+    fun addApplication(role: String, company: String, link: String?, stage: Stage, location: String? = null, closes: LocalDate? = null, from: String = "manual") = launch {
+        career.addApplication(role, company, link, stage, location, closes)
+        // Saving a job is looking for one: the page opens on applications from now on.
+        if (!career.searching.value) career.setSearching(true)
+        PostHogAnalytics.capture("v4_career_application", mapOf("stage" to stage.name, "from" to from))
     }
-    fun updateApplication(app: LifeLog, role: String, company: String, link: String?) = launch { career.updateApplication(app, role, company, link) }
+    fun updateApplication(app: LifeLog, role: String, company: String, link: String?, location: String?, closes: LocalDate?) =
+        launch { career.updateApplication(app, role, company, link, location, closes) }
+
+    /** Reads a pasted or shared job ad; [onResult] gets the draft, or null when it could not be read. */
+    fun readJob(text: String, shared: Boolean, onResult: (CareerPlanner.JobDraft?) -> Unit) {
+        viewModelScope.launch {
+            val draft = career.readJob(text)
+            PostHogAnalytics.capture("v4_career_job_read", mapOf("ok" to (draft != null), "shared" to shared, "found_role" to (draft?.role != null)))
+            onResult(draft ?: CareerPlanner.firstUrl(text)?.let { CareerPlanner.JobDraft(null, null, it, null, null) })
+        }
+    }
+
+    fun sharedFunnel() = PostHogAnalytics.capture("v4_career_funnel_shared")
+    fun sharedWins() = PostHogAnalytics.capture("v4_career_wins_shared")
     fun setStage(app: LifeLog, stage: Stage, reason: String? = null) = launch { career.setStage(app, stage, reason) }
     fun scheduleInterview(app: LifeLog, date: LocalDate, time: LocalTime, minutes: Int, calendar: Boolean) = launch { career.scheduleInterview(app, date, time, minutes, calendar) }
     fun addContact(name: String, about: String?, every: Int) = launch { career.addContact(name, about, every) }
-    fun talked(c: LifeLog) = launch { career.talked(c) }
+    fun talked(c: LifeLog, about: String? = null) = launch {
+        career.talked(c, about)
+        PostHogAnalytics.capture("v4_career_talked", mapOf("with_note" to !about.isNullOrBlank()))
+    }
     fun setCadence(c: LifeLog, every: Int) = launch { career.setCadence(c, every) }
     fun addSkill(name: String, level: Int, want: Int) = launch { career.addSkill(name, level, want) }
     fun setSkill(s: LifeLog, level: Int, want: Int) = launch { career.setSkill(s, level, want) }

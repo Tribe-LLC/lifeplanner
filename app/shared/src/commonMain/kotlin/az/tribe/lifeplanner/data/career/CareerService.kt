@@ -1,5 +1,6 @@
 package az.tribe.lifeplanner.data.career
 
+import az.tribe.lifeplanner.data.network.AiProxyService
 import az.tribe.lifeplanner.data.plans.PlanService
 import az.tribe.lifeplanner.domain.model.LifeLog
 import az.tribe.lifeplanner.domain.model.LogKind
@@ -9,7 +10,14 @@ import az.tribe.lifeplanner.domain.repository.LifeLogRepository
 import az.tribe.lifeplanner.domain.service.CareerKind
 import az.tribe.lifeplanner.domain.service.CareerPlanner
 import az.tribe.lifeplanner.domain.service.Stage
+import co.touchlab.kermit.Logger
 import com.russhwolf.settings.Settings
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.datetime.DatePeriod
@@ -34,6 +42,7 @@ class CareerService(
     private val logs: LifeLogRepository,
     private val plans: PlanService,
     private val settings: Settings,
+    private val ai: AiProxyService,
 ) {
     private val tz = TimeZone.currentSystemDefault()
     private fun today() = Clock.System.todayIn(tz)
@@ -66,18 +75,22 @@ class CareerService(
 
     // ── Applications ──
 
-    suspend fun addApplication(role: String, company: String, link: String?, stage: Stage) {
+    suspend fun addApplication(role: String, company: String, link: String?, stage: Stage, location: String? = null, closes: LocalDate? = null) {
         var notes = CareerPlanner.withField(null, "company", company)
         notes = CareerPlanner.withField(notes, "link", link)
+        notes = CareerPlanner.withField(notes, "location", location)
+        notes = CareerPlanner.withField(notes, "closes", closes?.toString())
         notes = CareerPlanner.withField(notes, "stage", stage.name)
         if (stage != Stage.SAVED) notes = CareerPlanner.withField(notes, "applied", today().toString())
         else notes = CareerPlanner.withField(notes, "saved", today().toString())
         logs.save(row(CareerKind.APPLICATION, role, day(nextFor(stage))).copy(notes = notes))
     }
 
-    suspend fun updateApplication(app: LifeLog, role: String, company: String, link: String?) {
+    suspend fun updateApplication(app: LifeLog, role: String, company: String, link: String?, location: String? = null, closes: LocalDate? = null) {
         var notes = CareerPlanner.withField(app.notes, "company", company)
         notes = CareerPlanner.withField(notes, "link", link)
+        notes = CareerPlanner.withField(notes, "location", location)
+        notes = CareerPlanner.withField(notes, "closes", closes?.toString())
         logs.save(app.copy(title = role.trim().ifEmpty { app.title }, notes = notes))
     }
 
@@ -86,6 +99,11 @@ class CareerService(
         var notes = CareerPlanner.withField(app.notes, "stage", stage.name)
         if (stage == Stage.APPLIED && CareerPlanner.applied(app) == null) notes = CareerPlanner.withField(notes, "applied", today().toString())
         if (stage == Stage.CLOSED) notes = CareerPlanner.withField(notes, "closed", reason)
+        // What it reached, so the search funnel still counts it once it closes.
+        val replied = stage == Stage.INTERVIEW || stage == Stage.OFFER || (stage == Stage.CLOSED && reason in CareerPlanner.REPLY_REASONS)
+        if (replied && CareerPlanner.repliedOn(app) == null) notes = CareerPlanner.withField(notes, "replied", today().toString())
+        if (stage == Stage.INTERVIEW) notes = CareerPlanner.withField(notes, "interviewed", "yes")
+        if (stage == Stage.OFFER || reason == CareerPlanner.ACCEPTED) notes = CareerPlanner.withField(notes, "offer", "yes")
         logs.save(
             app.copy(
                 notes = notes,
@@ -103,11 +121,10 @@ class CareerService(
         val who = CareerPlanner.company(app) ?: app.title
         val interview = row(CareerKind.INTERVIEW, "Interview: $who", LocalDateTime(date, time)).copy(externalId = app.id, durationMin = minutes)
         plans.plan(interview, addToCalendar, "Interview: ${CareerPlanner.roleLine(app)}")
-        if (CareerPlanner.stage(app) != Stage.INTERVIEW) {
-            logs.save(app.copy(notes = CareerPlanner.withField(app.notes, "stage", Stage.INTERVIEW.name), occurredAt = day(date.plus(DatePeriod(days = 1)))))
-        } else {
-            logs.save(app.copy(occurredAt = day(date.plus(DatePeriod(days = 1)))))
-        }
+        var notes = CareerPlanner.withField(app.notes, "interviewed", "yes")
+        if (CareerPlanner.repliedOn(app) == null) notes = CareerPlanner.withField(notes, "replied", today().toString())
+        if (CareerPlanner.stage(app) != Stage.OFFER) notes = CareerPlanner.withField(notes, "stage", Stage.INTERVIEW.name)
+        logs.save(app.copy(notes = notes, occurredAt = day(date.plus(DatePeriod(days = 1)))))
     }
 
     /** Ticking a next action, from this page or from Today. */
@@ -132,9 +149,17 @@ class CareerService(
         logs.save(row(CareerKind.CONTACT, name, day(today().plus(DatePeriod(days = everyDays))), notes = CareerPlanner.withField(null, "about", about), quantity = everyDays.toDouble()))
     }
 
-    suspend fun talked(contact: LifeLog) {
+    /**
+     * A catch-up happened. Moves the next one on, and keeps it in the person's history with [about],
+     * what it was about, when given.
+     */
+    suspend fun talked(contact: LifeLog, about: String? = null) {
         val every = contact.quantity?.toInt()?.coerceAtLeast(1) ?: 30
         logs.save(contact.copy(occurredAt = day(today().plus(DatePeriod(days = every))), notes = CareerPlanner.withField(contact.notes, "last", today().toString())))
+        logs.save(
+            row(CareerKind.TALK, "Talked with ${contact.title.trim()}", now(), LogStatus.DONE, about?.trim()?.ifEmpty { null })
+                .copy(externalId = contact.id),
+        )
     }
 
     suspend fun setCadence(contact: LifeLog, everyDays: Int) {
@@ -152,7 +177,59 @@ class CareerService(
         logs.save(skill.copy(quantity = level.toDouble(), notes = CareerPlanner.withField(skill.notes, "want", want.toString())))
     }
 
+    // ── Friday wins ──
+
+    private val _fridayClosed = MutableStateFlow(settings.getStringOrNull(KEY_FRIDAY)?.let { runCatching { LocalDate.parse(it) }.getOrNull() })
+    /** The week (its Monday) the Friday wins prompt was saved or dismissed for. */
+    val fridayClosed: StateFlow<LocalDate?> = _fridayClosed
+
+    fun closeFriday() {
+        val week = CareerPlanner.weekStart(today())
+        settings.putString(KEY_FRIDAY, week.toString())
+        _fridayClosed.value = week
+    }
+
+    // ── Reading a shared job ──
+
+    /**
+     * Reads role, company, link, place and closing date out of a job ad or link someone shared or
+     * pasted. Nothing is saved: the sheet fills in and stays editable. Null when the coach could not
+     * be reached; the link is still taken from the text then.
+     */
+    suspend fun readJob(text: String): CareerPlanner.JobDraft? {
+        if (text.isBlank()) return null
+        val today = today()
+        val prompt = """
+            Below is a job ad, or a link to one, that someone shared to save it as a job they might
+            apply for. Find the job title (role), the company, the link to the ad, where the job is
+            (city, country or "Remote"), and the closing date to apply by, if one is given.
+            Today is $today. Resolve a closing date without a year to the next time that date comes.
+            When only a link is given, read what you can from its words, like the company in the
+            address and the title in the path. Leave anything you cannot find empty. Keep the role
+            and company short, as they would appear on a list. Do not invent anything.
+
+            Shared text:
+            ${text.take(8_000)}
+        """.trimIndent()
+        return try {
+            CareerPlanner.parseJob(ai.generateStructuredJson(prompt, jobSchema()), text, today)
+        } catch (e: Exception) {
+            Logger.w("CareerService") { "Job read failed: ${e.message}" }
+            null
+        }
+    }
+
+    private fun jobSchema(): JsonObject = buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            listOf("role", "company", "link", "location").forEach { k -> putJsonObject(k) { put("type", "string") } }
+            putJsonObject("closing_date") { put("type", "string"); put("description", "YYYY-MM-DD, or empty") }
+        }
+        putJsonArray("required") { listOf("role", "company", "link", "location", "closing_date").forEach { add(JsonPrimitive(it)) } }
+    }
+
     companion object {
         private const val KEY_SEARCHING = "v4_career_searching"
+        private const val KEY_FRIDAY = "v4_career_friday_closed"
     }
 }

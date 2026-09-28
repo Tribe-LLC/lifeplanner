@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
         handlePromoDeeplink(intent)
         handleGoalDeeplink(intent)
         handleShortcutDeeplink(intent)
+        handleSharedJob(intent)
 
         setContent {
             val themeMode by koinInject<ThemeController>().mode.collectAsState()
@@ -85,6 +86,7 @@ class MainActivity : ComponentActivity() {
         handlePromoDeeplink(intent)
         handleGoalDeeplink(intent)
         handleShortcutDeeplink(intent)
+        handleSharedJob(intent)
         pendingPromoRoute?.let { az.tribe.lifeplanner.util.DeepLinkNavigator.navigate(it) }
     }
 
@@ -104,6 +106,20 @@ class MainActivity : ComponentActivity() {
             "ai_chat"     -> "ai_chat"
             else          -> return
         }
+    }
+
+    /**
+     * A job ad or link shared from another app (Chrome, LinkedIn, mail): Career opens "Add an
+     * application" with it, and the coach fills in the fields.
+     */
+    private fun handleSharedJob(intent: Intent) {
+        if (intent.action != Intent.ACTION_SEND || intent.type?.startsWith("text/") != true) return
+        val text = listOfNotNull(intent.getStringExtra(Intent.EXTRA_SUBJECT), intent.getStringExtra(Intent.EXTRA_TEXT))
+            .map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString("\n")
+        if (text.isEmpty()) return
+        az.tribe.lifeplanner.data.career.JobInbox.offer(text)
+        pendingPromoRoute = az.tribe.lifeplanner.ui.v4.shell.V4Routes.area(az.tribe.lifeplanner.domain.model.PlanArea.CAREER)
+        az.tribe.lifeplanner.data.analytics.PostHogAnalytics.capture("v4_career_job_shared", mapOf("has_link" to (az.tribe.lifeplanner.domain.service.CareerPlanner.firstUrl(text) != null)))
     }
 
     private fun handlePromoDeeplink(intent: Intent) {

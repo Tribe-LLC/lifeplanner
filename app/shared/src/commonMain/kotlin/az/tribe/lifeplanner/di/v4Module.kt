@@ -66,7 +66,7 @@ val v4Module = module {
     single { az.tribe.lifeplanner.data.habits.NudgePrefs(get()) }
     single { az.tribe.lifeplanner.data.habits.NudgeService(get(), get()) }
     single { MindService(get(), get(), get(), get(), get()) }
-    single { CareerService(get(), get(), get()) }
+    single { CareerService(get(), get(), get(), get()) }
     // Resolved on each call, not here: HabitService needs the habit repository, which needs this.
     single<HabitStreakRules> { HabitStreakRules { habit -> get<HabitService>().rulesFor(habit) } }
 
