@@ -51,7 +51,12 @@ import az.tribe.lifeplanner.data.fitness.WorkoutService
 import az.tribe.lifeplanner.data.health.WorkoutKind
 import az.tribe.lifeplanner.domain.model.LifeLog
 import az.tribe.lifeplanner.domain.model.PlanArea
+import az.tribe.lifeplanner.domain.service.FitnessStreak
 import az.tribe.lifeplanner.domain.service.FitnessWeek
+import az.tribe.lifeplanner.domain.service.WeekSlot
+import az.tribe.lifeplanner.domain.service.WorkoutNotes
+import az.tribe.lifeplanner.domain.service.WorkoutWeek
+import az.tribe.lifeplanner.domain.service.WorkoutWeekPlan
 import az.tribe.lifeplanner.domain.service.RingState
 import az.tribe.lifeplanner.ui.v4.components.CheckCircleButton
 import az.tribe.lifeplanner.ui.v4.components.OneLine
@@ -60,7 +65,9 @@ import az.tribe.lifeplanner.ui.v4.components.V4Divider
 import az.tribe.lifeplanner.ui.v4.components.V4PillButton
 import az.tribe.lifeplanner.ui.v4.components.V4PrimaryButton
 import az.tribe.lifeplanner.ui.v4.components.V4ProgressBar
+import az.tribe.lifeplanner.ui.v4.components.V4Switch
 import az.tribe.lifeplanner.ui.v4.components.V4SwitchRow
+import az.tribe.lifeplanner.ui.v4.travel.TravelField
 import az.tribe.lifeplanner.ui.v4.components.V4TextButton
 import az.tribe.lifeplanner.ui.v4.theme.V4
 import az.tribe.lifeplanner.ui.v4.today.V4TodayViewModel
@@ -91,6 +98,9 @@ fun FitnessSection(health: AreaHealth, onOpenHealth: () -> Unit, viewModel: V4Fi
     var editingTarget by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<LifeLog?>(null) }
     var savedNote by remember { mutableStateOf<String?>(null) }
+    var editingWeek by remember { mutableStateOf(false) }
+    /** The workout just finished, while "What did you do?" is open for it. */
+    var askFor by remember { mutableStateOf<String?>(null) }
 
     // ── Today ──
     val a = active
@@ -109,9 +119,20 @@ fun FitnessSection(health: AreaHealth, onOpenHealth: () -> Unit, viewModel: V4Fi
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     V4PillButton("Stop and save", onClick = {
-                        viewModel.stop { toHealth -> savedNote = if (toHealth) "Saved here and to Health." else "Saved." }
+                        viewModel.stop { id, toHealth -> savedNote = if (toHealth) "Saved here and to Health." else "Saved."; askFor = id }
                     }, container = fit.color)
                     V4TextButton("Cancel", onClick = viewModel::cancel, color = c.ink2)
+                }
+            }
+            askFor != null -> {
+                val id = askFor!!
+                var did by remember(id) { mutableStateOf("") }
+                Text("What did you do?", style = V4.type.headline, color = c.ink, modifier = Modifier.semantics { heading() })
+                TravelField(did, { did = it }, "Squat 3x5 60kg, bench 3x8", "What you did")
+                Text("Optional. It shows next time as \"Last time\".", style = V4.type.caption, color = c.ink2)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    V4PillButton("Save", onClick = { viewModel.setDid(id, did); askFor = null }, container = fit.color)
+                    V4TextButton("Skip", onClick = { askFor = null }, color = c.ink2)
                 }
             }
             s.today != null -> {
@@ -123,13 +144,26 @@ fun FitnessSection(health: AreaHealth, onOpenHealth: () -> Unit, viewModel: V4Fi
                             style = V4.type.label, color = fit.ink,
                         )
                         Text(t.title + (t.durationMin?.let { ", $it min" } ?: ""), style = V4.type.headline, color = if (s.todayDone) c.ink3 else c.ink)
-                        t.notes?.let { Text(it, style = V4.type.caption, color = c.ink2) }
+                        val note = WorkoutNotes.display(t.notes) ?: if (WorkoutWeekPlan.isGenerated(t) && !s.todayDone) "From your week" else null
+                        note?.let { Text(it, style = V4.type.caption, color = c.ink2) }
                     }
-                    CheckCircleButton(s.todayDone, (if (s.todayDone) "Undo: " else "Mark done: ") + t.title, { viewModel.toggleToday(t) }, color = fit.color)
+                    CheckCircleButton(s.todayDone, (if (s.todayDone) "Undo: " else "Mark done: ") + t.title, { viewModel.toggleToday(t) { id -> askFor = id } }, color = fit.color)
                 }
                 if (!s.todayDone) {
+                    s.lastTime?.let { last ->
+                        Column(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(c.surface).padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Text("Last time, ${lastDay(last.date)}", style = V4.type.label, color = fit.ink)
+                            Text(WorkoutNotes.did(last.notes).orEmpty(), style = V4.type.bodyStrong, color = c.ink)
+                        }
+                    }
                     val kind = WorkoutKind.fromTitle(t.title)
-                    V4PillButton("Start ${t.title.lowercase()}", onClick = { viewModel.start(kind, t.title, t.id) }, container = fit.color)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        V4PillButton("Start ${t.title.lowercase()}", onClick = { viewModel.start(kind, t.title, t.id) }, container = fit.color)
+                        V4TextButton("Not today", onClick = { viewModel.moveToNextFreeDay(t) }, color = c.ink2)
+                    }
                 } else {
                     Text("Done. That counts toward your week.", style = V4.type.caption, color = c.ink2)
                 }
@@ -137,10 +171,15 @@ fun FitnessSection(health: AreaHealth, onOpenHealth: () -> Unit, viewModel: V4Fi
             else -> {
                 Text("Today", style = V4.type.label, color = fit.ink)
                 Text("Nothing planned", style = V4.type.headline, color = c.ink)
-                Text("Start one now, or plan one for later so it shows on Today.", style = V4.type.caption, color = c.ink2)
+                Text(
+                    if (s.week?.slots.isNullOrEmpty()) "Start one now, or set your week once and every week plans itself."
+                    else if (s.streak?.onBreak != null) "You are on a break. Rest well." else "A rest day in your week. Start one anyway if you feel like it.",
+                    style = V4.type.caption, color = c.ink2,
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     V4PillButton("Start a workout", onClick = { picking = true }, container = fit.color)
-                    V4PillButton("Plan one", onClick = { planning = true }, filled = false)
+                    if (s.week?.slots.isNullOrEmpty()) V4PillButton("Set your week", onClick = { editingWeek = true }, filled = false)
+                    else V4PillButton("Plan one", onClick = { planning = true }, filled = false)
                 }
             }
         }
@@ -150,14 +189,49 @@ fun FitnessSection(health: AreaHealth, onOpenHealth: () -> Unit, viewModel: V4Fi
         }
     }
 
+    // ── Your week ──
+    V4Card {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Your week", style = V4.type.bodyStrong, color = c.ink, modifier = Modifier.semantics { heading() })
+            V4TextButton(if (s.week?.slots.isNullOrEmpty()) "Set it" else "Change", onClick = { editingWeek = true })
+        }
+        val week = s.week?.takeIf { it.slots.isNotEmpty() }
+        if (week == null) {
+            Text("Pick your days once, like Mon, Wed, Fri: strength at 07:00. The next 7 days stay planned, so Today always knows what is next.", style = V4.type.caption, color = c.ink2)
+        } else {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                kotlinx.datetime.DayOfWeek.entries.forEach { d ->
+                    val on = week.slotFor(d) != null
+                    Box(
+                        Modifier.size(34.dp).clip(CircleShape).background(if (on) fit.color else c.trackOff)
+                            .semantics { contentDescription = FitnessWeek.dayName(d) + if (on) ", planned" else ", rest" },
+                        contentAlignment = Alignment.Center,
+                    ) { Text(FitnessWeek.dayLetter(d), style = V4.type.label, color = if (on) c.onAccent else c.ink2) }
+                }
+            }
+            s.weekSummary.forEach { Text(it, style = V4.type.body, color = c.ink) }
+            Text("Move or remove a single day and it stays that way.", style = V4.type.caption, color = c.ink3)
+        }
+    }
+
     // ── Last 7 days ──
     V4Card {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("Last 7 days", style = V4.type.label, color = c.ink2)
                 Text("${s.doneThisWeek} of ${s.target} workouts", style = V4.type.headline, color = c.ink)
             }
-            V4TextButton("Goal", onClick = { editingTarget = !editingTarget })
+            s.streak?.let { st ->
+                val (big, small) = FitnessStreak.words(st)
+                Column(
+                    Modifier.clip(RoundedCornerShape(14.dp)).background(fit.soft).padding(horizontal = 12.dp, vertical = 6.dp)
+                        .semantics(mergeDescendants = true) {},
+                    horizontalAlignment = Alignment.End,
+                ) {
+                    Text(big, style = V4.type.bodyStrong, color = fit.ink)
+                    Text(small, style = V4.type.micro, color = fit.ink)
+                }
+            }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             s.rings.forEach { r ->
@@ -187,6 +261,27 @@ fun FitnessSection(health: AreaHealth, onOpenHealth: () -> Unit, viewModel: V4Fi
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 (2..6).forEach { n -> Choice("$n", s.target == n) { viewModel.setTarget(n); editingTarget = false } }
             }
+        } else V4TextButton("Weekly goal: ${s.target}", onClick = { editingTarget = true }, color = c.ink2)
+        V4Divider()
+        val onBreak = s.streak?.onBreak
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Sick or taking a break", style = V4.type.body, color = c.ink)
+                Text(
+                    onBreak?.let { "Until ${lastDay(it.to)}. Rest well, nothing breaks." } ?: "Pauses your streak instead of breaking it.",
+                    style = V4.type.caption, color = c.ink3,
+                )
+            }
+            V4Switch(onBreak != null, { on -> if (on) viewModel.startBreak(7) else viewModel.endBreak() }, "Sick or taking a break")
+        }
+        if (onBreak != null) {
+            val length = (onBreak.to.toEpochDays() - onBreak.from.toEpochDays() + 1).toInt()
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(3, 7, 14).forEach { n ->
+                    val days = n + (Clock.System.todayIn(TimeZone.currentSystemDefault()).toEpochDays() - onBreak.from.toEpochDays()).toInt()
+                    Choice("$n days", length == days) { viewModel.startBreak(n) }
+                }
+            }
         }
     }
 
@@ -196,7 +291,7 @@ fun FitnessSection(health: AreaHealth, onOpenHealth: () -> Unit, viewModel: V4Fi
             Text("From Health", style = V4.type.bodyStrong, color = c.ink)
             Text(
                 if (s.canWriteHealth) "Workouts from your watch show up here. Workouts you finish here are saved to Health."
-                else "Steps, heart rate and watch workouts. Connect Health under You, Connected apps.",
+                else "Steps and watch workouts. Connect Health under You, Connected apps.",
                 style = V4.type.caption, color = c.ink2,
             )
         }
@@ -216,15 +311,6 @@ fun FitnessSection(health: AreaHealth, onOpenHealth: () -> Unit, viewModel: V4Fi
                     Text("${FitnessWeek.dayName(w.date.dayOfWeek)}, from your watch", style = V4.type.micro, color = c.ink3)
                 }
                 Text("${w.durationMin ?: 0} min", style = V4.type.bodyStrong, color = c.ink)
-            }
-        }
-        health.restingHr?.let {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Heart rate", style = V4.type.body, color = c.ink)
-                    Text("7 day average", style = V4.type.micro, color = c.ink3)
-                }
-                Text("${it.toInt()} bpm", style = V4.type.bodyStrong, color = c.ink)
             }
         }
         V4PillButton("Open health details", onClick = onOpenHealth, filled = false)
@@ -300,14 +386,47 @@ fun FitnessSection(health: AreaHealth, onOpenHealth: () -> Unit, viewModel: V4Fi
         )
     }
 
+    if (editingWeek) {
+        WeekSheet(
+            initial = s.week,
+            canCalendar = s.canCalendar,
+            onDismiss = { editingWeek = false },
+            onSave = { slots, cal -> viewModel.saveWeek(slots, cal); editingWeek = false },
+        )
+    }
+
     selected?.let { l ->
+        val generated = WorkoutWeekPlan.isGenerated(l)
         AlertDialog(
             onDismissRequest = { selected = null },
             title = { Text(l.title) },
-            text = { Text((l.durationMin?.let { "$it min. " } ?: "") + (l.notes ?: "Planned here.")) },
-            confirmButton = { TextButton(onClick = { viewModel.moveToToday(l); selected = null }) { Text("Do it today") } },
-            dismissButton = { TextButton(onClick = { viewModel.remove(l); selected = null }) { Text("Remove") } },
+            text = {
+                Text(
+                    (l.durationMin?.let { "$it min. " } ?: "") + (WorkoutNotes.display(l.notes) ?: if (generated) "From your week." else "Planned here.") +
+                        if (generated) " Removing it takes out just this day." else "",
+                )
+            },
+            confirmButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = { viewModel.moveToToday(l); selected = null }) { Text("Do it today") }
+                    TextButton(onClick = { viewModel.moveToNextFreeDay(l); selected = null }) { Text("Next free day") }
+                }
+            },
+            dismissButton = { TextButton(onClick = { viewModel.remove(l); selected = null }) { Text(if (generated) "Remove this day" else "Remove") } },
         )
+    }
+}
+
+/** "today", "yesterday", "tomorrow", a weekday within a week, else "Sun 12 Oct". */
+private fun lastDay(d: LocalDate): String {
+    val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
+    val diff = d.toEpochDays() - today.toEpochDays()
+    return when {
+        diff == 0L -> "today"
+        diff == -1L -> "yesterday"
+        diff == 1L -> "tomorrow"
+        diff in -6L..6L -> FitnessWeek.dayName(d.dayOfWeek)
+        else -> "${FitnessWeek.shortDay(d.dayOfWeek)} ${d.day} ${d.month.name.lowercase().replaceFirstChar { it.uppercase() }.take(3)}"
     }
 }
 
@@ -397,5 +516,104 @@ private fun PlanWorkoutSheet(
                 style = V4.type.caption, color = c.ink3, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
             )
         }
+    }
+}
+
+/**
+ * The week that repeats: pick the days, then each day's kind, time and length. A day switched on
+ * copies the nearest one before it, so "Mon, Wed, Fri: the same" is three taps.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WeekSheet(
+    initial: WorkoutWeek?,
+    canCalendar: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (List<WeekSlot>, Boolean) -> Unit,
+) {
+    val c = V4.colors
+    val fit = c.area(PlanArea.FITNESS)
+    val days = kotlinx.datetime.DayOfWeek.entries
+    var slots by remember { mutableStateOf(initial?.slots.orEmpty().associateBy { it.day }) }
+    var open by remember { mutableStateOf<kotlinx.datetime.DayOfWeek?>(null) }
+    var toCalendar by remember { mutableStateOf(initial?.toCalendar ?: canCalendar) }
+
+    AreaSheet("Your week", onDismiss) {
+        Text("Pick your days once. The next 7 days stay planned, so Today always knows what is next.", style = V4.type.body, color = c.ink2)
+        FormLabel("Which days")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            days.forEach { d ->
+                val on = d in slots
+                Box(
+                    Modifier.size(44.dp).clip(CircleShape).background(if (on) fit.color else c.surface)
+                        .border(1.5.dp, if (on) fit.color else c.line, CircleShape)
+                        .clickable(role = Role.Checkbox) {
+                            slots = if (on) slots - d else {
+                                val before = days.take(d.ordinal).reversed().firstNotNullOfOrNull { slots[it] }
+                                    ?: slots.values.firstOrNull() ?: WeekSlot(d, "Strength", LocalTime(18, 0), 45)
+                                open = d
+                                slots + (d to before.copy(day = d))
+                            }
+                        }
+                        .semantics {
+                            contentDescription = FitnessWeek.dayName(d)
+                            stateDescription = if (on) "Planned" else "Rest"
+                        },
+                    contentAlignment = Alignment.Center,
+                ) { Text(FitnessWeek.dayLetter(d), style = V4.type.label, color = if (on) c.onAccent else c.ink) }
+            }
+        }
+        if (slots.isNotEmpty()) {
+            V4Card(contentPadding = PaddingValues(0.dp), verticalSpacing = 0.dp) {
+                slots.values.sortedBy { it.day.ordinal }.forEachIndexed { i, slot ->
+                    if (i > 0) V4Divider()
+                    val isOpen = open == slot.day
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable(role = Role.Button) { open = if (isOpen) null else slot.day },
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text(FitnessWeek.shortDay(slot.day), style = V4.type.label, color = c.ink, modifier = Modifier.width(40.dp))
+                            Text(
+                                "${slot.title}, ${slot.time?.let { V4FitnessViewModel.fmt(it) } ?: "any time"}, ${slot.minutes} min",
+                                style = V4.type.body, color = c.ink, modifier = Modifier.weight(1f),
+                            )
+                            Text(if (isOpen) "Done" else "Change", style = V4.type.bodyStrong, color = c.accentInk)
+                        }
+                        if (isOpen) {
+                            fun set(next: WeekSlot) { slots = slots + (slot.day to next) }
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf("Strength", "Run", "Walk", "Yoga", "Ride", "Swim", "HIIT").forEach { k -> Choice(k, slot.title == k) { set(slot.copy(title = k)) } }
+                            }
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf<LocalTime?>(null, LocalTime(7, 0), LocalTime(12, 30), LocalTime(18, 0), LocalTime(20, 0)).forEach { t ->
+                                    Choice(t?.let { V4FitnessViewModel.fmt(it) } ?: "Any time", slot.time == t) { set(slot.copy(time = t)) }
+                                }
+                            }
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf(20, 30, 45, 60).forEach { m -> Choice("$m min", slot.minutes == m) { set(slot.copy(minutes = m)) } }
+                            }
+                        }
+                    }
+                }
+            }
+            Text("A new day copies the one before it. Tap a day to change it.", style = V4.type.caption, color = c.ink3)
+        }
+        if (canCalendar && slots.values.any { it.time != null }) V4SwitchRow("Add them to your calendar", toCalendar, { toCalendar = it })
+        V4PrimaryButton(
+            when {
+                slots.isNotEmpty() -> "Keep this week"
+                initial?.slots.isNullOrEmpty() -> "Pick a day first"
+                else -> "Stop planning my week"
+            },
+            onClick = { onSave(slots.values.sortedBy { it.day.ordinal }, toCalendar && canCalendar) },
+            enabled = slots.isNotEmpty() || !initial?.slots.isNullOrEmpty(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        SheetNote(
+            if (slots.isNotEmpty()) "Your weekly goal becomes ${slots.size}. Move or remove a single day any time and the rest stays."
+            else "Planned days you have not changed come off your plan.",
+        )
     }
 }

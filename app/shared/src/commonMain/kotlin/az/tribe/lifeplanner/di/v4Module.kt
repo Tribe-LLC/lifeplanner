@@ -52,6 +52,7 @@ val v4Module = module {
     single<BudgetRepository> { BudgetRepositoryImpl(get(), get()) }
     single<TripRepository> { TripRepositoryImpl(get(), get()) }
     single { WorkoutService(get(), get(), get(), get(), get()) }
+    single { az.tribe.lifeplanner.data.fitness.WorkoutWeekService(get(), get(), get(), get()) }
     single { TripWeather(get()) }
     single { PlanService(get(), get(), get(), get()) }
     single { MealService(get(), get(), get(), get(), get(), get(), get()) }

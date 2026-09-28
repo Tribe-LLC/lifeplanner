@@ -12,6 +12,8 @@ import az.tribe.lifeplanner.domain.model.LogStatus
 import az.tribe.lifeplanner.domain.model.PlanArea
 import az.tribe.lifeplanner.domain.repository.LifeLogRepository
 import az.tribe.lifeplanner.domain.service.FitnessWeek
+import az.tribe.lifeplanner.domain.service.WorkoutNotes
+import az.tribe.lifeplanner.domain.service.WorkoutWeekPlan
 import co.touchlab.kermit.Logger
 import com.russhwolf.settings.Settings
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +37,9 @@ import kotlin.uuid.Uuid
 
 /** A workout running now. Kept in settings, so it survives leaving the screen or the app. */
 data class ActiveWorkout(val startEpochMs: Long, val kind: WorkoutKind, val title: String, val plannedId: String?)
+
+/** A finished workout: the saved row, and whether it also reached Health. */
+data class StopResult(val log: LifeLog, val toHealth: Boolean)
 
 /** What a coach swap changed, so "Put it back" can undo exactly that. */
 data class WorkoutSwap(val originalId: String, val originalDate: LocalDate, val movedTo: LocalDate, val walkId: String)
@@ -76,9 +81,9 @@ class WorkoutService(
         _active.value = null
     }
 
-    /** Stops the timer and saves the workout. Returns whether it also reached Health. */
-    suspend fun stop(): Boolean {
-        val a = _active.value ?: return false
+    /** Stops the timer and saves the workout. Null when nothing was running. */
+    suspend fun stop(): StopResult? {
+        val a = _active.value ?: return null
         cancel()
         val end = nowMs()
         val minutes = max(1, ((end - a.startEpochMs) / 60_000L).toInt())
@@ -92,7 +97,26 @@ class WorkoutService(
         logs.save(log)
         val toHealth = writeToHealth(log, a.kind, a.startEpochMs, end)
         PostHogAnalytics.capture("v4_workout_finished", mapOf("minutes" to minutes, "to_health" to toHealth))
-        return toHealth
+        return StopResult(log, toHealth)
+    }
+
+    /** Saves what the user did ("Squat 3x5 60kg"), shown as "Last time" before the next one. */
+    suspend fun setDid(logId: String, text: String?) {
+        val log = logs.getById(logId) ?: return
+        logs.save(log.copy(notes = WorkoutNotes.withDid(log.notes, text)))
+        if (!text.isNullOrBlank()) PostHogAnalytics.capture("v4_fitness_last_time_saved", mapOf("length" to text.trim().length))
+    }
+
+    /** Saves rows planned ahead in one go (the repeating week), each with an event when asked. */
+    suspend fun savePlanned(rows: List<LifeLog>, addToCalendar: Boolean) {
+        if (rows.isEmpty()) return
+        logs.saveAll(rows)
+        if (!addToCalendar || !calendarOut()) return
+        rows.filter { hasTime(it) }.forEach { log ->
+            val start = log.occurredAt.toInstant(tz).toEpochMilliseconds()
+            runCatching { calendar.addEvent(log.title, start, start + (log.durationMin ?: 30) * 60_000L, "Planned in LifePlanner") }
+                .getOrNull()?.let { settings.putString(eventKey(log.id), it) }
+        }
     }
 
     // ── Planned workouts ─────────────────────────────────────────────────────
@@ -130,9 +154,22 @@ class WorkoutService(
         if (log.source == LifeLog.SOURCE_PLAN) logs.save(log.copy(status = LogStatus.PLANNED)) else logs.delete(log.id)
     }
 
+    /**
+     * Removes a planned workout. One from the repeating week is set aside instead of deleted, so
+     * the week does not plan that day again.
+     */
     suspend fun remove(log: LifeLog) {
-        logs.delete(log.id)
-        settings.getStringOrNull(eventKey(log.id))?.let { calendar.deleteEvent(it); settings.remove(eventKey(log.id)) }
+        if (WorkoutWeekPlan.isGenerated(log)) logs.save(log.copy(status = LogStatus.SKIPPED)) else logs.delete(log.id)
+        settings.getStringOrNull(eventKey(log.id))?.let { runCatching { calendar.deleteEvent(it) }; settings.remove(eventKey(log.id)) }
+    }
+
+    /** Moves a planned workout to the next day with nothing planned, for "not today". */
+    suspend fun moveToNextFreeDay(log: LifeLog): LifeLog {
+        val from = maxOf(today(), log.date)
+        val week = logs.getInRange(from, from.plus(DatePeriod(days = 8)))
+        val target = FitnessWeek.nextFreeDay(week.filter { it.id != log.id }, from)
+        PostHogAnalytics.capture("v4_fitness_moved_next_free", mapOf("days" to (target.toEpochDays() - from.toEpochDays())))
+        return moveTo(log, target)
     }
 
     suspend fun moveTo(log: LifeLog, date: LocalDate, note: String? = log.notes): LifeLog {

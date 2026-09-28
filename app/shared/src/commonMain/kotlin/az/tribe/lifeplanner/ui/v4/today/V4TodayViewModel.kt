@@ -231,6 +231,7 @@ class V4TodayViewModel(
     fun refresh() {
         viewModelScope.launch {
             val prefs = integrationPrefs.state.value
+            az.tribe.lifeplanner.data.fitness.planWorkoutWeekAhead()
             if (prefs.calendar) loadEvents()
             if (prefs.health) {
                 runCatching { syncHealthData() }
@@ -479,7 +480,7 @@ class V4TodayViewModel(
                 time = if (WorkoutService.hasTime(w)) w.occurredAt.time else null,
                 title = w.title,
                 area = PlanArea.FITNESS,
-                meta = listOfNotNull(w.durationMin?.let { "$it min" }, w.notes).joinToString(", ").ifEmpty { "Workout" },
+                meta = listOfNotNull(w.durationMin?.let { "$it min" }, az.tribe.lifeplanner.domain.service.WorkoutNotes.display(w.notes)).joinToString(", ").ifEmpty { "Workout" },
                 done = w.status == LogStatus.DONE,
                 checkable = true,
             )

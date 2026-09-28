@@ -22,7 +22,14 @@ import az.tribe.lifeplanner.domain.repository.HealthRepository
 import az.tribe.lifeplanner.domain.repository.LifeLogRepository
 import az.tribe.lifeplanner.domain.repository.PlanAreasRepository
 import az.tribe.lifeplanner.domain.service.DayRing
+import az.tribe.lifeplanner.domain.service.FitnessStreak
+import az.tribe.lifeplanner.domain.service.FitnessStreakState
 import az.tribe.lifeplanner.domain.service.FitnessWeek
+import az.tribe.lifeplanner.domain.service.WeekSlot
+import az.tribe.lifeplanner.domain.service.WorkoutNotes
+import az.tribe.lifeplanner.domain.service.WorkoutWeek
+import az.tribe.lifeplanner.domain.service.WorkoutWeekPlan
+import az.tribe.lifeplanner.data.fitness.WorkoutWeekService
 import az.tribe.lifeplanner.ui.v4.today.V4TodayViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -52,6 +59,11 @@ data class ComingUp(val key: String, val at: kotlinx.datetime.LocalDateTime, val
 
 data class FitnessState(
     val today: LifeLog? = null,
+    /** The last time the hero's workout was done with a note of what was done. */
+    val lastTime: LifeLog? = null,
+    val week: WorkoutWeek? = null,
+    val weekSummary: List<String> = emptyList(),
+    val streak: FitnessStreakState? = null,
     val todayDone: Boolean = false,
     val rings: List<DayRing> = emptyList(),
     val doneThisWeek: Int = 0,
@@ -74,6 +86,7 @@ class V4FitnessViewModel(
     private val calendarPreferences: CalendarPreferences,
     private val integrationPrefs: IntegrationPrefs,
     private val planAreas: PlanAreasRepository,
+    private val weekService: WorkoutWeekService,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -91,14 +104,16 @@ class V4FitnessViewModel(
     private val extras = MutableStateFlow(Extras())
 
     val state: StateFlow<FitnessState> = combine(
-        logs.observeInRange(today().minus(DatePeriod(days = 14)), today().plus(DatePeriod(days = 14))),
+        // A year back: the weeks-in-a-row count and "Last time" both look further than a week.
+        logs.observeInRange(today().minus(DatePeriod(days = 371)), today().plus(DatePeriod(days = 14))),
         budgets.observeAll(),
         goals.observeAllGoals(),
         planAreas.enabledAreas,
         extras,
-    ) { all, bs, gs, areas, ex ->
+    ) { all, bs, gs, _, ex ->
         val today = today()
         val w = all.filter { FitnessWeek.isWorkout(it) }
+        val week = WorkoutWeekService.weekOf(bs)
         val todays = w.filter { it.date == today && it.status != LogStatus.SKIPPED && it.source == LifeLog.SOURCE_PLAN }
             .sortedBy { it.occurredAt }
         val hero = todays.firstOrNull { it.status == LogStatus.PLANNED } ?: todays.firstOrNull()
@@ -112,7 +127,7 @@ class V4FitnessViewModel(
                     day = if (l.date == today) "Today" else FitnessWeek.shortDay(l.date.dayOfWeek),
                     time = if (WorkoutService.hasTime(l)) fmt(l.occurredAt.time) else "Any",
                     title = l.title + (l.durationMin?.let { ", $it min" } ?: ""),
-                    meta = l.notes ?: "Planned here",
+                    meta = WorkoutNotes.display(l.notes) ?: if (WorkoutWeekPlan.isGenerated(l)) "From your week" else "Planned here",
                     log = l,
                 )
             }
@@ -127,14 +142,14 @@ class V4FitnessViewModel(
             gs.firstOrNull { !it.isArchived && it.status != GoalStatus.COMPLETED && PlanArea.forCategory(it.category) == PlanArea.FITNESS }?.let { g ->
                 add(FitnessLink(PlanArea.HABITS, "Plan", "${g.title}. ${g.progress ?: 0}% there."))
             }
-            if (PlanArea.MEALS in areas) {
-                val meals = all.count { it.kind == LogKind.MEAL && it.date == today }
-                add(FitnessLink(PlanArea.MEALS, "Meals", if (meals == 0) "No meals logged today. Eat well on workout days." else "$meals ${if (meals == 1) "meal" else "meals"} logged today."))
-            }
         }
 
         FitnessState(
             today = hero,
+            lastTime = hero?.takeIf { it.status == LogStatus.PLANNED }?.let { WorkoutNotes.lastTime(w, it) },
+            week = week,
+            weekSummary = WorkoutWeekPlan.summary(week),
+            streak = FitnessStreak.of(w, target, today, WorkoutWeekService.breaksOf(bs)),
             todayDone = hero?.status == LogStatus.DONE,
             rings = FitnessWeek.rings(all, today),
             doneThisWeek = FitnessWeek.doneInLastWeek(all, today),
@@ -153,6 +168,7 @@ class V4FitnessViewModel(
 
     fun refresh() {
         viewModelScope.launch {
+            weekService.ensure()
             workouts.importFromHealth()
             val today = today()
             val sleep = runCatching { healthRepository.getMetricsInRange(HealthMetricType.SLEEP, today.minus(DatePeriod(days = 1)), today) }
@@ -189,14 +205,42 @@ class V4FitnessViewModel(
 
     fun start(kind: WorkoutKind, title: String, plannedId: String? = null) = workouts.start(kind, title, plannedId)
 
-    fun stop(onSaved: (toHealth: Boolean) -> Unit) {
-        viewModelScope.launch { onSaved(workouts.stop()) }
+    fun stop(onSaved: (logId: String, toHealth: Boolean) -> Unit) {
+        viewModelScope.launch { workouts.stop()?.let { onSaved(it.log.id, it.toHealth) } }
+    }
+
+    /** "What did you do?" after a workout. Blank saves nothing. */
+    fun setDid(logId: String, text: String) {
+        if (text.isBlank()) return
+        viewModelScope.launch { workouts.setDid(logId, text) }
+    }
+
+    fun saveWeek(slots: List<WeekSlot>, toCalendar: Boolean) {
+        viewModelScope.launch {
+            weekService.save(slots, toCalendar)
+            refresh()
+        }
+    }
+
+    fun startBreak(days: Int) {
+        viewModelScope.launch { weekService.startBreak(days) }
+    }
+
+    fun endBreak() {
+        viewModelScope.launch { weekService.endBreak() }
+    }
+
+    fun moveToNextFreeDay(log: LifeLog) {
+        viewModelScope.launch { workouts.moveToNextFreeDay(log) }
     }
 
     fun cancel() = workouts.cancel()
 
-    fun toggleToday(log: LifeLog) {
-        viewModelScope.launch { if (log.status == LogStatus.DONE) workouts.undoDone(log) else workouts.markDone(log) }
+    /** Ticks today's workout, or un-ticks it. [onDone] runs after a tick, to ask what was done. */
+    fun toggleToday(log: LifeLog, onDone: (String) -> Unit = {}) {
+        viewModelScope.launch {
+            if (log.status == LogStatus.DONE) workouts.undoDone(log) else { workouts.markDone(log); onDone(log.id) }
+        }
     }
 
     fun plan(title: String, date: LocalDate, time: LocalTime?, minutes: Int, toCalendar: Boolean) {
