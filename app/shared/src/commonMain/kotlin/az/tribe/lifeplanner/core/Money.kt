@@ -24,7 +24,12 @@ object MoneyFormat {
     private val symbols = mapOf(
         "EUR" to "€", "USD" to "$", "GBP" to "£", "AZN" to "₼", "TRY" to "₺", "RUB" to "₽", "JPY" to "¥",
         "INR" to "₹", "AUD" to "A$", "SGD" to "S$", "CAD" to "C$",
+        "KRW" to "₩", "THB" to "฿", "VND" to "₫", "GEL" to "₾", "UAH" to "₴", "ILS" to "₪", "PHP" to "₱",
+        "NGN" to "₦", "CNY" to "CN¥", "HKD" to "HK$", "NZD" to "NZ$", "MXN" to "MX$", "BRL" to "R$",
     )
+
+    /** Currencies nobody writes cents for. */
+    private val wholeOnly = setOf("JPY", "KRW", "VND", "IDR", "CLP", "ISK", "HUF", "COP", "UGX", "PYG")
 
     /** An amount as the user would type it back: "2400", "12.5". For prefilling fields. */
     fun plain(amount: Double): String =
@@ -35,11 +40,11 @@ object MoneyFormat {
     /** "€12.50", "€1,240", "-€8". Whole amounts drop the cents; yen never has them. */
     fun format(amount: Double, code: String?): String {
         val neg = amount < 0
-        val cents = (abs(amount) * 100).roundToLong()
+        val cents = if (code in wholeOnly) abs(amount).roundToLong() * 100 else (abs(amount) * 100).roundToLong()
         val whole = cents / 100
         val frac = cents % 100
         val wholeText = whole.toString().reversed().chunked(3).joinToString(",").reversed()
-        val body = if (frac == 0L || code == "JPY") wholeText else "$wholeText.${frac.toString().padStart(2, '0')}"
+        val body = if (frac == 0L || code in wholeOnly) wholeText else "$wholeText.${frac.toString().padStart(2, '0')}"
         return (if (neg) "-" else "") + symbol(code) + body
     }
 }

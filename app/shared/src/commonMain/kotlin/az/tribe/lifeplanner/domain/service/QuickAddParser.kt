@@ -3,6 +3,8 @@ package az.tribe.lifeplanner.domain.service
 import az.tribe.lifeplanner.domain.model.LogKind
 import az.tribe.lifeplanner.domain.model.PlanArea
 import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.DayOfWeek
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.minus
@@ -22,8 +24,12 @@ data class ParsedEntry(
     val unit: String? = null,
     val durationMin: Int? = null,
     val notes: String? = null,
+    /** Set for a bill or subscription ("netflix 12 monthly"): how it repeats, and when it is next due. */
+    val bill: BillRule? = null,
+    val firstDue: LocalDate? = null,
 ) {
     val isRoutine get() = kind == null
+    val isBill get() = bill != null
 }
 
 data class ParsedInput(val entries: List<ParsedEntry>, val occurredAt: LocalDateTime)
@@ -102,6 +108,9 @@ object QuickAddParser {
             if (h in 0..23 && min in 0..59) at = LocalDateTime(at.date, LocalTime(h, min))
         }
 
+        // A bill or subscription: an amount that repeats, "rent 600 every month on the 1st".
+        parseBill(text, lower, words, at.date, defaultCurrency)?.let { return ParsedInput(listOf(it), at) }
+
         // Routine first: "drink water every day" is a habit, not a log of water.
         routineMarkers.firstOrNull { it in lower }?.let { marker ->
             val title = text.replace(Regex(Regex.escape(marker), RegexOption.IGNORE_CASE), "").trim().trimEnd(',', '.').ifBlank { text }
@@ -168,6 +177,40 @@ object QuickAddParser {
             return ParsedInput(emptyList(), at)
         }
         return ParsedInput(out, at)
+    }
+
+    private val billMarkers = listOf(
+        Regex("""\b(?:every|each|per|a)\s+month\b|\bmonthly\b|/\s?mo(?:nth)?\b""") to BillRepeat.MONTHLY,
+        Regex("""\b(?:every|each|per|a)\s+week\b|\bweekly\b|/\s?w(?:ee)?k\b""") to BillRepeat.WEEKLY,
+        Regex("""\b(?:every|each|per|a)\s+year\b|\byearly\b|\bannually\b|/\s?y(?:ea)?r\b""") to BillRepeat.YEARLY,
+    )
+    private val dayOfMonth = Regex("""\bon\s+(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\b""", RegexOption.IGNORE_CASE)
+    private val weekday = Regex("""\bon\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?\b""", RegexOption.IGNORE_CASE)
+    private val notBills = setOf("save", "saving", "savings", "invest", "investing")
+
+    /** "netflix 12 monthly", "rent 600 every month on the 1st", "gym 30 every week on monday". */
+    private fun parseBill(text: String, lower: String, words: Set<String>, today: LocalDate, defaultCurrency: String): ParsedEntry? {
+        val (marker, repeat) = billMarkers.firstNotNullOfOrNull { (re, r) -> re.find(lower)?.let { it to r } } ?: return null
+        if (words.any { it in incomeWords || it in notBills }) return null
+        val day = dayOfMonth.find(lower)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it in 1..31 }
+        val wd = weekday.find(lower)?.groupValues?.get(1)?.let { w -> DayOfWeek.entries.firstOrNull { it.name.equals(w, ignoreCase = true) } }
+        val rest = text.replace(dayOfMonth, " ").replace(weekday, " ").replace(atTime, " ")
+            .replace(Regex(Regex.escape(marker.value), RegexOption.IGNORE_CASE), " ")
+            .replace(Regex("""\s{2,}"""), " ").trim()
+        // The repeat word makes a bare number money, as "bill" would: "gym 30 every week".
+        val (amount, currency) = findMoney(rest, rest.lowercase(), words + "bill", defaultCurrency) ?: return null
+        val title = titleFrom(rest)
+            .replace(Regex("""(?<![\d.,])\d{1,6}(?![\d.,])"""), " ")
+            .replace(Regex("""\b(every|each|per|for|on|the|a|an)\s*$""", RegexOption.IGNORE_CASE), " ")
+            .replace(Regex("""\s{2,}"""), " ").trim().trim(',', '.', '-')
+            .ifBlank { "Bill" }.capitalizeFirst()
+        val due = Bills.firstDue(repeat, today, day, wd)
+        val rule = when (repeat) {
+            BillRepeat.MONTHLY -> BillRule(repeat, day = day ?: due.day)
+            else -> BillRule.startingOn(repeat, due)
+        }
+        val category = spendCategory(words, isMeal = false, isTravel = false).let { if (it == "other") Bills.CATEGORY else it }
+        return ParsedEntry(PlanArea.MONEY, LogKind.EXPENSE, title = title, amount = amount, currency = currency, category = category, bill = rule, firstDue = due)
     }
 
     fun spendCategories() = listOf("food", "transport", "bills", "shopping", "fun", "travel", "health", "other")

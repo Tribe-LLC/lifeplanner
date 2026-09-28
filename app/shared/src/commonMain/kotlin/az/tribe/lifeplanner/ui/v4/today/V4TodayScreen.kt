@@ -77,6 +77,8 @@ import com.adamglin.phosphoricons.regular.CalendarBlank
 import com.adamglin.phosphoricons.regular.User
 import kotlinx.datetime.LocalDate
 import org.koin.compose.viewmodel.koinViewModel
+import az.tribe.lifeplanner.ui.v4.travel.TripRecapOnToday
+import az.tribe.lifeplanner.ui.v4.travel.V4TripRecapViewModel
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -87,9 +89,13 @@ fun V4TodayScreen(
     onCheckIn: () -> Unit,
     onReview: () -> Unit,
     bottomInset: PaddingValues,
+    onOpenTrip: (String) -> Unit = {},
+    onPlanTrip: () -> Unit = {},
     viewModel: V4TodayViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val recapVm: V4TripRecapViewModel = koinViewModel()
+    val tripRecap by recapVm.recap.collectAsState()
     var toggled by rememberSaveable { mutableStateOf(listOf<String>()) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -130,6 +136,8 @@ fun V4TodayScreen(
                 }
             }
         }
+        // A trip that just ended: its recap, for three days.
+        tripRecap?.let { r -> item(key = "trip_recap") { TripRecapOnToday(r, recapVm, onOpenTrip, onPlanTrip, Modifier.padding(top = 8.dp)) } }
         state.nudge?.let { nudge ->
             item(key = "coach") {
                 CoachCard(

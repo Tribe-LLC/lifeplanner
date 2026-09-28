@@ -355,12 +355,15 @@ internal fun NavGraphBuilder.appNavV4(
                     DayItemType.MEAL -> navController.navigate(V4Routes.area(PlanArea.MEALS)) { launchSingleTop = true }
                     DayItemType.STUDY -> navController.navigate(V4Routes.area(PlanArea.STUDY)) { launchSingleTop = true }
                     DayItemType.CAREER -> navController.navigate(V4Routes.area(PlanArea.CAREER)) { launchSingleTop = true }
+                    DayItemType.BILL -> navController.navigate(V4Routes.area(PlanArea.MONEY)) { launchSingleTop = true }
                     DayItemType.EVENT -> {}
                 }
             },
             onCheckIn = { navController.navigate(V4Routes.CHECK_IN) { launchSingleTop = true } },
             onReview = { navController.navigate(V4Routes.REVIEW) { launchSingleTop = true } },
             bottomInset = TabInset,
+            onOpenTrip = { navController.navigate(V4Routes.trip(it)) { launchSingleTop = true } },
+            onPlanTrip = { navController.navigate(V4Routes.area(PlanArea.TRAVEL)) { launchSingleTop = true } },
         )
     }
 
@@ -428,6 +431,10 @@ internal fun NavGraphBuilder.appNavV4(
 
     composable(V4Routes.TRIP, arguments = listOf(navArgument("tripId") { type = NavType.StringType })) { entry ->
         val tripId = entry.arguments?.read { getStringOrNull("tripId") } ?: return@composable
-        V4TripScreen(tripId = tripId, onBack = { navController.popBackStack() })
+        V4TripScreen(
+            tripId = tripId,
+            onBack = { navController.popBackStack() },
+            onPlanTrip = { navController.navigate(V4Routes.area(PlanArea.TRAVEL)) { popUpTo(V4Routes.TRIP) { inclusive = true }; launchSingleTop = true } },
+        )
     }
 }

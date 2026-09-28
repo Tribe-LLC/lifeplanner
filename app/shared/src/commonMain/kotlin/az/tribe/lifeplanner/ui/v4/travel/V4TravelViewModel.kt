@@ -10,6 +10,7 @@ import az.tribe.lifeplanner.domain.model.PlanArea
 import az.tribe.lifeplanner.domain.repository.LifeLogRepository
 import az.tribe.lifeplanner.domain.repository.PlanAreasRepository
 import az.tribe.lifeplanner.domain.repository.TripRepository
+import az.tribe.lifeplanner.domain.service.TripMeta
 import az.tribe.lifeplanner.domain.service.TripPlanner
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -77,7 +78,9 @@ class V4TravelViewModel(
             )
             onCreated(trip.id)
             weather.find(name)?.let { place ->
-                trips.getById(trip.id)?.let { trips.save(it.copy(latitude = place.latitude, longitude = place.longitude)) }
+                trips.getById(trip.id)?.let {
+                    trips.save(TripMeta.withCountry(it.copy(latitude = place.latitude, longitude = place.longitude), place.countryCode))
+                }
             }
         }
     }

@@ -100,10 +100,15 @@ data class Trip(
 )
 
 enum class TripItemKind(val key: String) {
-    TODO("todo"), DAY("day");
+    TODO("todo"), DAY("day"),
+    /** A flight, hotel or train pasted from a confirmation; its details are in the notes. */
+    BOOKING("booking");
 
     companion object {
-        fun fromKey(key: String) = entries.firstOrNull { it.key == key } ?: TODO
+        fun fromKey(key: String) = fromKeyOrNull(key) ?: TODO
+
+        /** Null for a kind this version does not know, so a newer row is left out rather than shown as a to-do. */
+        fun fromKeyOrNull(key: String) = entries.firstOrNull { it.key == key }
     }
 }
 

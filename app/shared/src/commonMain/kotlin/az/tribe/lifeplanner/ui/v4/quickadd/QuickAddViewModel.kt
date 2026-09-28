@@ -25,6 +25,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import az.tribe.lifeplanner.core.MoneyFormat
+import az.tribe.lifeplanner.data.money.FxRates
+import az.tribe.lifeplanner.domain.model.LogStatus
+import az.tribe.lifeplanner.domain.model.Trip
+import az.tribe.lifeplanner.domain.service.Fx
+import az.tribe.lifeplanner.domain.service.TripMeta
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Clock
@@ -37,6 +45,10 @@ data class QuickAddState(
     val saving: Boolean = false,
     /** Set after a save: what to tell the user, e.g. "Saved to Meals and Money". */
     val savedMessage: String? = null,
+    /** A spend in another currency, in the home one: "About €7.40". */
+    val approx: String? = null,
+    /** Set while a trip is under way: its place, since plain amounts are then in its money. */
+    val tripPlace: String? = null,
 )
 
 /**
@@ -51,15 +63,37 @@ class QuickAddViewModel(
     private val currency: CurrencyPrefs,
     private val trips: TripRepository,
     private val meals: MealService,
+    private val fx: FxRates,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
     private val _state = MutableStateFlow(QuickAddState())
     val state: StateFlow<QuickAddState> = _state.asStateFlow()
 
+    /** The trip under way, if any: while it lasts, "ramen 1200" is in its local money and belongs to it. */
+    private var activeTrip: Trip? = null
+
+    init {
+        viewModelScope.launch {
+            runCatching {
+                val today = Clock.System.now().toLocalDateTime(tz).date
+                activeTrip = trips.getAll().firstOrNull { TripPlanner.isActive(it, today) }
+                if (_state.value.text.isNotEmpty()) onText(_state.value.text)
+            }
+            runCatching { fx.refresh() }
+        }
+    }
+
+    private fun defaultCurrency(): String = activeTrip?.let { TripMeta.of(it).localCurrency } ?: currency.code
+
     fun onText(text: String) {
-        val parsed = QuickAddParser.parse(text, Clock.System.now().toLocalDateTime(tz), currency.code)
-        _state.value = QuickAddState(text = text, parsed = parsed)
+        val parsed = QuickAddParser.parse(text, Clock.System.now().toLocalDateTime(tz), defaultCurrency())
+        val home = currency.code
+        val approx = parsed.entries.firstOrNull { it.area == PlanArea.MONEY && it.amount != null && it.currency != null && it.currency != home }?.let { e ->
+            Fx.convert(fx.table.value, e.amount!!, e.currency, home)?.let { "About ${MoneyFormat.format(it, home)}" }
+        }
+        val place = activeTrip?.takeIf { TripMeta.of(it).localCurrency?.let { c -> c != home } == true }?.destination
+        _state.value = QuickAddState(text = text, parsed = parsed, approx = approx, tripPlace = place)
     }
 
     fun reset() {
@@ -76,8 +110,16 @@ class QuickAddViewModel(
                 // Travel spends go to the trip under way or coming up in the next two months.
                 val today = input.occurredAt.date
                 val trip = TripPlanner.current(trips.getAll(), today)?.takeIf { it.startDate.toEpochDays() - today.toEpochDays() <= 60 }
+                // While a trip is under way every spend is part of it; before it, only travel ones.
+                val onTrip = trip != null && TripPlanner.isActive(trip, today)
                 val logRows = input.entries.filter { !it.isRoutine }.map { e ->
-                    e.toLog(input, group).let { l -> if (trip != null && l.category == "travel") l.copy(tripId = trip.id) else l }
+                    e.toLog(input, group).let { l ->
+                        when {
+                            e.isBill -> l
+                            trip != null && l.kind == LogKind.EXPENSE && (onTrip || l.category == "travel") -> l.copy(tripId = trip.id)
+                            else -> l
+                        }
+                    }
                 }
                 logs.saveAll(logRows)
                 input.entries.filter { it.isRoutine }.forEach { addRoutine(it) }
@@ -89,6 +131,10 @@ class QuickAddViewModel(
                 val enabled = planAreas.enabledAreas.value
                 if (!enabled.containsAll(areas)) planAreas.setEnabledAreas(enabled + areas)
 
+                input.entries.filter { it.isBill }.forEach { b ->
+                    PostHogAnalytics.capture("v4_money_bill_added", mapOf("repeat" to (b.bill?.repeat?.key ?: ""), "source" to "quick_add"))
+                }
+                if (onTrip && logRows.any { it.tripId != null && it.currency != currency.code }) PostHogAnalytics.capture("v4_travel_local_spend")
                 PostHogAnalytics.capture(
                     "v4_quick_add_saved",
                     mapOf("areas" to areas.joinToString(",") { it.key }, "count" to input.entries.size),
@@ -106,6 +152,8 @@ class QuickAddViewModel(
         id = Uuid.random().toString(),
         area = area,
         kind = kind ?: LogKind.NOTE,
+        // A bill waits as planned on its next due date, with how it repeats in the notes.
+        status = if (bill != null) LogStatus.PLANNED else LogStatus.DONE,
         title = title,
         amount = amount,
         currency = currency,
@@ -113,10 +161,10 @@ class QuickAddViewModel(
         quantity = quantity,
         unit = unit,
         durationMin = durationMin,
-        occurredAt = input.occurredAt,
-        source = LifeLog.SOURCE_QUICK_ADD,
-        externalId = group,
-        notes = notes,
+        occurredAt = firstDue?.let { LocalDateTime(it, LocalTime(9, 0)) } ?: input.occurredAt,
+        source = if (bill != null) LifeLog.SOURCE_PLAN else LifeLog.SOURCE_QUICK_ADD,
+        externalId = if (bill != null) null else group,
+        notes = bill?.encode() ?: notes,
     )
 
     private suspend fun addRoutine(e: ParsedEntry) {
