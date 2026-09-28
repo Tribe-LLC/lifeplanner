@@ -79,7 +79,8 @@ class V4AreaViewModel(
 
     private fun belongs(habit: Habit): Boolean {
         val onToday = V4TodayViewModel.areaOf(habit)
-        return onToday == area || (area != PlanArea.HABITS && PlanArea.forCategory(habit.category) == area)
+        // Mind keeps only its own kind (sleep, breathing): a "wellbeing" habit like reading lives on Habits.
+        return onToday == area || (area != PlanArea.HABITS && area != PlanArea.MIND && PlanArea.forCategory(habit.category) == area)
     }
 
     private suspend fun loadHealth() {

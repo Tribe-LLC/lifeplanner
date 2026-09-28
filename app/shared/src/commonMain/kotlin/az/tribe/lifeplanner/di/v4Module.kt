@@ -29,6 +29,13 @@ import az.tribe.lifeplanner.data.plans.PlanService
 import az.tribe.lifeplanner.data.study.StudyService
 import az.tribe.lifeplanner.ui.v4.areas.V4MealsViewModel
 import az.tribe.lifeplanner.ui.v4.areas.V4StudyViewModel
+import az.tribe.lifeplanner.data.habits.HabitService
+import az.tribe.lifeplanner.domain.service.HabitStreakRules
+import az.tribe.lifeplanner.ui.v4.areas.V4HabitsViewModel
+import az.tribe.lifeplanner.data.mind.MindService
+import az.tribe.lifeplanner.ui.v4.areas.V4MindViewModel
+import az.tribe.lifeplanner.data.career.CareerService
+import az.tribe.lifeplanner.ui.v4.areas.V4CareerViewModel
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
@@ -52,6 +59,12 @@ val v4Module = module {
         StreakPauses { trips.getAll().filter { it.travelMode }.flatMap { TripPlanner.days(it) }.toSet() }
     }
 
+    single { HabitService(get(), get(), get(), get(), get()) }
+    single { MindService(get(), get(), get(), get(), get()) }
+    single { CareerService(get(), get(), get()) }
+    // Resolved on each call, not here: HabitService needs the habit repository, which needs this.
+    single<HabitStreakRules> { HabitStreakRules { habit -> get<HabitService>().rulesFor(habit) } }
+
     viewModelOf(::V4FirstRunViewModel)
     viewModelOf(::V4TodayViewModel)
     viewModelOf(::V4LifeViewModel)
@@ -61,6 +74,9 @@ val v4Module = module {
     viewModelOf(::V4TravelViewModel)
     viewModelOf(::V4MealsViewModel)
     viewModelOf(::V4StudyViewModel)
+    viewModelOf(::V4HabitsViewModel)
+    viewModelOf(::V4MindViewModel)
+    viewModelOf(::V4CareerViewModel)
     viewModel { params -> V4TripViewModel(params.get<String>(), get(), get(), get(), get(), get(), get()) }
     viewModel { params ->
         V4AreaViewModel(params.get<PlanArea>(), get(), get(), get(), get(), get(), get())

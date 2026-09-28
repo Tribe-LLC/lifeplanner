@@ -31,7 +31,7 @@ actual fun rememberHealthPermissionLauncher(onResult: (Boolean) -> Unit): () -> 
             val status = HealthConnectClient.getSdkStatus(context)
             when (status) {
                 HealthConnectClient.SDK_AVAILABLE -> {
-                    launcher.launch(HealthDataManager.REQUIRED_PERMISSIONS)
+                    launcher.launch(HealthDataManager.permissionsToRequest(context))
                 }
                 HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> {
                     val intent = Intent(Intent.ACTION_VIEW).apply {

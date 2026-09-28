@@ -232,9 +232,11 @@ fun BreathingCard(
  * Auto-selects the level-appropriate technique, awards XP and advances the practice on completion,
  * then calls [onClose]. Cancelling just closes without counting. Like every breath in the app it
  * takes over the whole screen (see [ImmersiveBreath]), so callers need no scrim of their own.
+ *
+ * [onFinished] runs only when the session is breathed to the end, before [onClose].
  */
 @Composable
-fun GuidedBreathSession(onClose: () -> Unit) {
+fun GuidedBreathSession(onClose: () -> Unit, onFinished: () -> Unit = {}) {
     val settings: Settings = koinInject()
     val gamification: GamificationRepository = koinInject()
     val creditHabits: CreditHabitsFromSessionUseCase = koinInject()
@@ -255,6 +257,7 @@ fun GuidedBreathSession(onClose: () -> Unit) {
                 runCatching { creditHabits(HabitCompletionSource.BREATHING) }
             }
             haptic.success()
+            onFinished()
             onClose()
         },
         onCancel = onClose,

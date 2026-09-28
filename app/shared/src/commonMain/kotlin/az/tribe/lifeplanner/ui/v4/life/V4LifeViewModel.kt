@@ -19,6 +19,15 @@ import az.tribe.lifeplanner.domain.repository.JournalRepository
 import az.tribe.lifeplanner.domain.repository.PlanAreasRepository
 import az.tribe.lifeplanner.domain.repository.BudgetRepository
 import az.tribe.lifeplanner.domain.repository.LifeLogRepository
+import az.tribe.lifeplanner.data.habits.HabitRow
+import az.tribe.lifeplanner.data.habits.HabitService
+import az.tribe.lifeplanner.domain.service.CareerKind
+import az.tribe.lifeplanner.domain.service.CareerPlanner
+import az.tribe.lifeplanner.domain.service.HabitSchedule
+import az.tribe.lifeplanner.domain.service.MindCheckIns
+import az.tribe.lifeplanner.domain.service.Schedule
+import az.tribe.lifeplanner.domain.service.Stage
+import kotlinx.coroutines.flow.first
 import az.tribe.lifeplanner.domain.service.MoneySummary
 import az.tribe.lifeplanner.core.MoneyFormat
 import az.tribe.lifeplanner.ui.v4.today.V4TodayViewModel
@@ -79,6 +88,7 @@ class V4LifeViewModel(
     private val lifeLogs: LifeLogRepository,
     private val budgets: BudgetRepository,
     private val trips: TripRepository,
+    private val habitService: HabitService,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -110,7 +120,7 @@ class V4LifeViewModel(
         val from = today.minus(DatePeriod(days = 69))
         val checkIns = runCatching { habitRepository.getAllCheckInsInRange(from, today) }.getOrDefault(emptyList())
             .filter { it.completed }
-        val daily = DailyHabits(habits, checkIns)
+        val daily = DailyHabits(runCatching { habitService.rows.first() }.getOrDefault(emptyList()))
 
         val weekStart = today.minus(DatePeriod(days = today.dayOfWeek.ordinal))
         val (score, caption, delta, bars) = when (r) {
@@ -210,7 +220,9 @@ class V4LifeViewModel(
             }
             PlanArea.MIND -> {
                 val sleep = runCatching { healthRepository.getMetricsInRange(HealthMetricType.SLEEP, week.first().minus(DatePeriod(days = 1)), today) }.getOrDefault(emptyList())
-                val moods = runCatching { journalRepository.getEntriesInRange(week.first(), today) }.getOrDefault(emptyList()).map { it.mood.score }
+                val checkIns = runCatching { lifeLogs.getInRange(week.first(), today) }.getOrDefault(emptyList()).filter { MindCheckIns.isCheckIn(it) }
+                val moods = runCatching { journalRepository.getEntriesInRange(week.first(), today) }.getOrDefault(emptyList()).map { it.mood.score } +
+                    checkIns.mapNotNull { MindCheckIns.score(it) }
                 val moodText = when {
                     moods.isEmpty() -> null
                     moods.average() >= 3.8 -> "mood mostly good"
@@ -219,8 +231,8 @@ class V4LifeViewModel(
                 }
                 if (sleep.isEmpty()) AreaSummary(
                     area,
-                    if (moods.isEmpty()) "Check in" else "${moods.size} ${if (moods.size == 1) "entry" else "entries"}",
-                    moodText?.let { "in your journal, $it" } ?: "Sleep from Health, mood from your journal",
+                    if (moods.isEmpty()) "Check in" else "${moods.size} ${if (moods.size == 1) "check-in" else "check-ins"}",
+                    moodText?.let { "this week, $it" } ?: "How you feel, sleep from Health",
                     moods.map { it.toFloat() },
                 ) else AreaSummary(
                     area,
@@ -302,7 +314,31 @@ class V4LifeViewModel(
                     week.map { d -> meals.count { it.date == d }.toFloat() },
                 )
             }
-            PlanArea.CAREER -> plansFallback("Add a plan", "Skills, applications, next moves")
+            PlanArea.CAREER -> {
+                val rows = runCatching { lifeLogs.getInRange(today.minus(DatePeriod(days = 400)), today.plus(DatePeriod(days = 400))) }.getOrDefault(emptyList())
+                    .filter { CareerKind.of(it) != null }
+                val active = rows.filter { CareerPlanner.isActive(it) }
+                val wins = CareerPlanner.winsInQuarter(rows, today)
+                val due = CareerPlanner.actions(rows, today, horizonDays = 0).count { it.due <= today }
+                when {
+                    active.isNotEmpty() -> AreaSummary(
+                        area,
+                        "${active.size} ${if (active.size == 1) "application" else "applications"}",
+                        listOfNotNull(
+                            active.count { CareerPlanner.stage(it) == Stage.INTERVIEW }.takeIf { it > 0 }?.let { "$it at interview" },
+                            due.takeIf { it > 0 }?.let { "$it to do today" },
+                        ).joinToString(", ").ifEmpty { "nothing due today" },
+                        week.map { d -> rows.count { it.date == d && CareerKind.of(it) == CareerKind.WIN }.toFloat() },
+                    )
+                    wins.isNotEmpty() -> AreaSummary(
+                        area,
+                        "${wins.size} ${if (wins.size == 1) "win" else "wins"}",
+                        "this quarter" + (openGoals.firstOrNull()?.let { ", ${it.title}" } ?: ""),
+                        week.map { d -> wins.count { it.date == d }.toFloat() },
+                    )
+                    else -> plansFallback("Log a win", "Wins, skills and applications")
+                }
+            }
         }
     }
 
@@ -344,18 +380,22 @@ class V4LifeViewModel(
     }
 
     /** Habit completion by day: done check-ins over habits that existed that day. */
-    private class DailyHabits(habits: List<Habit>, checkIns: List<HabitCheckIn>) {
-        private val created = habits.map { it.createdAt.date }
-        private val doneByDay = checkIns.groupBy { it.date }.mapValues { (_, v) -> v.map { it.habitId }.toSet().size }
-
+    /** Habit days kept: on each day, the habits that were due then (schedule, skips and breaks applied). */
+    private class DailyHabits(private val rows: List<HabitRow>) {
         fun rate(start: LocalDate, end: LocalDate): Float? {
             var done = 0
             var possible = 0
             var d = start
             while (d <= end) {
-                val existing = created.count { it <= d }
-                possible += existing
-                done += minOf(doneByDay[d] ?: 0, existing)
+                rows.forEach { r ->
+                    if (d < r.habit.createdAt.date || d in r.skipped) return@forEach
+                    val s = HabitSchedule.normal(r.schedule)
+                    val kept = d in r.done
+                    if (kept || (s !is Schedule.PerWeek && HabitSchedule.isScheduled(s, d))) {
+                        possible++
+                        if (kept) done++
+                    }
+                }
                 d = d.plus(DatePeriod(days = 1))
             }
             return if (possible == 0) null else done.toFloat() / possible

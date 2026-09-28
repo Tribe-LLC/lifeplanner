@@ -354,7 +354,7 @@ fun areaName(area: PlanArea): String = when (area) {
 }
 
 fun areaBlurb(area: PlanArea): String = when (area) {
-    PlanArea.HABITS -> "Small things, every day"
+    PlanArea.HABITS -> "Small things, on your schedule"
     PlanArea.FITNESS -> "Workouts, steps, runs"
     PlanArea.MONEY -> "Budget and spending"
     PlanArea.TRAVEL -> "Trips, plans, packing"

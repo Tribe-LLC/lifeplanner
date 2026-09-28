@@ -25,6 +25,11 @@ import az.tribe.lifeplanner.domain.repository.BudgetRepository
 import az.tribe.lifeplanner.domain.repository.LifeLogRepository
 import az.tribe.lifeplanner.data.meals.MealService
 import az.tribe.lifeplanner.data.plans.PlanService
+import az.tribe.lifeplanner.data.habits.HabitRow
+import az.tribe.lifeplanner.data.habits.HabitService
+import az.tribe.lifeplanner.data.career.CareerService
+import az.tribe.lifeplanner.domain.service.CareerKind
+import az.tribe.lifeplanner.domain.service.CareerPlanner
 import az.tribe.lifeplanner.domain.service.MealNotes
 import az.tribe.lifeplanner.domain.service.MealPlanner
 import az.tribe.lifeplanner.domain.service.StudyKind
@@ -72,7 +77,7 @@ import kotlinx.datetime.todayIn
 import kotlin.time.Clock
 import kotlin.time.Instant
 
-enum class DayItemType { HABIT, STEP, EVENT, WORKOUT, TRIP, MEAL, STUDY }
+enum class DayItemType { HABIT, STEP, EVENT, WORKOUT, TRIP, MEAL, STUDY, CAREER }
 
 /** One row of "Your day". Habits and plan steps can be ticked; calendar events are context. */
 data class DayItem(
@@ -137,6 +142,8 @@ class V4TodayViewModel(
     private val trips: TripRepository,
     private val plans: PlanService,
     private val meals: MealService,
+    habitService: HabitService,
+    private val career: CareerService,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -165,11 +172,12 @@ class V4TodayViewModel(
     private val upcomingPlans = lifeLogs.observeInRange(today(), today().plus(DatePeriod(days = 14)))
         .map { list -> list.filter { MealPlanner.isMeal(it) || StudyPlanner.isStudy(it) } }
 
-    private val habitsWithCounts = habitRepository.observeHabitsWithTodayStatus().mapLatest { list ->
-        val counts = runCatching { habitRepository.getCheckInsByDate(today()) }.getOrDefault(emptyList())
-            .associate { it.habitId to it.count }
-        list.map { (habit, done) -> Triple(habit, done, counts[habit.id] ?: 0) }
-    }
+    /** Applications, interviews and people, whose next step can be overdue as well as today. */
+    private val careerRows = lifeLogs.observeInRange(today().minus(DatePeriod(days = 365)), today().plus(DatePeriod(days = 1)))
+        .map { list -> list.filter { CareerKind.of(it).let { k -> k == CareerKind.APPLICATION || k == CareerKind.INTERVIEW || k == CareerKind.CONTACT } } }
+
+    /** Habits with their schedule and skips applied, so Today only shows the ones due. */
+    private val habitsWithCounts = habitService.rows
 
     /** "€88 left for food this week", from the leading budget. Null without one. */
     private val moneyChip = combine(
@@ -186,15 +194,15 @@ class V4TodayViewModel(
 
     val state: StateFlow<TodayUiState> = combine(
         combine(habitsWithCounts, goalRepository.observeAllGoals(), events, ::Triple),
-        combine(health, moneyChip, combine(weekWorkouts, upcomingPlans, ::Pair), swapTick, currentTrip) { h, m, (w, p), _, t -> Extras(h, m, w, t, p) },
+        combine(health, moneyChip, combine(weekWorkouts, upcomingPlans, careerRows, ::Triple), swapTick, currentTrip) { h, m, (w, p, cr), _, t -> Extras(h, m, w, t, p, cr) },
         stepsDoneToday,
         planAreas.enabledAreas,
         dismissed,
     ) { (habits, goals, evts), x, stepsDone, areas, dismissedId ->
-        build(habits, goals, evts, x.health, stepsDone, areas, dismissedId, x.money, x.week, x.trip, x.plans)
+        build(habits, goals, evts, x.health, stepsDone, areas, dismissedId, x.money, x.week, x.trip, x.plans, x.career)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TodayUiState(date = today()))
 
-    private data class Extras(val health: HealthToday, val money: String?, val week: List<LifeLog>, val trip: Pair<Trip, List<TripItem>>?, val plans: List<LifeLog>)
+    private data class Extras(val health: HealthToday, val money: String?, val week: List<LifeLog>, val trip: Pair<Trip, List<TripItem>>?, val plans: List<LifeLog>, val career: List<LifeLog>)
 
     init {
         refresh()
@@ -250,6 +258,13 @@ class V4TodayViewModel(
                     if (!item.done && item.type == DayItemType.MEAL) meals.sendToHealth(log.copy(status = LogStatus.DONE))
                     PostHogAnalytics.capture("v4_today_ticked", mapOf("type" to item.type.name.lowercase(), "done" to !item.done))
                 }.onFailure { Logger.w("V4Today") { "Plan toggle failed: ${it.message}" } }
+            }
+            DayItemType.CAREER -> viewModelScope.launch {
+                runCatching {
+                    val log = lifeLogs.getById(item.refId) ?: return@launch
+                    career.complete(log)
+                    PostHogAnalytics.capture("v4_today_ticked", mapOf("type" to "career", "done" to !item.done))
+                }
             }
             DayItemType.EVENT -> {}
         }
@@ -352,7 +367,7 @@ class V4TodayViewModel(
     // ── Building the day ─────────────────────────────────────────────────────
 
     private fun build(
-        habits: List<Triple<Habit, Boolean, Int>>,
+        habits: List<HabitRow>,
         goals: List<Goal>,
         evts: List<CalendarEvent>,
         h: HealthToday,
@@ -363,12 +378,15 @@ class V4TodayViewModel(
         week: List<LifeLog>,
         trip: Pair<Trip, List<TripItem>>?,
         planned: List<LifeLog>,
+        careerRows: List<LifeLog>,
     ): TodayUiState {
         val today = today()
         val items = mutableListOf<DayItem>()
         val away = trip?.first?.takeIf { it.travelMode && TripPlanner.isActive(it, today) }
 
-        habits.filter { it.first.isActive && (away == null || TravelMode.keeps(it.first)) }.forEach { (habit, done, count) ->
+        habits.filter { r -> (r.stats.dueToday || r.doneToday) && (away == null || TravelMode.keeps(r.habit)) }.forEach { r ->
+            val habit = r.habit
+            val done = r.doneToday
             items += DayItem(
                 key = "h_${habit.id}",
                 type = DayItemType.HABIT,
@@ -376,7 +394,7 @@ class V4TodayViewModel(
                 time = parseTime(habit.reminderTime),
                 title = habit.title,
                 area = areaOf(habit),
-                meta = habitMeta(habit, done, count),
+                meta = r.meta,
                 done = done,
                 checkable = true,
             )
@@ -459,6 +477,21 @@ class V4TodayViewModel(
             )
         }
 
+        // Career next steps that are due: apply, follow up, interviews today, people to catch up with.
+        if (PlanArea.CAREER in areas) CareerPlanner.actions(careerRows, today, horizonDays = 0).filter { it.due <= today }.forEach { a ->
+            items += DayItem(
+                key = "c_${a.log.id}",
+                type = DayItemType.CAREER,
+                refId = a.log.id,
+                time = if (a.timed) a.log.occurredAt.time else null,
+                title = a.title,
+                area = PlanArea.CAREER,
+                meta = a.meta,
+                done = a.log.status == LogStatus.DONE,
+                checkable = true,
+            )
+        }
+
         // The week before a trip, what is left to do for it shows up here too.
         trip?.let { (t, list) ->
             val until = t.startDate.toEpochDays() - today.toEpochDays()
@@ -517,7 +550,7 @@ class V4TodayViewModel(
             if (PlanArea.MIND in areas) h.sleepHours?.let { add(TodayChip("Slept ${formatHours(it)}", PlanArea.MIND)) }
         }
 
-        val nudge = pickNudge(checkable, h, habits.map { it.first }, week).takeIf { it?.id != dismissedId }
+        val nudge = pickNudge(checkable, h, habits.map { it.habit }, week).takeIf { it?.id != dismissedId }
 
         return TodayUiState(date = today, items = sorted, done = done, total = checkable.size, chips = chips, nudge = nudge, loaded = true)
     }
@@ -636,5 +669,17 @@ class V4TodayViewModel(
         }
 
         fun formatThousands(n: Long): String = n.toString().reversed().chunked(3).joinToString(",").reversed()
+
+        fun hhmm(t: kotlinx.datetime.LocalDateTime) = "${t.hour.toString().padStart(2, '0')}:${t.minute.toString().padStart(2, '0')}"
+
+        /** "Today", "Yesterday", or "Mon 21 Sep". */
+        fun dayLabel(d: LocalDate): String {
+            val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
+            return when (d) {
+                today -> "Today"
+                today.minus(DatePeriod(days = 1)) -> "Yesterday"
+                else -> "${FitnessWeek.shortDay(d.dayOfWeek)} ${d.day} ${d.month.name.lowercase().replaceFirstChar { it.uppercase() }.take(3)}"
+            }
+        }
     }
 }

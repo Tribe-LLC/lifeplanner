@@ -82,9 +82,11 @@ fun V4AreaScreen(
             PlanArea.MONEY -> MoneySection(onAddSpend = actions.onQuickAdd)
             PlanArea.FITNESS -> FitnessSection(state.health, onOpenHealth = { actions.onRoute("health") })
             PlanArea.TRAVEL -> TravelSection(onOpenTrip = { actions.onRoute("v4_trip/$it") })
-            PlanArea.MIND -> MindCard(state.health, onJournal = { actions.onRoute("journal_wizard") }, onJournalList = { actions.onRoute("journal") })
+            PlanArea.MIND -> MindSection(onRoute = actions.onRoute)
             PlanArea.STUDY -> StudySection(onOpenFocus = { actions.onRoute("focus_setup") })
             PlanArea.MEALS -> MealsSection(onAskCoach = actions.onAskCoach)
+            PlanArea.HABITS -> HabitsSection(onAskCoach = actions.onAskCoach)
+            PlanArea.CAREER -> CareerSection(onNewPlan = actions.onNewPlan, onOpenGoal = actions.onOpenGoal, onRoute = actions.onRoute)
             else -> {}
         }
 
@@ -117,6 +119,8 @@ fun V4AreaScreen(
         }
         V4PillButton("New plan", onClick = actions.onNewPlan, filled = false)
 
+        // The Habits page lists its habits in full above, with schedules and history.
+        if (area == PlanArea.HABITS) return@Column
         Section("Routines", if (state.routines.isEmpty()) "Routines are the small things you repeat, like \"10 minutes of stretching\"." else null)
         if (state.routines.isNotEmpty()) {
             V4Card(contentPadding = PaddingValues(0.dp), verticalSpacing = 0.dp) {
@@ -145,40 +149,5 @@ private fun Section(title: String, hint: String?) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
         Text(title, style = V4.type.headline, color = V4.colors.ink, modifier = Modifier.semantics { heading() })
         if (hint != null) Text(hint, style = V4.type.caption, color = V4.colors.ink2)
-    }
-}
-
-@Composable
-private fun MindCard(h: AreaHealth, onJournal: () -> Unit, onJournalList: () -> Unit) {
-    val c = V4.colors
-    V4Card {
-        Text("Sleep", style = V4.type.bodyStrong, color = c.ink)
-        if (h.sleepNights.isEmpty()) {
-            Text("Sleep comes in from Health once it is connected.", style = V4.type.caption, color = c.ink2)
-        } else {
-            h.sleepNights.take(5).forEach { (date, hours) ->
-                StatRow("${date.day}/${date.month.ordinal + 1}", null, V4TodayViewModel.formatHours(hours))
-            }
-        }
-    }
-    V4Card {
-        Text("Journal", style = V4.type.bodyStrong, color = c.ink)
-        Text("A few lines a day. Your mood here tells the coach how you are really doing.", style = V4.type.caption, color = c.ink2)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            V4PillButton("Write", onClick = onJournal)
-            V4PillButton("All entries", onClick = onJournalList, filled = false)
-        }
-    }
-}
-
-@Composable
-private fun StatRow(label: String, sub: String?, value: String) {
-    val c = V4.colors
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(label, style = V4.type.body, color = c.ink)
-            if (sub != null) Text(sub, style = V4.type.caption.copy(fontSize = V4.type.micro.fontSize), color = c.ink3)
-        }
-        Text(value, style = V4.type.bodyStrong, color = c.ink)
     }
 }

@@ -68,11 +68,12 @@ enum class DataFlow(val key: String, val source: Source, val label: String, val 
     WORKOUTS("workouts", Source.HEALTH, "Workouts", "Your watch in, your plans out", FlowDirection.BOTH),
     STEPS("steps", Source.HEALTH, "Steps", "Counts toward walking habits", FlowDirection.IN),
     HEART("heart", Source.HEALTH, "Heart rate", "Resting and during workouts", FlowDirection.IN),
-    SLEEP("sleep", Source.HEALTH, "Sleep", "Shapes tomorrow's plan", FlowDirection.BOTH),
-    WEIGHT("weight", Source.HEALTH, "Weight", "Logged here or on a scale", FlowDirection.BOTH),
+    SLEEP("sleep", Source.HEALTH, "Sleep", "Shapes tomorrow's plan and your mood patterns", FlowDirection.IN),
+    WEIGHT("weight", Source.HEALTH, "Weight", "From your scale or Health", FlowDirection.IN),
     MEALS("meals", Source.HEALTH, "Meals", "Calories and protein you add", FlowDirection.OUT),
     WATER("water", Source.HEALTH, "Water", "Glasses you tick off", FlowDirection.OUT),
     MINDFUL("mindful", Source.HEALTH, "Mindful minutes", "From breathing sessions", FlowDirection.OUT),
+    MOOD("mood", Source.HEALTH, "Moods", "Check-ins, as State of Mind on iPhone", FlowDirection.OUT),
     EVENTS_IN("events_in", Source.CALENDAR, "Your events", "Today plans around your meetings", FlowDirection.IN),
     EVENTS_OUT("events_out", Source.CALENDAR, "Plans as events", "Trips, study blocks and workouts", FlowDirection.OUT);
 

@@ -8,6 +8,15 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSDate
 import platform.Foundation.dateWithTimeIntervalSince1970
 import platform.HealthKit.HKAuthorizationStatusSharingAuthorized
+import platform.HealthKit.HKCategorySample
+import platform.HealthKit.HKCategoryType
+import platform.HealthKit.HKCategoryTypeIdentifierMindfulSession
+import platform.HealthKit.HKCategoryValueNotApplicable
+import platform.HealthKit.HKObjectType
+import platform.HealthKit.HKSampleType
+import platform.HealthKit.HKStateOfMind
+import platform.HealthKit.HKStateOfMindKindMomentaryEmotion
+import platform.HealthKit.*
 import platform.HealthKit.HKCorrelation
 import platform.HealthKit.HKCorrelationType
 import platform.HealthKit.HKCorrelationTypeIdentifierFood
@@ -316,6 +325,60 @@ actual class HealthDataManager {
         return save(sample, "water")
     }
 
+    // Mindful minutes and State of Mind, also straight to HealthKit.
+    private fun mindTypes(): Set<HKSampleType> = listOfNotNull<HKSampleType>(
+        HKCategoryType.categoryTypeForIdentifier(HKCategoryTypeIdentifierMindfulSession!!),
+        HKObjectType.stateOfMindType(),
+    ).toSet()
+
+    actual suspend fun supportsMindful(): Boolean = HKHealthStore.isHealthDataAvailable()
+
+    actual suspend fun canWriteMind(): Boolean {
+        if (!HKHealthStore.isHealthDataAvailable()) return false
+        val types = mindTypes()
+        return types.isNotEmpty() && types.all { store.authorizationStatusForType(it) == HKAuthorizationStatusSharingAuthorized }
+    }
+
+    actual suspend fun requestMind(): Boolean {
+        if (!HKHealthStore.isHealthDataAvailable()) return false
+        suspendCancellableCoroutine { cont ->
+            store.requestAuthorizationToShareTypes(mindTypes(), readTypes = null) { _, error ->
+                error?.let { Logger.w(TAG) { "Mind authorization failed: ${it.localizedDescription}" } }
+                if (cont.isActive) cont.resume(Unit)
+            }
+        }
+        return canWriteMind()
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    actual suspend fun writeMindful(startEpochMs: Long, endEpochMs: Long, clientId: String): Boolean {
+        if (!HKHealthStore.isHealthDataAvailable() || endEpochMs <= startEpochMs) return false
+        val type = HKCategoryType.categoryTypeForIdentifier(HKCategoryTypeIdentifierMindfulSession!!) ?: return false
+        val sample = HKCategorySample.categorySampleWithType(
+            type, HKCategoryValueNotApplicable,
+            NSDate.dateWithTimeIntervalSince1970(startEpochMs / 1000.0),
+            NSDate.dateWithTimeIntervalSince1970(endEpochMs / 1000.0),
+            mapOf<Any?, Any?>(HKMetadataKeyExternalUUID to clientId),
+        )
+        return save(sample, "mindful minutes")
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    actual suspend fun writeMood(valence: Double, labels: List<String>, associations: List<String>, atEpochMs: Long, clientId: String): Boolean {
+        if (!HKHealthStore.isHealthDataAvailable()) return false
+        val mood = runCatching {
+            HKStateOfMind.stateOfMindWithDate(
+                NSDate.dateWithTimeIntervalSince1970(atEpochMs / 1000.0),
+                HKStateOfMindKindMomentaryEmotion,
+                valence.coerceIn(-1.0, 1.0),
+                labels.mapNotNull { MOOD_LABELS[it.lowercase()] }.distinct(),
+                associations.mapNotNull { MOOD_ASSOCIATIONS[it.lowercase()] }.distinct(),
+                mapOf<Any?, Any?>(HKMetadataKeyExternalUUID to clientId),
+            )
+        }.getOrNull() ?: return false
+        return save(mood, "state of mind")
+    }
+
     private suspend fun save(obj: platform.HealthKit.HKObject, what: String): Boolean = suspendCancellableCoroutine { cont ->
         store.saveObject(obj) { ok, error ->
             error?.let { Logger.w(TAG) { "Failed to write $what: ${it.localizedDescription}" } }
@@ -345,3 +408,22 @@ private fun WorkoutKind.toExerciseType(): ExerciseType = when (this) {
     WorkoutKind.HIIT -> ExerciseType.HighIntensityIntervalTraining
     WorkoutKind.OTHER -> ExerciseType.OtherWorkout
 }
+
+/** Our feeling words to HealthKit's labels. Words without a match are simply left out. */
+private val MOOD_LABELS: Map<String, Long> = mapOf(
+    "calm" to HKStateOfMindLabelCalm, "happy" to HKStateOfMindLabelHappy, "grateful" to HKStateOfMindLabelGrateful,
+    "hopeful" to HKStateOfMindLabelHopeful, "proud" to HKStateOfMindLabelProud, "content" to HKStateOfMindLabelContent,
+    "excited" to HKStateOfMindLabelExcited, "tired" to HKStateOfMindLabelDrained, "anxious" to HKStateOfMindLabelAnxious,
+    "stressed" to HKStateOfMindLabelStressed, "sad" to HKStateOfMindLabelSad, "angry" to HKStateOfMindLabelAngry,
+    "lonely" to HKStateOfMindLabelLonely, "overwhelmed" to HKStateOfMindLabelOverwhelmed, "worried" to HKStateOfMindLabelWorried,
+    "frustrated" to HKStateOfMindLabelFrustrated,
+)
+
+/** Our "what's part of it" tags to HealthKit's associations. */
+private val MOOD_ASSOCIATIONS: Map<String, Long> = mapOf(
+    "work" to HKStateOfMindAssociationWork, "family" to HKStateOfMindAssociationFamily, "friends" to HKStateOfMindAssociationFriends,
+    "partner" to HKStateOfMindAssociationPartner, "exercise" to HKStateOfMindAssociationFitness, "health" to HKStateOfMindAssociationHealth,
+    "sleep" to HKStateOfMindAssociationHealth, "money" to HKStateOfMindAssociationMoney, "weather" to HKStateOfMindAssociationWeather,
+    "study" to HKStateOfMindAssociationEducation, "time alone" to HKStateOfMindAssociationSelfCare, "food" to HKStateOfMindAssociationSelfCare,
+    "travel" to HKStateOfMindAssociationTravel, "hobbies" to HKStateOfMindAssociationHobbies,
+)

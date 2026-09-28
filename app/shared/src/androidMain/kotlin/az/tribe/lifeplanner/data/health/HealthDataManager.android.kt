@@ -8,6 +8,9 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HydrationRecord
+import androidx.health.connect.client.records.MindfulnessSessionRecord
+import androidx.health.connect.client.HealthConnectFeatures
+import androidx.health.connect.client.feature.ExperimentalMindfulnessSessionApi
 import androidx.health.connect.client.records.MealType
 import androidx.health.connect.client.records.NutritionRecord
 import androidx.health.connect.client.units.Energy
@@ -369,7 +372,77 @@ actual class HealthDataManager {
         }
     }
 
+    @OptIn(ExperimentalMindfulnessSessionApi::class)
+    actual suspend fun supportsMindful(): Boolean {
+        val client = getClient() ?: return false
+        return try {
+            client.features.getFeatureStatus(HealthConnectFeatures.FEATURE_MINDFULNESS_SESSION) == HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    @OptIn(ExperimentalMindfulnessSessionApi::class)
+    actual suspend fun canWriteMind(): Boolean {
+        val client = getClient() ?: return false
+        if (!supportsMindful()) return false
+        return try {
+            WRITE_MINDFULNESS in client.permissionController.getGrantedPermissions()
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    actual suspend fun requestMind(): Boolean = canWriteMind()
+
+    @OptIn(ExperimentalMindfulnessSessionApi::class)
+    actual suspend fun writeMindful(startEpochMs: Long, endEpochMs: Long, clientId: String): Boolean {
+        val client = getClient() ?: return false
+        if (endEpochMs <= startEpochMs || !supportsMindful()) return false
+        return try {
+            val start = Instant.ofEpochMilli(startEpochMs)
+            val end = Instant.ofEpochMilli(endEpochMs)
+            val rules = java.time.ZoneId.systemDefault().rules
+            client.insertRecords(
+                listOf(
+                    MindfulnessSessionRecord(
+                        startTime = start,
+                        startZoneOffset = rules.getOffset(start),
+                        endTime = end,
+                        endZoneOffset = rules.getOffset(end),
+                        metadata = Metadata.manualEntry(clientRecordId = clientId),
+                        mindfulnessSessionType = MindfulnessSessionRecord.MINDFULNESS_SESSION_TYPE_BREATHING,
+                        title = "Breathing",
+                    )
+                )
+            )
+            true
+        } catch (e: Exception) {
+            Logger.w("HealthDataManager") { "Failed to write mindful minutes: ${e.message}" }
+            false
+        }
+    }
+
+    /** Health Connect has no place for moods; they stay in LifePlanner on Android. */
+    actual suspend fun writeMood(valence: Double, labels: List<String>, associations: List<String>, atEpochMs: Long, clientId: String): Boolean = false
+
     companion object {
+        @OptIn(ExperimentalMindfulnessSessionApi::class)
+        private val WRITE_MINDFULNESS = HealthPermission.getWritePermission(MindfulnessSessionRecord::class)
+
+        /**
+         * What the permission screen asks for. Mindful minutes only where Health Connect supports
+         * them, since asking for a permission it does not know can fail the whole request.
+         */
+        @OptIn(ExperimentalMindfulnessSessionApi::class)
+        fun permissionsToRequest(context: Context): Set<String> = try {
+            val client = HealthConnectClient.getOrCreate(context)
+            val mindful = client.features.getFeatureStatus(HealthConnectFeatures.FEATURE_MINDFULNESS_SESSION) == HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
+            if (mindful) REQUIRED_PERMISSIONS + WRITE_MINDFULNESS else REQUIRED_PERMISSIONS
+        } catch (e: Exception) {
+            REQUIRED_PERMISSIONS
+        }
+
         private val WRITE_EXERCISE = HealthPermission.getWritePermission(ExerciseSessionRecord::class)
         private val WRITE_NUTRITION = HealthPermission.getWritePermission(NutritionRecord::class)
         private val WRITE_HYDRATION = HealthPermission.getWritePermission(HydrationRecord::class)

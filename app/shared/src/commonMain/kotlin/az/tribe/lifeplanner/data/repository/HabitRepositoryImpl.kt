@@ -1,7 +1,7 @@
 package az.tribe.lifeplanner.data.repository
 
-import az.tribe.lifeplanner.domain.service.StreakPauses
-import az.tribe.lifeplanner.domain.service.TravelMode
+import az.tribe.lifeplanner.domain.service.HabitSchedule
+import az.tribe.lifeplanner.domain.service.HabitStreakRules
 import az.tribe.lifeplanner.data.mapper.createNewCheckIn
 import az.tribe.lifeplanner.data.mapper.toDomain
 import az.tribe.lifeplanner.data.mapper.toDomainCheckIns
@@ -29,7 +29,7 @@ class HabitRepositoryImpl(
     private val database: SharedDatabase,
     private val widgetSyncService: WidgetDataSyncService,
     private val syncManager: SyncManager,
-    private val pauses: StreakPauses = StreakPauses.None,
+    private val rules: HabitStreakRules = HabitStreakRules.Daily,
 ) : HabitRepository {
 
     private suspend fun notifyWidgets() {
@@ -219,7 +219,7 @@ class HabitRepositoryImpl(
     }
 
     override suspend fun calculateStreak(habitId: String): Int {
-        getHabitById(habitId) ?: return 0
+        val habit = getHabitById(habitId) ?: return 0
         val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
 
         // Single query: fetch all completed check-in dates in descending order
@@ -227,9 +227,9 @@ class HabitRepositoryImpl(
             .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
             .toSet()
 
-        // Days on a trip with travel mode on neither keep nor break a streak.
-        val paused = runCatching { pauses.pausedDays() }.getOrDefault(emptySet())
-        return TravelMode.streak(completedDates, paused, today)
+        // Days off the schedule, skipped days and trip days neither keep nor break a streak.
+        val r = runCatching { rules.rulesFor(habit) }.getOrDefault(HabitStreakRules.Daily.rulesFor(habit))
+        return HabitSchedule.stats(r.schedule, completedDates, r.neutral, today, habit.createdAt.date).streak
     }
 
     override suspend fun updateStreakAfterCheckIn(habitId: String) {

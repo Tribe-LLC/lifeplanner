@@ -313,12 +313,13 @@ internal fun NavGraphBuilder.appNavV4(
             onAskCoach = { prompt -> onCoachPrompt(prompt); openTab(V4Routes.COACH) },
             onOpenItem = { item ->
                 when (item.type) {
-                    DayItemType.HABIT -> navController.navigate("habit_detail_redesign/${item.refId}") { launchSingleTop = true }
+                    DayItemType.HABIT -> navController.navigate(V4Routes.area(PlanArea.HABITS)) { launchSingleTop = true }
                     DayItemType.STEP -> item.goalId?.let { navController.navigate("goal_detail/$it") { launchSingleTop = true } }
                     DayItemType.WORKOUT -> navController.navigate(V4Routes.area(PlanArea.FITNESS)) { launchSingleTop = true }
                     DayItemType.TRIP -> navController.navigate(V4Routes.area(PlanArea.TRAVEL)) { launchSingleTop = true }
                     DayItemType.MEAL -> navController.navigate(V4Routes.area(PlanArea.MEALS)) { launchSingleTop = true }
                     DayItemType.STUDY -> navController.navigate(V4Routes.area(PlanArea.STUDY)) { launchSingleTop = true }
+                    DayItemType.CAREER -> navController.navigate(V4Routes.area(PlanArea.CAREER)) { launchSingleTop = true }
                     DayItemType.EVENT -> {}
                 }
             },

@@ -48,6 +48,25 @@ expect class HealthDataManager() {
 
     /** Saves water drunk, in millilitres. */
     suspend fun writeWater(ml: Double, atEpochMs: Long, clientId: String): Boolean
+
+    /** Whether this phone has a place for mindful minutes (Android needs a recent Health Connect). */
+    suspend fun supportsMindful(): Boolean
+
+    /** Whether the user let us save mindful minutes, and on iPhone, moods. */
+    suspend fun canWriteMind(): Boolean
+
+    /** Asks for the mind grants where that happens in code (HealthKit). Android asks from the UI. */
+    suspend fun requestMind(): Boolean
+
+    /** Saves a finished breathing session as mindful minutes. */
+    suspend fun writeMindful(startEpochMs: Long, endEpochMs: Long, clientId: String): Boolean
+
+    /**
+     * Saves a mood check-in where the platform has a place for one: State of Mind on iPhone
+     * (iOS 18 and later). [valence] runs from -1 (very unpleasant) to 1 (very pleasant); [labels]
+     * are feeling words and [associations] what it is about, both in our own words. False elsewhere.
+     */
+    suspend fun writeMood(valence: Double, labels: List<String>, associations: List<String>, atEpochMs: Long, clientId: String): Boolean
 }
 
 enum class WorkoutKind(val label: String) {
