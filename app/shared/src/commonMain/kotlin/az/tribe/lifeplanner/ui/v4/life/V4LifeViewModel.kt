@@ -1,5 +1,6 @@
 package az.tribe.lifeplanner.ui.v4.life
 
+import az.tribe.lifeplanner.domain.service.PlanSpec
 import az.tribe.lifeplanner.domain.repository.TripRepository
 import az.tribe.lifeplanner.domain.service.TripPlanner
 import androidx.lifecycle.ViewModel
@@ -148,7 +149,8 @@ class V4LifeViewModel(
             }
         }
 
-        val summaries = PlanArea.entries.filter { it in areas }.map { area -> summarize(area, today, daily, goals) }
+        val specs = runCatching { PlanSpec.fromBudgets(budgets.getAll()) }.getOrDefault(emptyMap())
+        val summaries = PlanArea.entries.filter { it in areas }.map { area -> summarize(area, today, daily, goals, specs) }
         val recent = recent(today, habits, checkIns)
 
         // Early on a Monday nothing is over yet: show today's count instead of a 0% that is not earned.
@@ -178,9 +180,9 @@ class V4LifeViewModel(
         return (if (d >= 0) "+$d vs $vs" else "$d vs $vs") to (d >= 0)
     }
 
-    private suspend fun summarize(area: PlanArea, today: LocalDate, daily: DailyHabits, goals: List<Goal>): AreaSummary {
+    private suspend fun summarize(area: PlanArea, today: LocalDate, daily: DailyHabits, goals: List<Goal>, specs: Map<String, PlanSpec>): AreaSummary {
         val week = (6 downTo 0).map { today.minus(DatePeriod(days = it)) }
-        val areaGoals = goals.filter { !it.isArchived && PlanArea.forCategory(it.category) == area }
+        val areaGoals = goals.filter { !it.isArchived && PlanSpec.areaOf(it, specs) == area }
         val openGoals = areaGoals.filter { it.status != az.tribe.lifeplanner.domain.enum.GoalStatus.COMPLETED }
         fun plansFallback(empty: String, emptyCaption: String): AreaSummary {
             if (openGoals.isEmpty()) return AreaSummary(area, empty, emptyCaption, emptyList())

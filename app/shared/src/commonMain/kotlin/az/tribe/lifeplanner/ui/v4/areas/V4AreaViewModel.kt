@@ -1,5 +1,7 @@
 package az.tribe.lifeplanner.ui.v4.areas
 
+import az.tribe.lifeplanner.domain.service.PlanSpec
+import az.tribe.lifeplanner.data.plans.PlanSpecs
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import az.tribe.lifeplanner.data.habits.HabitRow
@@ -62,6 +64,7 @@ class V4AreaViewModel(
     private val uncheckHabit: UncheckHabitUseCase,
     private val awardHabitCompletion: AwardHabitCompletionUseCase,
     habitService: HabitService,
+    planSpecs: PlanSpecs,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -71,9 +74,10 @@ class V4AreaViewModel(
         goalRepository.observeAllGoals(),
         habitService.rows,
         health,
-    ) { goals, habits, h ->
+        planSpecs.all,
+    ) { goals, habits, h, specs ->
         AreaUiState(
-            plans = goals.filter { !it.isArchived && PlanArea.forCategory(it.category) == area }
+            plans = goals.filter { !it.isArchived && PlanSpec.areaOf(it, specs) == area }
                 .sortedWith(compareBy({ it.status == GoalStatus.COMPLETED }, { it.dueDate })),
             routines = habits.filter { r -> r.habit.isActive && belongs(r.habit) },
             health = h,

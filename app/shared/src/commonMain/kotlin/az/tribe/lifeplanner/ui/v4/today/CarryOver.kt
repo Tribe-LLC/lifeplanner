@@ -6,6 +6,7 @@ import az.tribe.lifeplanner.domain.model.LifeLog
 import az.tribe.lifeplanner.domain.model.LogStatus
 import az.tribe.lifeplanner.domain.model.PlanArea
 import az.tribe.lifeplanner.domain.service.FitnessWeek
+import az.tribe.lifeplanner.domain.service.PlanSpec
 import az.tribe.lifeplanner.domain.service.StudyKind
 import az.tribe.lifeplanner.domain.service.StudyPlanner
 import kotlinx.datetime.DatePeriod
@@ -35,11 +36,12 @@ object CarryOver {
     /** How far back a missed workout or study block still waits. Older ones quietly drop. */
     const val LOOKBACK_DAYS = 7
 
-    fun items(goals: List<Goal>, planned: List<LifeLog>, today: LocalDate): List<CarryItem> {
+    fun items(goals: List<Goal>, planned: List<LifeLog>, today: LocalDate, specs: Map<String, PlanSpec> = emptyMap()): List<CarryItem> {
         val out = mutableListOf<CarryItem>()
-        goals.filter { it.status != GoalStatus.COMPLETED && !it.isArchived }.forEach { goal ->
+        // A paused plan's steps wait for it, not here.
+        goals.filter { it.status != GoalStatus.COMPLETED && !it.isArchived && specs[it.id]?.isPaused(today) != true }.forEach { goal ->
             goal.milestones.filter { !it.isCompleted && it.dueDate != null && it.dueDate < today }.forEach { m ->
-                out += CarryItem("s_${m.id}", DayItemType.STEP, m.id, m.title, "${goal.title}, ${since(m.dueDate!!, today)}", PlanArea.forCategory(goal.category), goal.id)
+                out += CarryItem("s_${m.id}", DayItemType.STEP, m.id, m.title, "${goal.title}, ${since(m.dueDate!!, today)}", PlanSpec.areaOf(goal, specs), goal.id)
             }
         }
         val from = today.minus(DatePeriod(days = LOOKBACK_DAYS))

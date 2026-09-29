@@ -1,5 +1,7 @@
 package az.tribe.lifeplanner.ui.v4.today
 
+import az.tribe.lifeplanner.domain.service.PlanSpec
+import az.tribe.lifeplanner.data.plans.PlanSpecs
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import az.tribe.lifeplanner.data.analytics.Analytics
@@ -180,6 +182,7 @@ class V4TodayViewModel(
     private val career: CareerService,
     private val mind: az.tribe.lifeplanner.data.mind.MindService,
     private val todayMoney: TodayMoney,
+    private val planSpecs: PlanSpecs,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -226,10 +229,10 @@ class V4TodayViewModel(
         combine(health, moneyChip, combine(weekWorkouts, upcomingPlans, careerRows, ::Triple), swapTick, currentTrip) { h, m, (w, p, cr), _, t -> Extras(h, m, w, t, p, cr) },
         stepsDoneToday,
         planAreas.enabledAreas,
-        combine(dismissed, wrapClosed, ::Pair),
-    ) { (habits, goals, evts), x, stepsDone, areas, (dismissedId, closed) ->
+        combine(dismissed, wrapClosed, planSpecs.all, ::Triple),
+    ) { (habits, goals, evts), x, stepsDone, areas, (dismissedId, closed, specs) ->
         lastGoals = goals
-        build(habits, goals, evts, x.health, stepsDone, areas, dismissedId, x.money, x.week, x.trip, x.plans, x.career, closed)
+        build(habits, goals, evts, x.health, stepsDone, areas, dismissedId, x.money, x.week, x.trip, x.plans, x.career, closed, specs)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TodayUiState(date = today()))
 
     private var lastGoals: List<Goal> = emptyList()
@@ -445,6 +448,7 @@ class V4TodayViewModel(
         allPlanned: List<LifeLog>,
         careerRows: List<LifeLog>,
         wrapClosed: Boolean,
+        specs: Map<String, PlanSpec>,
     ): TodayUiState {
         val planned = allPlanned.filter { !FitnessWeek.isWorkout(it) && !MindCheckIns.isCheckIn(it) }
         val today = today()
@@ -468,7 +472,7 @@ class V4TodayViewModel(
             )
         }
 
-        goals.filter { it.status != GoalStatus.COMPLETED && !it.isArchived }.forEach { goal ->
+        goals.filter { it.status != GoalStatus.COMPLETED && !it.isArchived && specs[it.id]?.isPaused(today) != true }.forEach { goal ->
             goal.milestones.forEach { m ->
                 val due = m.dueDate
                 // Earlier ones wait under "From yesterday" instead of piling up here as overdue.
@@ -481,7 +485,7 @@ class V4TodayViewModel(
                         refId = m.id,
                         time = null,
                         title = m.title,
-                        area = PlanArea.forCategory(goal.category),
+                        area = PlanSpec.areaOf(goal, specs),
                         meta = goal.title + if (overdue) ", overdue" else "",
                         done = m.isCompleted,
                         checkable = true,
@@ -659,7 +663,7 @@ class V4TodayViewModel(
             habitsLeft = habitsLeft,
             slipped = habits.count { it.slip != null },
             tip = tip,
-            carry = CarryOver.items(goals, allPlanned, today),
+            carry = CarryOver.items(goals, allPlanned, today, specs),
             wrapUp = wrapUp,
         )
     }

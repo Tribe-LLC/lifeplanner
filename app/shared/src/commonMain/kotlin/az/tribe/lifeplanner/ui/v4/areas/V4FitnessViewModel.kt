@@ -1,5 +1,6 @@
 package az.tribe.lifeplanner.ui.v4.areas
 
+import az.tribe.lifeplanner.domain.service.PlanSpec
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import az.tribe.lifeplanner.data.calendar.CalendarPreferences
@@ -139,7 +140,8 @@ class V4FitnessViewModel(
             ex.sleepHours?.let { h ->
                 add(FitnessLink(PlanArea.MIND, "Sleep and mind", "${V4TodayViewModel.formatHours(h)} last night" + if (h < 6) ", so go easy today." else ". Good for a harder session."))
             }
-            gs.firstOrNull { !it.isArchived && it.status != GoalStatus.COMPLETED && PlanArea.forCategory(it.category) == PlanArea.FITNESS }?.let { g ->
+            val specs = PlanSpec.fromBudgets(bs)
+            gs.firstOrNull { !it.isArchived && it.status != GoalStatus.COMPLETED && PlanSpec.areaOf(it, specs) == PlanArea.FITNESS }?.let { g ->
                 add(FitnessLink(PlanArea.HABITS, "Plan", "${g.title}. ${g.progress ?: 0}% there."))
             }
         }

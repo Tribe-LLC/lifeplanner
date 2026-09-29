@@ -57,6 +57,7 @@ val v4Module = module {
     single { az.tribe.lifeplanner.data.fitness.WorkoutWeekService(get(), get(), get(), get()) }
     single { TripWeather(get()) }
     single { PlanService(get(), get(), get(), get()) }
+    single { az.tribe.lifeplanner.data.plans.PlanSpecs(get()) }
     single { MealService(get(), get(), get(), get(), get(), get(), get()) }
     single { az.tribe.lifeplanner.data.meals.MealCoachService(get(), get()) }
     single { StudyService(get(), get(), get(), get()) }
@@ -83,8 +84,8 @@ val v4Module = module {
     single { az.tribe.lifeplanner.data.mind.MoodNudges(get(), get()) }
 
     viewModelOf(::V4FirstRunViewModel)
-    // 23 dependencies, one more than viewModelOf takes.
-    viewModel { V4TodayViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
+    // 24 dependencies, more than viewModelOf takes.
+    viewModel { V4TodayViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
     viewModelOf(::V4CheckInViewModel)
     viewModelOf(::V4ReviewViewModel)
     viewModelOf(::V4LifeViewModel)
@@ -102,6 +103,6 @@ val v4Module = module {
     viewModelOf(::V4TripRecapViewModel)
     viewModel { params -> V4TripViewModel(params.get<String>(), get(), get(), get(), get(), get(), get(), get(), get()) }
     viewModel { params ->
-        V4AreaViewModel(params.get<PlanArea>(), get(), get(), get(), get(), get(), get(), get())
+        V4AreaViewModel(params.get<PlanArea>(), get(), get(), get(), get(), get(), get(), get(), get())
     }
 }
