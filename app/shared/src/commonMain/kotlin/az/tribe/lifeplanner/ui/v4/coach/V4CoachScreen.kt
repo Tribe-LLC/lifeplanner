@@ -262,6 +262,8 @@ fun V4CoachScreen(
             onDraft = { draft = it },
             canSend = draft.isNotBlank() && ui.currentSession != null && !ui.isSending,
             onSend = { send(draft) },
+            replying = ui.isSending || ui.isStreaming,
+            onStop = { viewModel.stopReply() },
             modifier = Modifier.padding(
                 start = 12.dp, end = 12.dp, top = 6.dp,
                 bottom = if (typing) 8.dp else bottomInset.calculateBottomPadding() + 8.dp,
@@ -270,9 +272,20 @@ fun V4CoachScreen(
     }
 }
 
-/** One rounded box that grows up to six lines, with the send button inside it. */
+/**
+ * One rounded box that grows up to six lines, with the send button inside it. While the coach
+ * answers, the button is Stop; what was written so far is kept.
+ */
 @Composable
-private fun Composer(draft: String, onDraft: (String) -> Unit, canSend: Boolean, onSend: () -> Unit, modifier: Modifier = Modifier) {
+private fun Composer(
+    draft: String,
+    onDraft: (String) -> Unit,
+    canSend: Boolean,
+    onSend: () -> Unit,
+    replying: Boolean,
+    onStop: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val c = V4.colors
     Row(
         modifier
@@ -298,16 +311,30 @@ private fun Composer(draft: String, onDraft: (String) -> Unit, canSend: Boolean,
                 modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Message your coach" },
             )
         }
-        Box(
-            Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(if (canSend) c.accent else c.trackOff)
-                .clickable(role = Role.Button, enabled = canSend) { onSend() }
-                .semantics { contentDescription = "Send" },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(PhosphorIcons.Bold.ArrowUp, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(20.dp))
+        if (replying) {
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(c.ink)
+                    .clickable(role = Role.Button) { onStop() }
+                    .semantics { contentDescription = "Stop the reply" },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(Modifier.size(13.dp).clip(RoundedCornerShape(3.dp)).background(c.background))
+            }
+        } else {
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(if (canSend) c.accent else c.trackOff)
+                    .clickable(role = Role.Button, enabled = canSend) { onSend() }
+                    .semantics { contentDescription = "Send" },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(PhosphorIcons.Bold.ArrowUp, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(20.dp))
+            }
         }
     }
 }

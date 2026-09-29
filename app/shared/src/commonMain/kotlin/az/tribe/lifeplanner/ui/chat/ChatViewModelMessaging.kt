@@ -81,6 +81,9 @@ internal suspend fun ChatViewModel.sendMessageStreaming(
                 error = "Response failed. Please try again."
             )
         }
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        // Stopped by the user: stopReply keeps what was written and sets the state.
+        throw e
     } catch (e: Exception) {
         Logger.e("ChatViewModel") { "Streaming failed: ${e.message}" }
         // Reload messages from DB (user message may have been saved)
@@ -135,3 +138,12 @@ internal suspend fun ChatViewModel.sendMessageNonStreaming(
         )
     }
 }
+
+/**
+ * A reply cut short can end inside one of the coach's hidden tags ("[SUGGEST_HABIT: ...") or
+ * carry whole ones. Keep only the words.
+ */
+internal fun cleanPartial(text: String): String =
+    text.replace(Regex("""\[(SUGGEST_[A-Z]+|UPDATE_SITUATION)[^\]]*\]"""), "")
+        .replace(Regex("""\[[A-Z_]*[^\]]*$"""), "")
+        .trim()

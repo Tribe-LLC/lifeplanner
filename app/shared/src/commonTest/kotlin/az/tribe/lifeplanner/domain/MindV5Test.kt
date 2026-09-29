@@ -177,3 +177,15 @@ class MoodNudgeTest {
         assertEquals(V4Routes.area(PlanArea.MIND), NudgePlan.routeFor(NudgePlan.MOOD))
     }
 }
+
+class StoppedReplyTest {
+    @kotlin.test.Test
+    fun keepsWordsDropsTags() {
+        kotlin.test.assertEquals(
+            "Try a short walk.",
+            az.tribe.lifeplanner.ui.chat.cleanPartial("Try a short walk. [SUGGEST_HABIT: title=Walk] [SUGGEST_GO"),
+        )
+        kotlin.test.assertEquals("Plan the week", az.tribe.lifeplanner.ui.chat.cleanPartial("Plan the week [UPDATE_SITUATION: busy]"))
+        kotlin.test.assertEquals("", az.tribe.lifeplanner.ui.chat.cleanPartial("  "))
+    }
+}

@@ -213,42 +213,40 @@ class AiProxyServiceImpl(
             }
 
             val channel = response.bodyAsChannel()
-            var currentEvent = ""
+            val reader = ProxySseReader()
             val accumulated = StringBuilder()
             var receivedAnyEvent = false
             var doneEmitted = false
 
-            while (!channel.isClosedForRead) {
-                val line = channel.readUTF8Line() ?: break
-
-                if (line.startsWith("event: ")) {
-                    currentEvent = line.removePrefix("event: ").trim()
-                } else if (line.startsWith("data: ")) {
-                    val data = line.removePrefix("data: ")
-                    receivedAnyEvent = true
-
-                    when (currentEvent) {
-                        "text" -> {
-                            accumulated.append(data)
-                            emit(AiProxyService.StreamEvent.TextChunk(data))
-                        }
-                        "done" -> {
-                            doneEmitted = true
-                            emit(AiProxyService.StreamEvent.Done(accumulated.toString()))
-                        }
-                        "error" -> {
-                            try {
-                                val errorJson = Json.parseToJsonElement(data).jsonObject
-                                val errorMsg = errorJson["error"]?.jsonPrimitive?.content ?: "Unknown stream error"
-                                emit(AiProxyService.StreamEvent.Error(errorMsg))
-                            } catch (_: Exception) {
-                                emit(AiProxyService.StreamEvent.Error(data))
-                            }
+            suspend fun handle(piece: Pair<String, String>?) {
+                val (event, data) = piece ?: return
+                receivedAnyEvent = true
+                when (event) {
+                    "text" -> {
+                        accumulated.append(data)
+                        emit(AiProxyService.StreamEvent.TextChunk(data))
+                    }
+                    "done" -> {
+                        doneEmitted = true
+                        emit(AiProxyService.StreamEvent.Done(accumulated.toString()))
+                    }
+                    "error" -> {
+                        try {
+                            val errorJson = Json.parseToJsonElement(data).jsonObject
+                            val errorMsg = errorJson["error"]?.jsonPrimitive?.content ?: "Unknown stream error"
+                            emit(AiProxyService.StreamEvent.Error(errorMsg))
+                        } catch (_: Exception) {
+                            emit(AiProxyService.StreamEvent.Error(data))
                         }
                     }
                 }
-                // Empty lines (SSE separators) are just skipped
             }
+
+            while (!channel.isClosedForRead) {
+                val line = channel.readUTF8Line() ?: break
+                handle(reader.push(line))
+            }
+            handle(reader.finish())
 
             // If we got text chunks but no done event, emit done with accumulated text
             if (!receivedAnyEvent && accumulated.isEmpty()) {

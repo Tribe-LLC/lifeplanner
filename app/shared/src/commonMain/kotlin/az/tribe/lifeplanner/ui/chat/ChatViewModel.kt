@@ -23,6 +23,7 @@ import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 // ── Goal questionnaire (inline in chat) ──────────────────────────────────────
@@ -281,13 +282,38 @@ class ChatViewModel(
         val isFirst = _uiState.value.messages.none { it.role == MessageRole.USER }
         Analytics.chatMessageSent(coachId, isFirst)
 
-        viewModelScope.launch {
+        replyJob = viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSending = true, error = null)
 
             if (isStreamable()) {
                 sendMessageStreaming(session.id, content, userContext, relatedGoalId)
             } else {
                 sendMessageNonStreaming(session.id, content, userContext, relatedGoalId)
+            }
+        }
+    }
+
+    /** The reply being written, so Stop can end it. */
+    private var replyJob: Job? = null
+
+    /**
+     * Stops the coach mid-reply, like the stop button in the big chat apps. What was written so
+     * far is kept: saved as the coach's message, so it stays in the chat and in the history the
+     * coach sees next time. A stop before any words arrive just ends the wait.
+     */
+    fun stopReply() {
+        val job = replyJob?.takeIf { it.isActive } ?: return
+        val session = _uiState.value.currentSession ?: return
+        val partial = cleanPartial(_uiState.value.streamingText.orEmpty())
+        job.cancel()
+        replyJob = null
+        _uiState.value = _uiState.value.copy(isSending = false, isStreaming = false, streamingText = null, error = null)
+        viewModelScope.launch {
+            try {
+                if (partial.isNotBlank()) chatRepository.addAssistantMessage(session.id, partial)
+                _uiState.value = _uiState.value.copy(messages = chatRepository.getMessages(session.id))
+            } catch (e: Exception) {
+                Logger.w("ChatViewModel") { "Keeping a stopped reply failed: ${e.message}" }
             }
         }
     }
