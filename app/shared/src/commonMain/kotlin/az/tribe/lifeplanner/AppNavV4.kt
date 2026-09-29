@@ -52,6 +52,7 @@ import az.tribe.lifeplanner.ui.v4.firstrun.WelcomeScreen
 import az.tribe.lifeplanner.ui.v4.life.V4LifeScreen
 import az.tribe.lifeplanner.ui.v4.plans.PlanSheet
 import az.tribe.lifeplanner.ui.v4.plans.PlanSheetRequest
+import az.tribe.lifeplanner.ui.v4.plans.V4PlanScreen
 import az.tribe.lifeplanner.ui.v4.quickadd.QuickAddSheet
 import az.tribe.lifeplanner.ui.v4.shell.V4AddAnythingBar
 import az.tribe.lifeplanner.ui.v4.shell.V4BottomBar
@@ -279,7 +280,7 @@ internal fun V4AppRoot(
                     onDismiss = { planSheet = null },
                     onOpenPlan = { id ->
                         planSheet = null
-                        navController.navigate("goal_detail/$id") { launchSingleTop = true }
+                        navController.navigate(V4Routes.plan(id)) { launchSingleTop = true }
                     },
                 )
             }
@@ -394,7 +395,7 @@ internal fun NavGraphBuilder.appNavV4(
             onOpenItem = { item ->
                 when (item.type) {
                     DayItemType.HABIT -> navController.navigate(V4Routes.area(PlanArea.HABITS)) { launchSingleTop = true }
-                    DayItemType.STEP -> item.goalId?.let { navController.navigate("goal_detail/$it") { launchSingleTop = true } }
+                    DayItemType.STEP -> item.goalId?.let { navController.navigate(V4Routes.plan(it)) { launchSingleTop = true } }
                     DayItemType.WORKOUT -> navController.navigate(V4Routes.area(PlanArea.FITNESS)) { launchSingleTop = true }
                     DayItemType.TRIP -> navController.navigate(V4Routes.area(PlanArea.TRAVEL)) { launchSingleTop = true }
                     DayItemType.MEAL -> navController.navigate(V4Routes.area(PlanArea.MEALS)) { launchSingleTop = true }
@@ -463,7 +464,7 @@ internal fun NavGraphBuilder.appNavV4(
             area = area,
             actions = AreaActions(
                 onBack = { navController.popBackStack() },
-                onOpenGoal = { navController.navigate("goal_detail/$it") { launchSingleTop = true } },
+                onOpenGoal = { navController.navigate(V4Routes.plan(it)) { launchSingleTop = true } },
                 onOpenHabit = { navController.navigate("habit_detail_redesign/$it") { launchSingleTop = true } },
                 onNewPlan = { a, line -> onNewPlan(PlanSheetRequest(a, line, if (line.isBlank()) "area" else "idea")) },
                 onNewRoutine = { navController.navigate(Screen.AddHabit.route) { launchSingleTop = true } },
@@ -471,6 +472,16 @@ internal fun NavGraphBuilder.appNavV4(
                 onQuickAdd = onQuickAdd,
                 onAskCoach = { text -> onCoachPrompt(text); openTab(V4Routes.COACH) },
             ),
+        )
+    }
+
+    composable(V4Routes.PLAN, arguments = listOf(navArgument("goalId") { type = NavType.StringType })) { entry ->
+        val goalId = entry.arguments?.read { getStringOrNull("goalId") } ?: return@composable
+        V4PlanScreen(
+            goalId = goalId,
+            onBack = { navController.popBackStack() },
+            onOpenArea = { navController.navigate(V4Routes.area(it)) { launchSingleTop = true } },
+            onNewPlan = onNewPlan,
         )
     }
 

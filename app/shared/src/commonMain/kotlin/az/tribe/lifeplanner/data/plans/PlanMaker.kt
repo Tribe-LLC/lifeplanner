@@ -362,16 +362,15 @@ class PlanMaker(
     /** A step added on the plan's page. With no day given it goes just before the last one. */
     suspend fun addStep(goalId: String, title: String, date: LocalDate? = null) {
         val goal = goals.getGoalById(goalId) ?: return
-        val today = today()
-        val left = goal.milestones.filter { !it.isCompleted }.mapNotNull { it.dueDate }.sorted()
-        val day = date ?: when {
-            left.size >= 2 -> LocalDate.fromEpochDays(((left[left.size - 2].toEpochDays() + left.last().toEpochDays()) / 2).toInt())
-            left.size == 1 -> LocalDate.fromEpochDays(((today.toEpochDays() + left.last().toEpochDays()) / 2).toInt()).coerceAtLeast(today)
-            else -> goal.dueDate.coerceAtLeast(today.plus(DatePeriod(days = 1)))
-        }
+        val day = date ?: newStepDate(goal, today())
         goals.addMilestone(goalId, Milestone(Uuid.random().toString(), title.trim(), dueDate = day))
         if (goal.status == GoalStatus.COMPLETED) reopen(goal)
         PostHogAnalytics.capture("v4_plan_step_added")
+    }
+
+    suspend fun rename(goalId: String, title: String) {
+        val goal = goals.getGoalById(goalId) ?: return
+        title.trim().takeIf { it.isNotEmpty() && it != goal.title }?.let { goals.updateGoal(goal.copy(title = it)) }
     }
 
     suspend fun editStep(step: Milestone, title: String, date: LocalDate?) =
@@ -387,6 +386,16 @@ class PlanMaker(
     }
 
     companion object {
+        /** Where a new step lands when no day is picked: between the last two steps left, so the last stays last. */
+        fun newStepDate(goal: Goal, today: LocalDate): LocalDate {
+            val left = goal.milestones.filter { !it.isCompleted }.mapNotNull { it.dueDate }.sorted()
+            return when {
+                left.size >= 2 -> LocalDate.fromEpochDays(((left[left.size - 2].toEpochDays() + left.last().toEpochDays()) / 2).toInt())
+                left.size == 1 -> LocalDate.fromEpochDays(((today.toEpochDays() + left.last().toEpochDays()) / 2).toInt())
+                else -> goal.dueDate
+            }.coerceAtLeast(today.plus(DatePeriod(days = 1)))
+        }
+
         fun timelineFor(start: LocalDate, target: LocalDate): GoalTimeline = when (PlanScheduler.days(start, target)) {
             in Int.MIN_VALUE..92 -> GoalTimeline.SHORT_TERM
             in 93..275 -> GoalTimeline.MID_TERM

@@ -36,6 +36,10 @@ object V4Routes {
     const val AREA = "v4_area/{area}"
     fun area(area: PlanArea) = "v4_area/${area.key}"
 
+    /** A plan's own page. v3's goal_detail stays for the v3 shell only. */
+    const val PLAN = "v4_plan/{goalId}"
+    fun plan(goalId: String) = "v4_plan/$goalId"
+
     const val TRIP = "v4_trip/{tripId}"
     fun trip(tripId: String) = "v4_trip/$tripId"
 

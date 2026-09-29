@@ -50,6 +50,8 @@ data class PlanView(
     /** The first step not done yet. */
     val next: Milestone?,
     val catchUp: CatchUp?,
+    /** For a finished plan: "You ran a 5K." and what it took. */
+    val recap: Pair<String, String>? = null,
 ) {
     val id: String get() = goal.id
     val title: String get() = goal.title
@@ -78,6 +80,7 @@ data class PlanView(
                 goal, spec, PlanSpec.areaOf(goal, spec?.let { mapOf(goal.id to it) } ?: emptyMap()), state, start, steps, progress, pace,
                 next = steps.firstOrNull { !it.isCompleted },
                 catchUp = if (state == PlanState.ACTIVE) PlanScheduler.catchUp(pace, goal.dueDate, today, spec?.asked) else null,
+                recap = if (state == PlanState.DONE) PlanProgress.recap(goal, spec, inputs, spec?.finished ?: today) else null,
             )
         }
     }
