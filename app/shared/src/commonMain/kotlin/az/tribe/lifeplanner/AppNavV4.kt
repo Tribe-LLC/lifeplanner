@@ -248,7 +248,7 @@ internal fun V4AppRoot(
                     if (currentRoute in V4Routes.ADD_BAR) {
                         V4AddAnythingBar(
                             onClick = { showQuickAdd = true },
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                            modifier = Modifier.align(Alignment.End).padding(end = 16.dp, bottom = 12.dp),
                         )
                     }
                     V4BottomBar(currentRoute = currentRoute, onSelect = ::openTab)

@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -87,28 +88,21 @@ fun V4BottomBar(currentRoute: String?, onSelect: (String) -> Unit, modifier: Mod
  */
 @Composable
 fun V4AddAnythingBar(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    // A compact "+ Add" in the corner, not a bar across the screen: it covered the content
+    // on Today and Life. The examples ("coffee 4.50", "ran 5k") live in the sheet it opens.
     Row(
         modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = 56.dp)
-            .clip(RoundedCornerShape(28.dp))
-            .background(V4.colors.inverse)
+            .shadow(6.dp, RoundedCornerShape(26.dp))
+            .heightIn(min = 52.dp)
+            .clip(RoundedCornerShape(26.dp))
+            .background(V4.colors.accent)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { contentDescription = "Add anything" }
-            .padding(start = 18.dp, end = 8.dp),
+            .padding(start = 16.dp, end = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            "Add anything: “coffee 4.50”, “ran 5k”",
-            style = V4.type.body,
-            color = V4.colors.onInverse,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Box(Modifier.size(40.dp).clip(CircleShape).background(V4.colors.accent), contentAlignment = Alignment.Center) {
-            Icon(PhosphorIcons.Bold.Plus, contentDescription = null, tint = V4.colors.onAccent, modifier = Modifier.size(20.dp))
-        }
+        Icon(PhosphorIcons.Bold.Plus, contentDescription = null, tint = V4.colors.onAccent, modifier = Modifier.size(20.dp))
+        Text("Add", style = V4.type.bodyStrong, color = V4.colors.onAccent)
     }
 }
