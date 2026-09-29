@@ -111,6 +111,6 @@ val v4Module = module {
     viewModelOf(::V4TripRecapViewModel)
     viewModel { params -> V4TripViewModel(params.get<String>(), get(), get(), get(), get(), get(), get(), get(), get()) }
     viewModel { params ->
-        V4AreaViewModel(params.get<PlanArea>(), get(), get(), get(), get(), get(), get(), get(), get())
+        V4AreaViewModel(params.get<PlanArea>(), get(), get(), get(), get(), get(), get(), get())
     }
 }

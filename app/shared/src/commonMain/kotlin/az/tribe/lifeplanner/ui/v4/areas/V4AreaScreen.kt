@@ -23,7 +23,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.model.PlanArea
 import az.tribe.lifeplanner.ui.v4.components.CheckCircleButton
 import az.tribe.lifeplanner.ui.v4.components.OneLine
@@ -31,10 +30,10 @@ import az.tribe.lifeplanner.ui.v4.components.V4BackLink
 import az.tribe.lifeplanner.ui.v4.components.V4Card
 import az.tribe.lifeplanner.ui.v4.components.V4Divider
 import az.tribe.lifeplanner.ui.v4.components.V4PillButton
-import az.tribe.lifeplanner.ui.v4.components.V4ProgressBar
 import az.tribe.lifeplanner.ui.v4.components.areaBlurb
 import az.tribe.lifeplanner.ui.v4.components.areaName
 import az.tribe.lifeplanner.ui.v4.illustration.AreaIllustration
+import az.tribe.lifeplanner.ui.v4.plans.AreaPlansList
 import az.tribe.lifeplanner.ui.v4.theme.V4
 import az.tribe.lifeplanner.ui.v4.today.V4TodayViewModel
 import az.tribe.lifeplanner.ui.v4.travel.TravelSection
@@ -87,38 +86,12 @@ fun V4AreaScreen(
             PlanArea.STUDY -> StudySection(onOpenFocus = { actions.onRoute("focus_setup") })
             PlanArea.MEALS -> MealsSection(onAskCoach = actions.onAskCoach)
             PlanArea.HABITS -> HabitsSection(onAskCoach = actions.onAskCoach, onRoute = actions.onRoute)
-            PlanArea.CAREER -> CareerSection(onNewPlan = { actions.onNewPlan(PlanArea.CAREER, "") }, onOpenGoal = actions.onOpenGoal, onRoute = actions.onRoute)
+            PlanArea.CAREER -> CareerSection(onRoute = actions.onRoute)
             else -> {}
         }
 
-        Section("Plans", if (state.plans.isEmpty()) "Plans are bigger things with steps, like \"Run a 5K by December\"." else null)
-        if (state.plans.isNotEmpty()) {
-            V4Card(contentPadding = PaddingValues(0.dp), verticalSpacing = 0.dp) {
-                state.plans.forEachIndexed { i, g ->
-                    if (i > 0) V4Divider()
-                    val done = g.milestones.count { it.isCompleted }
-                    val total = g.milestones.size
-                    Column(
-                        Modifier.fillMaxWidth().clickable(role = Role.Button) { actions.onOpenGoal(g.id) }.padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        OneLine(g.title, V4.type.bodyStrong, if (g.status == GoalStatus.COMPLETED) c.ink3 else c.ink)
-                        Text(
-                            when {
-                                g.status == GoalStatus.COMPLETED -> "Done"
-                                total == 0 -> "No steps yet"
-                                else -> "$done of $total steps" + (g.milestones.firstOrNull { !it.isCompleted }?.let { ". Next: ${it.title}" } ?: "")
-                            },
-                            style = V4.type.caption,
-                            color = c.ink2,
-                            maxLines = 2,
-                        )
-                        if (total > 0) V4ProgressBar(done.toFloat() / total, ac.color, height = 6.dp)
-                    }
-                }
-            }
-        }
-        V4PillButton("New plan", onClick = { actions.onNewPlan(area, "") }, filled = false)
+        Section("Plans", if (state.plans.isEmpty()) "Plans are bigger things with steps, like \"Run a 5K by December\". Say one in a line and the steps and dates are worked out." else null)
+        AreaPlansList(area, state.plans, state.done, state.letGo, onOpen = actions.onOpenGoal, onNewPlan = { actions.onNewPlan(area, it) })
 
         // The Habits page lists its habits in full above, with schedules and history.
         if (area == PlanArea.HABITS) return@Column

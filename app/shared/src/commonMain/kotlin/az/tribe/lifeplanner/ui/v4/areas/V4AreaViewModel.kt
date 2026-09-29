@@ -1,17 +1,15 @@
 package az.tribe.lifeplanner.ui.v4.areas
 
-import az.tribe.lifeplanner.domain.service.PlanSpec
-import az.tribe.lifeplanner.data.plans.PlanSpecs
+import az.tribe.lifeplanner.data.plans.PlanBoard
+import az.tribe.lifeplanner.data.plans.PlanState
+import az.tribe.lifeplanner.data.plans.PlanView
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import az.tribe.lifeplanner.data.habits.HabitRow
 import az.tribe.lifeplanner.data.habits.HabitService
-import az.tribe.lifeplanner.domain.enum.GoalStatus
 import az.tribe.lifeplanner.domain.enum.HealthMetricType
-import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.domain.model.Habit
 import az.tribe.lifeplanner.domain.model.PlanArea
-import az.tribe.lifeplanner.domain.repository.GoalRepository
 import az.tribe.lifeplanner.domain.repository.HabitRepository
 import az.tribe.lifeplanner.domain.repository.HealthRepository
 import az.tribe.lifeplanner.ui.v4.today.V4TodayViewModel
@@ -46,7 +44,11 @@ data class AreaHealth(
 }
 
 data class AreaUiState(
-    val plans: List<Goal> = emptyList(),
+    /** Plans under way or paused, soonest date first. */
+    val plans: List<PlanView> = emptyList(),
+    /** Finished and let go, behind a "2 done, 1 let go" link. */
+    val done: List<PlanView> = emptyList(),
+    val letGo: List<PlanView> = emptyList(),
     val routines: List<HabitRow> = emptyList(),
     val health: AreaHealth = AreaHealth(),
 )
@@ -58,27 +60,28 @@ data class AreaUiState(
 class V4AreaViewModel(
     val area: PlanArea,
     habitRepository: HabitRepository,
-    goalRepository: GoalRepository,
     private val healthRepository: HealthRepository,
     private val checkInHabit: CheckInHabitUseCase,
     private val uncheckHabit: UncheckHabitUseCase,
     private val awardHabitCompletion: AwardHabitCompletionUseCase,
     habitService: HabitService,
-    planSpecs: PlanSpecs,
+    board: PlanBoard,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
     private val health = MutableStateFlow(AreaHealth())
 
     val state: StateFlow<AreaUiState> = combine(
-        goalRepository.observeAllGoals(),
+        board.plans,
         habitService.rows,
         health,
-        planSpecs.all,
-    ) { goals, habits, h, specs ->
+    ) { all, habits, h ->
+        val mine = all.filter { it.area == area }
         AreaUiState(
-            plans = goals.filter { !it.isArchived && PlanSpec.areaOf(it, specs) == area }
-                .sortedWith(compareBy({ it.status == GoalStatus.COMPLETED }, { it.dueDate })),
+            plans = mine.filter { it.state == PlanState.ACTIVE || it.state == PlanState.PAUSED }
+                .sortedWith(compareBy({ it.state == PlanState.PAUSED }, { it.target })),
+            done = mine.filter { it.state == PlanState.DONE }.sortedByDescending { it.spec?.finished ?: it.target },
+            letGo = mine.filter { it.state == PlanState.LET_GO },
             routines = habits.filter { r -> r.habit.isActive && belongs(r.habit) },
             health = h,
         )

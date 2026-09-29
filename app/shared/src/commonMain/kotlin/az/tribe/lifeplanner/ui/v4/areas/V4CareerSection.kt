@@ -67,13 +67,14 @@ import kotlin.time.Clock
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
- * The Career page's own part, in two modes. Growing where you are: the career plan, wins you can
- * copy into a review, skills, and people. Looking for a job: next actions first, then applications
- * by stage; wins, skills and people stay below. Every open application always has a next action.
+ * The Career page's own part, in two modes. Growing where you are: wins you can copy into a
+ * review, skills, and people (the career plan sits in the Plans list below). Looking for a job:
+ * next actions first, then applications by stage; wins, skills and people stay below. Every open
+ * application always has a next action.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun CareerSection(onNewPlan: () -> Unit, onOpenGoal: (String) -> Unit, onRoute: (String) -> Unit, viewModel: V4CareerViewModel = koinViewModel()) {
+fun CareerSection(onRoute: (String) -> Unit, viewModel: V4CareerViewModel = koinViewModel()) {
     val s by viewModel.state.collectAsState()
     val c = V4.colors
     val tint = c.area(PlanArea.CAREER)
@@ -164,26 +165,8 @@ fun CareerSection(onNewPlan: () -> Unit, onOpenGoal: (String) -> Unit, onRoute: 
             }
         }
         V4PillButton("Add an application", onClick = { addingApp = true }, container = tint.color)
-    } else {
-        // ── Career plan ──
-        val plan = s.plan
-        V4Card(modifier = Modifier.fillMaxWidth(), color = tint.soft, bordered = false, onClick = plan?.let { { onOpenGoal(it.id) } }) {
-            Text("Career plan", style = V4.type.label, color = tint.ink)
-            if (plan == null) {
-                Text("Where do you want to be in a year?", style = V4.type.headline, color = c.ink)
-                Text("A role, a raise, a switch. The coach can break it into steps.", style = V4.type.caption, color = c.ink2)
-                V4PillButton("Set a career goal", onClick = onNewPlan, container = tint.color)
-            } else {
-                val done = plan.milestones.count { it.isCompleted }
-                Text(plan.title, style = V4.type.headline, color = c.ink)
-                Text(
-                    if (plan.milestones.isEmpty()) "No steps yet" else "$done of ${plan.milestones.size} steps" + (plan.milestones.firstOrNull { !it.isCompleted }?.let { ". Next: ${it.title}" } ?: ""),
-                    style = V4.type.caption, color = c.ink2,
-                )
-                if (plan.milestones.isNotEmpty()) V4ProgressBar(done.toFloat() / plan.milestones.size, tint.color)
-            }
-        }
     }
+    // Not searching: the career plan is in the page's Plans list, with every other plan.
 
     // ── Wins ──
     Heading("Wins")

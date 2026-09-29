@@ -6,10 +6,7 @@ import az.tribe.lifeplanner.data.analytics.PostHogAnalytics
 import az.tribe.lifeplanner.data.career.CareerService
 import az.tribe.lifeplanner.data.plans.PlanService
 import az.tribe.lifeplanner.data.study.StudyService
-import az.tribe.lifeplanner.domain.enum.GoalStatus
-import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.domain.model.LifeLog
-import az.tribe.lifeplanner.domain.model.PlanArea
 import az.tribe.lifeplanner.domain.repository.FocusRepository
 import az.tribe.lifeplanner.domain.repository.GoalRepository
 import az.tribe.lifeplanner.domain.repository.LifeLogRepository
@@ -38,7 +35,6 @@ data class SkillRow(val log: LifeLog, val level: Int, val want: Int, val practic
 
 data class CareerState(
     val searching: Boolean = false,
-    val plan: Goal? = null,
     val actions: List<CareerPlanner.Action> = emptyList(),
     val applications: List<LifeLog> = emptyList(),
     val stageCounts: Map<Stage, Int> = emptyMap(),
@@ -75,18 +71,16 @@ class V4CareerViewModel(
 
     val state: StateFlow<CareerState> = combine(
         logs.observeInRange(today().minus(DatePeriod(days = 3650)), today().plus(DatePeriod(days = 3650))),
-        goals.observeAllGoals(),
         career.searching,
         focusTimes,
         canCalendar,
-    ) { all, gs, searching, focusRows, cal ->
+    ) { all, searching, focusRows, cal ->
         val today = today()
         val rows = all.filter { CareerKind.of(it) != null }
         val apps = rows.filter { CareerKind.of(it) == CareerKind.APPLICATION }
         val times = StudyPlanner.times(all, focusRows)
         CareerState(
             searching = searching,
-            plan = gs.filter { !it.isArchived && it.status != GoalStatus.COMPLETED && PlanArea.forCategory(it.category) == PlanArea.CAREER }.sortedWith(compareBy { it.dueDate }).firstOrNull(),
             actions = CareerPlanner.actions(rows, today).filter { it.due <= today || it.timed },
             applications = apps.sortedWith(compareBy({ CareerPlanner.stage(it) == Stage.CLOSED }, { it.occurredAt })),
             stageCounts = apps.groupingBy { CareerPlanner.stage(it) }.eachCount(),

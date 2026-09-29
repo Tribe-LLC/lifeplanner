@@ -109,4 +109,16 @@ class PlanPageModelTest {
         // Too close to the date for "sooner".
         assertEquals(2, PlanPageModel.dateChoices(view(LocalDate(2026, 11, 20)), LocalDate(2026, 11, 20)).size)
     }
+
+    @Test
+    fun theAreaListSaysWhatIsNext() {
+        val today = LocalDate(2026, 10, 20)
+        assertEquals("Next: Run 2 km, by Sun 25 Oct", PlanPageModel.listNext(view(today), today))
+        assertEquals("Next: Run 2 km, was Sun 25 Oct", PlanPageModel.listNext(view(LocalDate(2026, 10, 27)), LocalDate(2026, 10, 27)))
+        assertEquals("No steps yet. Tap to add the first", PlanPageModel.listNext(view(today, goal.copy(milestones = emptyList())), today))
+        assertEquals("Paused until you come back", PlanPageModel.listNext(view(today, s = spec.copy(pausedFrom = today)), today))
+        assertEquals("2 done, 1 let go", PlanPageModel.doneLink(2, 1))
+        assertEquals("1 let go", PlanPageModel.doneLink(0, 1))
+        assertNull(PlanPageModel.doneLink(0, 0))
+    }
 }

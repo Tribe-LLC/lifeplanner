@@ -139,6 +139,27 @@ object PlanPageModel {
         else -> null
     }
 
+    // ── The area page's list ─────────────────────────────────────────────────
+
+    /** The line under a plan on its area page: "Next: Run 3 km, by Sun 8 Nov". */
+    fun listNext(v: PlanView, today: LocalDate): String {
+        if (v.state == PlanState.PAUSED) return v.spec?.pausedUntil?.let { "Paused until ${PlanScheduler.dayLabel(it)}" } ?: "Paused until you come back"
+        if (v.steps.isEmpty()) return "No steps yet. Tap to add the first"
+        val m = v.next ?: return "Every step done"
+        val d = m.dueDate ?: return "Next: ${m.title}"
+        return "Next: ${m.title}, " + when {
+            d == today -> "today"
+            d < today -> "was ${PlanScheduler.dayLabel(d)}"
+            else -> "by ${PlanScheduler.dayLabel(d)}"
+        }
+    }
+
+    /** "2 done, 1 let go", or null when there are none. */
+    fun doneLink(done: Int, letGo: Int): String? = listOfNotNull(
+        done.takeIf { it > 0 }?.let { "$it done" },
+        letGo.takeIf { it > 0 }?.let { "$it let go" },
+    ).takeIf { it.isNotEmpty() }?.joinToString(", ")
+
     // ── Catching up ──────────────────────────────────────────────────────────
 
     fun catchUpTitle(v: PlanView): String =
