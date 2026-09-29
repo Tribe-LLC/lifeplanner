@@ -61,6 +61,7 @@ val v4Module = module {
     single { az.tribe.lifeplanner.data.plans.PlanBoard(get(), get(), get(), get(), get(), get(), get()) }
     single { az.tribe.lifeplanner.data.plans.PlanMaker(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
     single { az.tribe.lifeplanner.data.plans.PlanAutoTick(get(), get()) }
+    single { az.tribe.lifeplanner.data.plans.PlanStepSuggester(get(), get()) }
     single { MealService(get(), get(), get(), get(), get(), get(), get()) }
     single { az.tribe.lifeplanner.data.meals.MealCoachService(get(), get()) }
     single { StudyService(get(), get(), get(), get()) }
