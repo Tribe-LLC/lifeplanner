@@ -44,6 +44,7 @@ import az.tribe.lifeplanner.domain.service.TripPlanner
 import kotlinx.datetime.toLocalDateTime
 import az.tribe.lifeplanner.ui.v4.components.V4PillButton
 import az.tribe.lifeplanner.ui.v4.components.V4PrimaryButton
+import az.tribe.lifeplanner.ui.v4.components.V4TextButton
 import az.tribe.lifeplanner.ui.v4.components.areaName
 import az.tribe.lifeplanner.ui.v4.illustration.AreaIllustration
 import az.tribe.lifeplanner.ui.v4.theme.V4
@@ -59,6 +60,7 @@ import org.koin.compose.viewmodel.koinViewModel
 fun QuickAddSheet(
     onDismiss: () -> Unit,
     onAskCoach: (String) -> Unit,
+    onMakePlan: (String) -> Unit,
     viewModel: QuickAddViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -106,15 +108,20 @@ fun QuickAddSheet(
                     textStyle = V4.type.bodyStrong.copy(fontSize = V4.type.headline.fontSize, color = c.ink),
                     cursorBrush = SolidColor(c.accent),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { viewModel.save() }),
+                    keyboardActions = KeyboardActions(onDone = { if (state.plan != null) onMakePlan(state.text) else viewModel.save() }),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().focusRequester(focus).semantics { contentDescription = "What happened?" },
                 )
             }
 
             val entries = state.parsed?.entries.orEmpty()
+            val plan = state.plan
             when {
                 state.text.isBlank() -> Hint()
+                plan != null -> PlanOfferCard(
+                    plan, alt = QuickAddPlans.altLabel(entries)?.takeIf { entries.isNotEmpty() },
+                    onMake = { onMakePlan(plan.line) }, onAlt = viewModel::logItInstead,
+                )
                 entries.isEmpty() -> {
                     Text("Not sure where this goes.", style = V4.type.label, color = c.ink3)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -128,7 +135,7 @@ fun QuickAddSheet(
                         style = V4.type.label,
                         color = c.ink3,
                     )
-                    entries.forEach { EntryCard(it) }
+                    entries.forEachIndexed { i, e -> EntryCard(e, state.planNotes.getOrNull(i)) }
                     state.approx?.let { Text(it + (state.tripPlace?.let { p -> ". Plain amounts are in local money while you are in $p." } ?: ""), style = V4.type.caption, color = c.ink2) }
                     val saved = state.savedMessage
                     V4PrimaryButton(
@@ -148,14 +155,32 @@ fun QuickAddSheet(
 @Composable
 private fun Hint() {
     Text(
-        "Try: \"coffee 4.50\", \"ran 5k in 28 min\", \"netflix 12 monthly\", \"slept badly\", \"drink water every day\".",
+        "Try: \"coffee 4.50\", \"ran 5k in 28 min\", \"netflix 12 monthly\", \"drink water every day\", or a plan like \"run a 5k by December\".",
         style = V4.type.caption,
         color = V4.colors.ink2,
     )
 }
 
+/** "A PLAN": the line reads as something to work toward, not something done. */
 @Composable
-private fun EntryCard(e: ParsedEntry) {
+private fun PlanOfferCard(plan: PlanOffer, alt: String?, onMake: () -> Unit, onAlt: () -> Unit) {
+    val c = V4.colors
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.accentSoft).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text("A PLAN", style = V4.type.micro, color = c.accentInk)
+        Text(plan.title, style = V4.type.bodyStrong, color = c.ink)
+        Text(plan.text, style = V4.type.caption, color = c.ink2)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+            V4PillButton("Make it a plan", onClick = onMake)
+            if (alt != null) V4TextButton(alt, onClick = onAlt, color = c.ink2)
+        }
+    }
+}
+
+@Composable
+private fun EntryCard(e: ParsedEntry, planNote: String?) {
     val ac = V4.colors.area(e.area)
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(ac.soft).padding(12.dp),
@@ -173,7 +198,7 @@ private fun EntryCard(e: ParsedEntry) {
                 style = V4.type.micro, color = ac.ink,
             )
             Text(headline(e), style = V4.type.bodyStrong, color = V4.colors.ink)
-            detail(e)?.let { Text(it, style = V4.type.caption, color = V4.colors.ink2) }
+            (planNote ?: detail(e))?.let { Text(it, style = V4.type.caption, color = V4.colors.ink2) }
         }
     }
 }

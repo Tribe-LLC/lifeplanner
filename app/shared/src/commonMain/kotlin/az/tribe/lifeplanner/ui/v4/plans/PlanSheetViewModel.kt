@@ -70,6 +70,8 @@ class PlanSheetViewModel(
         val inputs = SheetInputs(line = req.line, preset = req.area, source = req.source)
         _state.value = PlanSheetState(inputs = inputs, ctx = ctx, ideas = PlanSheetModel.ideas(req.area, ctx.currency))
         refresh()
+        // A line already chosen (typed in Add anything, an idea, a next plan) goes straight to its plan.
+        if (req.line.isNotBlank() && _state.value.preview != null) _state.value = _state.value.copy(stage = SheetStage.PREVIEW)
         PostHogAnalytics.capture("v4_plan_sheet_opened", mapOf("source" to req.source, "area" to (req.area?.key ?: "none"), "prefilled" to req.line.isNotBlank()))
         viewModelScope.launch { learnAboutUser(ctx) }
     }

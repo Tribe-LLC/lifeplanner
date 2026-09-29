@@ -32,7 +32,11 @@ data class ParsedEntry(
     val isBill get() = bill != null
 }
 
-data class ParsedInput(val entries: List<ParsedEntry>, val occurredAt: LocalDateTime)
+/**
+ * [looksLikePlan] is set for a line with a day ahead or a goal word ("run a 5k by december",
+ * "save 2000 for japan"): the sheet offers to make it a plan before filing it as a log.
+ */
+data class ParsedInput(val entries: List<ParsedEntry>, val occurredAt: LocalDateTime, val looksLikePlan: Boolean = false)
 
 /**
  * Turns "lunch ramen 12.50" into a meal and a spend, "ran 5k in 28 min" into a workout, "drink
@@ -108,6 +112,12 @@ object QuickAddParser {
             if (h in 0..23 && min in 0..59) at = LocalDateTime(at.date, LocalTime(h, min))
         }
 
+        // Money for a plan, "put aside 100 for Japan" or "paid off 200": kept apart from spending.
+        PlanLineParser.putAside(text, defaultCurrency)?.let { p ->
+            val title = (if (p.paidOff) "Paid off" else "Put aside") + (p.subject?.let { if (p.paidOff) ", $it" else " for $it" } ?: "")
+            return ParsedInput(listOf(ParsedEntry(PlanArea.MONEY, LogKind.EXPENSE, title, amount = p.amount, currency = p.currency ?: defaultCurrency, category = PlanProgress.SAVINGS)), at)
+        }
+
         // A bill or subscription: an amount that repeats, "rent 600 every month on the 1st".
         parseBill(text, lower, words, at.date, defaultCurrency)?.let { return ParsedInput(listOf(it), at) }
 
@@ -174,9 +184,9 @@ object QuickAddParser {
             }
         } else if (out.isEmpty() && words.any { it in spendWords }) {
             // "paid rent" with no amount: nothing to count yet, so nothing to file.
-            return ParsedInput(emptyList(), at)
+            return ParsedInput(emptyList(), at, PlanLineParser.looksLikePlan(text, at.date))
         }
-        return ParsedInput(out, at)
+        return ParsedInput(out, at, PlanLineParser.looksLikePlan(text, at.date))
     }
 
     private val billMarkers = listOf(

@@ -272,6 +272,10 @@ internal fun V4AppRoot(
                         coachPrompt = text
                         openTab(V4Routes.COACH)
                     },
+                    onMakePlan = { line ->
+                        showQuickAdd = false
+                        planSheet = PlanSheetRequest(line = line, source = "add_anything")
+                    },
                 )
             }
 

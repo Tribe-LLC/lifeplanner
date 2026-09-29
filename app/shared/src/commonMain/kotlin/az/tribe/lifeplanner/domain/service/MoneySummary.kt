@@ -50,9 +50,13 @@ object MoneySummary {
         }
     }
 
-    /** Money that went out. Planned rows (bills waiting for their date) are not spends yet. */
+    /**
+     * Money that went out. Planned rows (bills waiting for their date) are not spends yet, and money
+     * put aside for a plan is still the user's, so it is not spending either.
+     */
     fun isSpend(log: LifeLog) =
-        log.area == PlanArea.MONEY && log.kind == LogKind.EXPENSE && log.amount != null && log.status != LogStatus.PLANNED
+        log.area == PlanArea.MONEY && log.kind == LogKind.EXPENSE && log.amount != null && log.status != LogStatus.PLANNED &&
+            log.category != PlanProgress.SAVINGS
 
     /**
      * [fx] converts spends in other currencies into the budget's. [bills] (planned bill rows) add
