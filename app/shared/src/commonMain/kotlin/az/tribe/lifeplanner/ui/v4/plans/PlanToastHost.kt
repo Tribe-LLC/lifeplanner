@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,12 +42,14 @@ import org.koin.compose.koinInject
  * after a tick, a plan finished. One at a time, a few seconds each; tapping one opens its plan.
  */
 @Composable
-fun BoxScope.PlanToastHost(bottom: Dp, onOpen: (String) -> Unit, maker: PlanMaker = koinInject()) {
+fun BoxScope.PlanToastHost(bottom: Dp, openPlanId: String?, onOpen: (String) -> Unit, maker: PlanMaker = koinInject()) {
+    val skip by rememberUpdatedState(openPlanId)
     val queue = remember { Channel<PlanEvent>(capacity = 4, onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST) }
     var shown by remember { mutableStateOf<PlanEvent?>(null) }
     LaunchedEffect(maker) { maker.events.collect { queue.trySend(it) } }
     LaunchedEffect(queue) {
         for (e in queue) {
+            if (e.goalId == skip) continue
             shown = e
             delay(if (e.finished) 5_000 else 3_500)
             shown = null

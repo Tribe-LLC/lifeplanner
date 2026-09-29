@@ -86,8 +86,9 @@ class PlanSheetViewModel(
             .getOrDefault(emptyList())
         val minutes = runs.isNotEmpty() && runs.none { it.quantity != null && (it.unit == null || it.unit.equals("km", ignoreCase = true)) }
         val weight = runCatching { health.getLatestWeight() }.getOrNull()
-        if (minutes || weight != null) {
-            _state.value = _state.value.copy(ctx = ctx.copy(runInMinutes = minutes, weightKg = weight))
+        val taken = maker.takenWeekDays()
+        if (minutes || weight != null || taken.isNotEmpty()) {
+            _state.value = _state.value.copy(ctx = ctx.copy(runInMinutes = minutes, weightKg = weight, weekTaken = taken))
             refresh()
         }
     }

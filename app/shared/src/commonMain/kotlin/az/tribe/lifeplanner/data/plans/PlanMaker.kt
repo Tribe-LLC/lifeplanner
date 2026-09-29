@@ -13,6 +13,7 @@ import az.tribe.lifeplanner.domain.enum.HabitType
 import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.domain.model.LifeLog
 import az.tribe.lifeplanner.domain.model.LogKind
+import az.tribe.lifeplanner.domain.model.LogStatus
 import az.tribe.lifeplanner.domain.model.Milestone
 import az.tribe.lifeplanner.domain.model.PlanArea
 import az.tribe.lifeplanner.domain.model.XpRewards
@@ -23,7 +24,9 @@ import az.tribe.lifeplanner.domain.repository.LifeLogRepository
 import az.tribe.lifeplanner.domain.repository.PlanAreasRepository
 import az.tribe.lifeplanner.domain.service.BillRepeat
 import az.tribe.lifeplanner.domain.service.CatchUpChoice
+import az.tribe.lifeplanner.domain.service.Bills
 import az.tribe.lifeplanner.domain.service.FitnessWeek
+import az.tribe.lifeplanner.domain.service.PlanContext
 import az.tribe.lifeplanner.domain.service.PlanProgress
 import az.tribe.lifeplanner.domain.service.PlanScheduler
 import az.tribe.lifeplanner.domain.service.PlanSpec
@@ -41,8 +44,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.datetime.todayIn
@@ -144,12 +149,15 @@ class PlanMaker(
         return id
     }
 
+    /** Days the Fitness week already uses, so the sheet can show where a plan's runs will really go. */
+    suspend fun takenWeekDays(): Set<DayOfWeek> = runCatching { week.currentWeek()?.slots.orEmpty().map { it.day }.toSet() }.getOrDefault(emptySet())
+
     private suspend fun makeRoutine(r: RoutineDraft, goalId: String, d: PlanDraft): Pair<RoutineKind, String>? = when (r.kind) {
         RoutineKind.FITNESS_WEEK -> {
             val current = week.currentWeek()
             val taken = current?.slots.orEmpty().map { it.day }.toSet()
             // Days already in the week keep what is there; a run goes on the next free day instead.
-            val days = r.days.map { day -> if (day !in taken) day else DayOfWeek.entries.firstOrNull { it !in taken && it !in r.days } ?: day }.toSet()
+            val days = FitnessWeek.placeRuns(r.days, taken)
             val added = days.filter { it !in taken }.map { WeekSlot(it, r.title, r.time, r.minutes ?: 30) }
             if (added.isNotEmpty()) week.save(current?.slots.orEmpty() + added, current?.toCalendar ?: false)
             RoutineKind.FITNESS_WEEK to days.sortedBy { it.ordinal }.joinToString(",") { it.name.take(3) }
@@ -235,12 +243,14 @@ class PlanMaker(
 
     suspend fun letGo(goalId: String) {
         goals.archiveGoal(goalId)
+        billOn(specs.get(goalId), false)
         PostHogAnalytics.capture("v4_plan_let_go", mapOf("progress" to (goals.getGoalById(goalId)?.progress ?: 0)))
     }
 
     /** Brings a plan back. Steps that went by while it was away are spread again from tomorrow. */
     suspend fun bringBack(goalId: String) {
         goals.unarchiveGoal(goalId)
+        specs.get(goalId)?.let { if (!it.isPaused(today())) billOn(it, true) }
         val goal = goals.getGoalById(goalId) ?: return
         val today = today()
         val left = goal.milestones.filter { !it.isCompleted }
@@ -261,6 +271,7 @@ class PlanMaker(
             shift(goal, days)
             routineHabit(spec)?.let { habits.takeBreak(it, days) }
         }
+        billOn(spec, false)
         PostHogAnalytics.capture("v4_plan_paused", mapOf("days" to (days ?: 0)))
     }
 
@@ -277,6 +288,7 @@ class PlanMaker(
             routineHabit(spec)?.let { habits.endBreak(it) }
         }
         specs.save(spec.copy(pausedFrom = null, pausedUntil = null))
+        if (goals.getGoalById(goalId)?.isArchived == false) billOn(spec, true)
         PostHogAnalytics.capture("v4_plan_resumed", mapOf("early" to (until != null && until >= today)))
     }
 
@@ -285,6 +297,41 @@ class PlanMaker(
         val today = today()
         val moved = goal.milestones.map { m -> if (m.isCompleted) m else m.copy(dueDate = PlanScheduler.shift(listOf(m.dueDate), by, today).first()) }
         goals.updateGoal(goal.copy(dueDate = goal.dueDate.plus(DatePeriod(days = by)).coerceAtLeast(today), milestones = moved))
+    }
+
+    /** A money plan's monthly reminder, when it has one. */
+    private suspend fun planBill(spec: PlanSpec?): LifeLog? =
+        spec?.takeIf { it.routineKind == RoutineKind.MONTHLY }?.routineId?.let { logs.getById(it) }
+
+    /**
+     * A plan let go or paused stops asking for money, so its reminder leaves the Money page. Back
+     * on, it asks again from its next date, never for the months it was away.
+     */
+    private suspend fun billOn(spec: PlanSpec?, on: Boolean) {
+        val bill = planBill(spec) ?: return
+        if (!on) {
+            if (bill.status == LogStatus.PLANNED) logs.save(bill.copy(status = LogStatus.SKIPPED))
+            return
+        }
+        if (bill.status == LogStatus.PLANNED) return
+        val rule = Bills.ruleOf(bill) ?: return
+        val today = today()
+        var due = bill.date
+        while (due < today) due = Bills.next(rule, due)
+        logs.save(bill.copy(status = LogStatus.PLANNED, occurredAt = LocalDateTime(due, bill.occurredAt.time)))
+        syncBill(spec)
+    }
+
+    /** Keeps the reminder asking for what is still needed each month, after money goes in or the date moves. */
+    private suspend fun syncBill(spec: PlanSpec?) {
+        val bill = planBill(spec)?.takeIf { it.status == LogStatus.PLANNED } ?: return
+        val target = spec?.target ?: return
+        val goal = goals.getGoalById(spec.goalId) ?: return
+        val today = today()
+        val saved = (spec.baseline ?: 0.0) +
+            PlanProgress.savings(logs.getInRange(spec.start.minus(DatePeriod(days = 1)), today), goal.id, spec).sumOf { it.amount ?: 0.0 }
+        val need = PlanTemplates.monthlyAmount(target - saved, PlanContext(today, goal.dueDate, spec.currency ?: bill.currency ?: ""))
+        if (need > 0 && need != bill.amount) logs.save(bill.copy(amount = need))
     }
 
     private suspend fun routineHabit(spec: PlanSpec) =
@@ -368,6 +415,7 @@ class PlanMaker(
                 occurredAt = now(), externalId = goalId,
             ),
         )
+        syncBill(spec)
         PostHogAnalytics.capture("v4_plan_put_aside", mapOf("debt" to debt))
     }
 

@@ -13,6 +13,7 @@ import az.tribe.lifeplanner.domain.repository.LifeLogRepository
 import az.tribe.lifeplanner.domain.service.CatchUp
 import az.tribe.lifeplanner.domain.service.Pace
 import az.tribe.lifeplanner.domain.service.PlanInputs
+import az.tribe.lifeplanner.domain.service.PaceKind
 import az.tribe.lifeplanner.domain.service.PlanProgress
 import az.tribe.lifeplanner.domain.service.PlanProgressResult
 import az.tribe.lifeplanner.domain.service.PlanScheduler
@@ -80,7 +81,7 @@ data class PlanView(
                 start, goal.dueDate, today, progress.fraction, overdue,
                 paused = state == PlanState.PAUSED, done = state == PlanState.DONE, keptOn = spec?.keptOn,
                 lastDayLabel = if (spec?.track == PlanTrack.RUN) "Race day" else "Last day",
-            )
+            ).let { if (state == PlanState.LET_GO) it.copy(kind = PaceKind.PAUSED, label = "Let go") else it }
             return PlanView(
                 goal, spec, PlanSpec.areaOf(goal, spec?.let { mapOf(goal.id to it) } ?: emptyMap()), state, start, steps, progress, pace,
                 next = steps.firstOrNull { !it.isCompleted },

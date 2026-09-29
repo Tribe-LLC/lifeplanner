@@ -245,7 +245,7 @@ object PlanPageModel {
         return when (spec.routineKind ?: return null) {
             RoutineKind.FITNESS_WEEK -> {
                 val days = spec.routineId?.split(',')?.mapNotNull { k -> DayOfWeek.entries.firstOrNull { it.name.startsWith(k) } }.orEmpty()
-                ("Easy runs" + if (days.isNotEmpty()) ", " + days.joinToString(" ") { FitnessWeek.shortDay(it) } else "") to
+                ("Easy runs" + if (days.isNotEmpty()) ", " + FitnessWeek.dayList(days.toSet()) else "") to
                     "From your Fitness week, on Today. Each run counts toward the steps above."
             }
             RoutineKind.STUDY_REPEAT -> "${name ?: spec.subject ?: "Study"} on weekdays" to "A study block on Today each weekday. The time counts here."

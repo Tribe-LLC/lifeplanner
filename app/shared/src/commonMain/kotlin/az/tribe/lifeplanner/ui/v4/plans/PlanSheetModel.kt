@@ -5,6 +5,7 @@ import az.tribe.lifeplanner.data.plans.DraftStep
 import az.tribe.lifeplanner.data.plans.PlanDraft
 import az.tribe.lifeplanner.data.plans.SuggestedStep
 import az.tribe.lifeplanner.domain.model.PlanArea
+import az.tribe.lifeplanner.domain.service.FitnessWeek
 import az.tribe.lifeplanner.domain.service.PlanContext
 import az.tribe.lifeplanner.domain.service.PlanLine
 import az.tribe.lifeplanner.domain.service.PlanLineParser
@@ -12,6 +13,7 @@ import az.tribe.lifeplanner.domain.service.PlanRecipe
 import az.tribe.lifeplanner.domain.service.PlanScheduler
 import az.tribe.lifeplanner.domain.service.PlanTemplates
 import az.tribe.lifeplanner.domain.service.PlanTrack
+import az.tribe.lifeplanner.domain.service.RoutineKind
 import az.tribe.lifeplanner.domain.service.StepDraft
 import az.tribe.lifeplanner.ui.v4.components.areaName
 import kotlinx.datetime.DatePeriod
@@ -45,6 +47,8 @@ data class SheetContext(
     val currency: String,
     val runInMinutes: Boolean = false,
     val weightKg: Double? = null,
+    /** Days the Fitness week already uses; a plan's runs move off them. */
+    val weekTaken: Set<DayOfWeek> = emptySet(),
 )
 
 /** A step as the sheet lists it. [key] stays the same while the user removes or moves others. */
@@ -106,7 +110,7 @@ object PlanSheetModel {
         val given = i.target ?: line.target
         val suggestedEnd = ctx.today.plus(DatePeriod(days = PlanTemplates.defaultWeeks(line) * 7))
         val end = given ?: suggestedEnd
-        val recipe = PlanTemplates.recipe(line, i.answer, PlanContext(ctx.today, end, ctx.currency, ctx.runInMinutes, ctx.weightKg))
+        val recipe = onFreeDays(PlanTemplates.recipe(line, i.answer, PlanContext(ctx.today, end, ctx.currency, ctx.runInMinutes, ctx.weightKg)), ctx.weekTaken)
         val base = when {
             recipe.template != null -> recipe.steps.zip(PlanScheduler.date(recipe.steps, ctx.today, end, recipe.weekday))
                 .mapIndexed { n, (s, d) -> SheetStep("t$n", s.title, d, s.done, s.auto, s.minutes) }
@@ -198,6 +202,17 @@ object PlanSheetModel {
             first -> "$at. On Today that day"
             else -> at
         }
+    }
+
+    /** Runs on a busy Fitness week: the preview names the days they will really land on. */
+    private fun onFreeDays(r: PlanRecipe, taken: Set<DayOfWeek>): PlanRecipe {
+        val routine = r.routine?.takeIf { it.kind == RoutineKind.FITNESS_WEEK && it.days.any { d -> d in taken } } ?: return r
+        val days = FitnessWeek.placeRuns(routine.days, taken)
+        val at = routine.time?.let { " at ${it.hour.toString().padStart(2, '0')}:${it.minute.toString().padStart(2, '0')}" }.orEmpty()
+        return r.copy(
+            routine = routine.copy(days = days),
+            routineLine = "${FitnessWeek.dayList(days)}$at on your Fitness week, around the workouts already there.",
+        )
     }
 
     fun routineLine(p: SheetPreview): String =

@@ -54,4 +54,27 @@ object FitnessWeek {
     fun dayName(d: DayOfWeek) = d.name.lowercase().replaceFirstChar { it.uppercase() }
 
     fun shortDay(d: DayOfWeek) = dayName(d).take(3)
+
+    /**
+     * Where a plan's runs go on a week that already has workouts: a wanted day that is free keeps
+     * its run, a taken one moves to the next free day that no other run has claimed. Each run gets
+     * its own day, so a busy week never loses one; only a full week puts two on the same day.
+     */
+    fun placeRuns(wanted: Set<DayOfWeek>, taken: Set<DayOfWeek>): Set<DayOfWeek> {
+        val days = DayOfWeek.entries
+        val placed = mutableSetOf<DayOfWeek>()
+        wanted.sortedBy { it.ordinal }.filter { it !in taken }.forEach { placed += it }
+        wanted.sortedBy { it.ordinal }.filter { it in taken }.forEach { day ->
+            val free = (1..6).map { days[(day.ordinal + it) % 7] }.firstOrNull { it !in taken && it !in placed && it !in wanted }
+                ?: (1..6).map { days[(day.ordinal + it) % 7] }.firstOrNull { it !in taken && it !in placed }
+            placed += free ?: day
+        }
+        return placed
+    }
+
+    /** "Mon, Wed and Sat". */
+    fun dayList(days: Set<DayOfWeek>): String {
+        val names = days.sortedBy { it.ordinal }.map { shortDay(it) }
+        return if (names.size <= 1) names.joinToString() else names.dropLast(1).joinToString(", ") + " and " + names.last()
+    }
 }

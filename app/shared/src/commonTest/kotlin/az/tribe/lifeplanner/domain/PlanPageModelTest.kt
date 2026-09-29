@@ -86,7 +86,7 @@ class PlanPageModelTest {
         assertEquals("Run a 10K", PlanPageModel.nextIdea(done, "EUR"))
         assertEquals("Start a 10K plan", PlanPageModel.nextLabel("Run a 10K"))
         assertEquals("You ran a 5K.", done.recap?.first)
-        assertEquals("Easy runs, Mon Wed Sat", PlanPageModel.routine(done, null)?.first)
+        assertEquals("Easy runs, Mon, Wed and Sat", PlanPageModel.routine(done, null)?.first)
     }
 
     @Test

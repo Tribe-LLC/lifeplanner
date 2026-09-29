@@ -31,6 +31,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
 import androidx.savedstate.read
 import az.tribe.lifeplanner.core.FeatureFlags
@@ -279,8 +280,11 @@ internal fun V4AppRoot(
                 )
             }
 
+            val onScreen by navController.currentBackStackEntryAsState()
             PlanToastHost(
                 bottom = if (currentRoute in V4Routes.TABS && !typing) barHeight + 8.dp else 24.dp,
+                // The plan's own page already shows what the message would say.
+                openPlanId = onScreen?.takeIf { it.destination.route == V4Routes.PLAN }?.arguments?.read { getStringOrNull("goalId") },
                 onOpen = { navController.navigate(V4Routes.plan(it)) { launchSingleTop = true } },
             )
 
