@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -73,8 +74,14 @@ import org.koin.compose.viewmodel.koinViewModel
 private enum class V4AuthPhase { OUT, IN, VERIFY }
 
 /** Space the tab screens leave at the bottom for the add bar and the tab bar. */
-private val TabInset = PaddingValues(bottom = 150.dp)
-private val CoachInset = PaddingValues(bottom = 86.dp)
+/**
+ * The measured height of what sits at the bottom of a tab (the tab bar, plus the add bar where
+ * there is one). Measured rather than fixed, because the home indicator area differs by phone and
+ * a fixed number left the coach's composer half under the bar on iPhone.
+ */
+private val LocalTabBarHeight = androidx.compose.runtime.compositionLocalOf { 86.dp }
+private val TabInset @Composable get() = PaddingValues(bottom = LocalTabBarHeight.current + 12.dp)
+private val CoachInset @Composable get() = PaddingValues(bottom = LocalTabBarHeight.current)
 
 /**
  * The v4 shell: first run, the three tabs, area pages, and every v3 graph behind them. App.kt
@@ -185,7 +192,10 @@ internal fun V4AppRoot(
         // While typing, every screen ends at the top of the keyboard (Android and iPhone alike), and
         // the tab bar steps aside so a field or the coach's composer sits right on the keyboard.
         val typing = az.tribe.lifeplanner.ui.v4.components.keyboardUp()
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        var barHeight by remember { mutableStateOf(86.dp) }
         Box(Modifier.fillMaxSize().background(V4.colors.background)) {
+          androidx.compose.runtime.CompositionLocalProvider(LocalTabBarHeight provides barHeight) {
             NavHost(
                 navController = navController,
                 startDestination = startDestination,
@@ -230,8 +240,11 @@ internal fun V4AppRoot(
                 appNavWheel(navController)
             }
 
+          }
             if (currentRoute in V4Routes.TABS && !typing) {
-                Column(Modifier.align(Alignment.BottomCenter)) {
+                Column(
+                    Modifier.align(Alignment.BottomCenter).onSizeChanged { barHeight = with(density) { it.height.toDp() } },
+                ) {
                     if (currentRoute in V4Routes.ADD_BAR) {
                         V4AddAnythingBar(
                             onClick = { showQuickAdd = true },

@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import az.tribe.lifeplanner.ui.chat.parseMarkdownToAnnotatedString
 import com.adamglin.phosphoricons.Bold
+import com.adamglin.phosphoricons.bold.ArrowBendDownRight
 import com.adamglin.phosphoricons.bold.ArrowDown
 import com.adamglin.phosphoricons.bold.ArrowUp
 import kotlinx.coroutines.launch
@@ -206,9 +207,15 @@ fun V4CoachScreen(
                         }
                     }
                 }
+                val latestId = messages.lastOrNull()?.id
                 items(messages.asReversed(), key = { it.id }) { m ->
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (m.role == MessageRole.USER) UserBubble(m.content) else CoachText(m.content)
+                        // What to say next, one tap away, under the coach's latest reply only.
+                        val next = m.metadata?.followUps.orEmpty()
+                        if (m.id == latestId && m.role != MessageRole.USER && next.isNotEmpty() && !ui.isSending && !ui.isStreaming) {
+                            FollowUps(next, onPick = { send(it) })
+                        }
                         val sugs = m.metadata?.coachSuggestions.orEmpty()
                         if (m.role != MessageRole.USER && sugs.isNotEmpty()) {
                             Suggestions(
@@ -269,6 +276,32 @@ fun V4CoachScreen(
                 bottom = if (typing) 8.dp else bottomInset.calculateBottomPadding() + 8.dp,
             ),
         )
+    }
+}
+
+/** The coach's suggested next replies, as chips that send when tapped. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FollowUps(options: List<String>, onPick: (String) -> Unit) {
+    val c = V4.colors
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.forEach { o ->
+            Row(
+                Modifier
+                    .heightIn(min = 40.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .border(1.dp, c.trackOff, RoundedCornerShape(20.dp))
+                    .background(c.surface)
+                    .clickable(role = Role.Button) { onPick(o) }
+                    .semantics { contentDescription = "Reply: $o" }
+                    .padding(start = 12.dp, end = 14.dp, top = 9.dp, bottom = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(PhosphorIcons.Bold.ArrowBendDownRight, contentDescription = null, tint = c.ink3, modifier = Modifier.size(14.dp))
+                Text(o, style = V4.type.label.copy(fontSize = V4.type.body.fontSize * 0.93f), color = c.ink)
+            }
+        }
     }
 }
 
@@ -333,7 +366,7 @@ private fun Composer(
                     .semantics { contentDescription = "Send" },
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(PhosphorIcons.Bold.ArrowUp, contentDescription = null, tint = c.onAccent, modifier = Modifier.size(20.dp))
+                Icon(PhosphorIcons.Bold.ArrowUp, contentDescription = null, tint = if (canSend) c.onAccent else c.ink3, modifier = Modifier.size(20.dp))
             }
         }
     }

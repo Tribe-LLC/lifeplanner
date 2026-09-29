@@ -134,7 +134,7 @@ fun V4StartersScreen(
 private fun StarterFace(card: StarterCard) {
     CardFace(card.tint) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            LightPill(areaName(card.area), V4.colors.area(card.area).ink)
+            LightPill(areaName(card.area), az.tribe.lifeplanner.ui.v4.theme.V4LightColors.area(card.area).ink)
             LightPill(card.whenText)
         }
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {

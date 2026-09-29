@@ -36,3 +36,19 @@ class ProxySseReaderTest {
         assertEquals(listOf("text" to "partial"), read("event: text\ndata: partial"))
     }
 }
+
+class FollowUpsTest {
+    @Test
+    fun takesTheLineOff() {
+        val (text, options) = az.tribe.lifeplanner.data.repository.splitFollowUps(
+            "Try a walk after lunch.\n[FOLLOWUPS:Make it a daily habit|Remind me at 13:00| |What else helps energy?|Fourth]",
+        )
+        assertEquals("Try a walk after lunch.", text)
+        assertEquals(listOf("Make it a daily habit", "Remind me at 13:00", "What else helps energy?"), options)
+    }
+
+    @Test
+    fun noTagNoOptions() {
+        assertEquals("Hello" to emptyList(), az.tribe.lifeplanner.data.repository.splitFollowUps("Hello"))
+    }
+}

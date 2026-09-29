@@ -246,3 +246,18 @@ internal fun extractResponseSchema(requestBody: JsonObject): JsonObject? {
     val config = requestBody["generationConfig"]?.jsonObject ?: return null
     return config["responseSchema"]?.jsonObject
 }
+
+/**
+ * Takes the coach's [FOLLOWUPS:a|b|c] line off a reply: the replies the user can tap next.
+ * Keeps at most three, drops empty or overlong ones, and tolerates a missing tag.
+ */
+internal fun splitFollowUps(rawText: String): Pair<String, List<String>> {
+    val tag = Regex("""\[FOLLOWUPS:([^\]]*)\]""")
+    val found = tag.findAll(rawText).lastOrNull() ?: return rawText.trim() to emptyList()
+    val options = found.groupValues[1].split("|")
+        .map { it.trim().trim('"').trimEnd('.') }
+        .filter { it.isNotEmpty() && it.length <= 60 }
+        .distinct()
+        .take(3)
+    return rawText.replace(tag, "").trim() to options
+}

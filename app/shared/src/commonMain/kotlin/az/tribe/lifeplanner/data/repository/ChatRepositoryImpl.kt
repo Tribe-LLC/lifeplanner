@@ -364,8 +364,10 @@ class ChatRepositoryImpl(
                     is AiProxyService.StreamEvent.TextChunk -> {
                         accumulated.append(event.text)
                         // Strip suggestion tags from display during streaming
-                        val tagPattern = Regex("""\[SUGGEST_(GOAL|HABIT|JOURNAL|ACTION)[^\]]*\]""")
-                        val displayText = accumulated.toString().replace(tagPattern, "").trimEnd()
+                        val tagPattern = Regex("""\[(SUGGEST_(GOAL|HABIT|JOURNAL|ACTION)|FOLLOWUPS|UPDATE_SITUATION)[^\]]*\]""")
+                        // A tag still arriving ("[FOLLOWUPS:Make it") is hidden until it closes.
+                        val displayText = accumulated.toString().replace(tagPattern, "")
+                            .replace(Regex("""\[[A-Z_]*(:[^\]]*)?$"""), "").trimEnd()
                         val chunkText = event.text.replace(tagPattern, "")
                         emit(StreamingChatEvent.PartialText(chunkText, displayText))
                     }
@@ -376,16 +378,17 @@ class ChatRepositoryImpl(
                         persistMemoryUpdate(rawText, situation)
 
                         // Parse inline suggestion tags directly, no second API call needed
-                        val (cleanedText, suggestions) = parseInlineSuggestions(
+                        val (withoutFollowUps, followUps) = splitFollowUps(
                             rawText.replace(Regex("""\[UPDATE_SITUATION:[^\]]+\]"""), "")
                         )
+                        val (cleanedText, suggestions) = parseInlineSuggestions(withoutFollowUps)
                         Logger.d("ChatRepositoryImpl") {
                             "Parsed ${suggestions.size} inline suggestions from response"
                         }
 
-                        val metadataJson = if (suggestions.isNotEmpty()) {
+                        val metadataJson = if (suggestions.isNotEmpty() || followUps.isNotEmpty()) {
                             try {
-                                val metadata = ChatMessageMetadata(coachSuggestions = suggestions)
+                                val metadata = ChatMessageMetadata(coachSuggestions = suggestions, followUps = followUps)
                                 json.encodeToString(ChatMessageMetadata.serializer(), metadata)
                             } catch (e: Exception) {
                                 Logger.w("ChatRepositoryImpl") { "Metadata encoding failed: ${e.message}" }

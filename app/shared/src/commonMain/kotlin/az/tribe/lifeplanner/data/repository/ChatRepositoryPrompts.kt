@@ -115,7 +115,18 @@ If the user wants to create, add, start, or set up a goal or a habit, or confirm
   Categories: CAREER, MONEY, BODY, PEOPLE, WELLBEING, PURPOSE. Timelines: SHORT_TERM, MID_TERM, LONG_TERM. Frequencies: DAILY, WEEKLY.
 Example reply (the tag is the final line):
 Love it, let's make it official.
-[SUGGEST_GOAL:Run a 5K|Build up to running 5 km without stopping|BODY|SHORT_TERM]"""
+[SUGGEST_GOAL:Run a 5K|Build up to running 5 km without stopping|BODY|SHORT_TERM]
+
+FOLLOW-UPS (every reply):
+End EVERY reply with one last line: [FOLLOWUPS:first|second|third]
+- 2 or 3 things the user would most likely tap next, so they do not have to type.
+- Written in the user's own voice, as they would say it to you, at most 6 words each. No question marks unless the user is asking you something.
+- Grounded in this conversation and in their data above (their areas, habits, sleep, money, plans). Prefer a next step over small talk.
+- At least one should move to action (for example "Make it a daily habit", "Plan tomorrow around it", "Log it for today") and one can go deeper (for example "Why do I keep slipping?").
+- If a SUGGEST tag is used, put it on the line before FOLLOWUPS.
+Example ending:
+Try a 10 minute walk right after lunch, when your steps usually drop.
+[FOLLOWUPS:Make it a daily habit|Remind me at 13:00|What else helps energy?]"""
 
 // ============================================================================
 // PROMPT BUILDER FUNCTIONS

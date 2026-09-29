@@ -144,6 +144,6 @@ internal suspend fun ChatViewModel.sendMessageNonStreaming(
  * carry whole ones. Keep only the words.
  */
 internal fun cleanPartial(text: String): String =
-    text.replace(Regex("""\[(SUGGEST_[A-Z]+|UPDATE_SITUATION)[^\]]*\]"""), "")
+    text.replace(Regex("""\[(SUGGEST_[A-Z]+|UPDATE_SITUATION|FOLLOWUPS)[^\]]*\]"""), "")
         .replace(Regex("""\[[A-Z_]*[^\]]*$"""), "")
         .trim()

@@ -285,6 +285,7 @@ internal fun CardFace(tint: CardTint, content: @Composable ColumnScope.() -> Uni
 }
 
 @Composable
+// The pill is always white, so callers pass light-theme inks (V4LightColors) even in dark mode.
 internal fun LightPill(text: String, color: Color = Color(0xFF15171C)) {
     Text(
         text,
@@ -430,7 +431,7 @@ private fun HabitCardFace(r: HabitRow, count: Int, onMinus: () -> Unit, onPlus: 
     val area = V4TodayViewModel.areaOf(r.habit)
     CardFace(tint) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            LightPill(az.tribe.lifeplanner.ui.v4.components.areaName(area), V4.colors.area(area).ink)
+            LightPill(az.tribe.lifeplanner.ui.v4.components.areaName(area), az.tribe.lifeplanner.ui.v4.theme.V4LightColors.area(area).ink)
             val whenText = when {
                 HabitLearning.reminderIsOff(r.reminderMinute, r.usualMinute) -> "Usually ${HabitLearning.roughly(r.usualMinute!!)}"
                 r.habit.reminderTime != null -> "At ${r.habit.reminderTime}"

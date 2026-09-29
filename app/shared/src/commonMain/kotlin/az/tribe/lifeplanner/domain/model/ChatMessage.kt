@@ -36,7 +36,9 @@ data class ChatMessageMetadata(
     val referencedGoals: List<String> = emptyList(),
     val mood: String? = null,
     val isMotivational: Boolean = false,
-    val executedSuggestionIds: Set<String> = emptySet()
+    val executedSuggestionIds: Set<String> = emptySet(),
+    /** Two or three short replies the user can tap next, in their own voice. */
+    val followUps: List<String> = emptyList(),
 )
 
 /**
