@@ -19,9 +19,9 @@ class PlanAutoTick(private val board: PlanBoard, private val maker: PlanMaker) {
         board.plans.debounce(800).collect { plans ->
             plans.filter { it.state == PlanState.ACTIVE || it.state == PlanState.PAUSED }.forEach { p ->
                 p.steps.filter { !it.isCompleted && it.id in p.progress.ticks }.forEach { m ->
-                    val key = "${m.id}@${p.progress.ticks.getValue(m.id).at}"
-                    if (!tried.add(key)) return@forEach
-                    runCatching { maker.setStep(p.id, m.id, done = true, byData = true) }
+                    val evidence = p.progress.ticks.getValue(m.id)
+                    if (!tried.add("${m.id}@${evidence.at}")) return@forEach
+                    runCatching { maker.setStep(p.id, m.id, done = true, byData = true, evidence = evidence.text) }
                         .onFailure { Logger.w("PlanAutoTick") { "${p.title}: ${it.message}" } }
                 }
             }

@@ -52,6 +52,7 @@ import az.tribe.lifeplanner.ui.v4.firstrun.WelcomeScreen
 import az.tribe.lifeplanner.ui.v4.life.V4LifeScreen
 import az.tribe.lifeplanner.ui.v4.plans.PlanSheet
 import az.tribe.lifeplanner.ui.v4.plans.PlanSheetRequest
+import az.tribe.lifeplanner.ui.v4.plans.PlanToastHost
 import az.tribe.lifeplanner.ui.v4.plans.V4PlanScreen
 import az.tribe.lifeplanner.ui.v4.quickadd.QuickAddSheet
 import az.tribe.lifeplanner.ui.v4.shell.V4AddAnythingBar
@@ -273,6 +274,11 @@ internal fun V4AppRoot(
                     },
                 )
             }
+
+            PlanToastHost(
+                bottom = if (currentRoute in V4Routes.TABS && !typing) barHeight + 8.dp else 24.dp,
+                onOpen = { navController.navigate(V4Routes.plan(it)) { launchSingleTop = true } },
+            )
 
             planSheet?.let { req ->
                 PlanSheet(

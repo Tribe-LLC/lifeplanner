@@ -21,7 +21,12 @@ import az.tribe.lifeplanner.domain.service.PlanTrack
 import az.tribe.lifeplanner.domain.service.RoutineKind
 import az.tribe.lifeplanner.domain.service.StudyTime
 import com.russhwolf.settings.Settings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -102,6 +107,7 @@ class PlanBoard(
 ) {
     private val tz = TimeZone.currentSystemDefault()
     private fun today() = Clock.System.todayIn(tz)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val weights = MutableStateFlow<List<Pair<LocalDate, Double>>>(emptyList())
     private val unticked = MutableStateFlow(readUnticked())
@@ -131,6 +137,8 @@ class PlanBoard(
             }
         }
     }.onStart { refreshHealth() }
+        // One reading shared by Today, the area pages, a plan's page and the auto ticks.
+        .shareIn(scope, SharingStarted.WhileSubscribed(5_000), replay = 1)
 
     fun plan(goalId: String): Flow<PlanView?> = plans.map { list -> list.firstOrNull { it.id == goalId } }
 

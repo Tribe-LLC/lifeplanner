@@ -1,7 +1,13 @@
 package az.tribe.lifeplanner.ui.v4.today
 
 import az.tribe.lifeplanner.domain.service.PlanSpec
-import az.tribe.lifeplanner.data.plans.PlanSpecs
+import az.tribe.lifeplanner.data.plans.PlanBoard
+import az.tribe.lifeplanner.data.plans.PlanMaker
+import az.tribe.lifeplanner.data.plans.PlanState
+import az.tribe.lifeplanner.data.plans.PlanView
+import az.tribe.lifeplanner.domain.service.CatchUpChoice
+import az.tribe.lifeplanner.domain.service.PlanScheduler
+import az.tribe.lifeplanner.domain.service.PlanTrack
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import az.tribe.lifeplanner.data.analytics.Analytics
@@ -17,8 +23,6 @@ import az.tribe.lifeplanner.domain.model.CalendarEvent
 import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.domain.model.Habit
 import az.tribe.lifeplanner.domain.model.PlanArea
-import az.tribe.lifeplanner.domain.model.XpRewards
-import az.tribe.lifeplanner.domain.repository.GamificationRepository
 import az.tribe.lifeplanner.domain.repository.GoalRepository
 import az.tribe.lifeplanner.domain.repository.HabitRepository
 import az.tribe.lifeplanner.domain.repository.HealthRepository
@@ -123,9 +127,11 @@ data class CoachNudge(
     val coachPrompt: String? = null,
     /** Something the primary button does right here instead, like swapping today's workout. */
     val action: NudgeAction? = null,
+    /** The plan a catch-up line is about. */
+    val planId: String? = null,
 )
 
-enum class NudgeAction { SWAP_WORKOUT, UNDO_SWAP }
+enum class NudgeAction { SWAP_WORKOUT, UNDO_SWAP, PLAN_PUSH }
 
 data class TodayUiState(
     val date: LocalDate,
@@ -167,7 +173,6 @@ class V4TodayViewModel(
     private val checkInHabit: CheckInHabitUseCase,
     private val uncheckHabit: UncheckHabitUseCase,
     private val awardHabitCompletion: AwardHabitCompletionUseCase,
-    private val gamificationRepository: GamificationRepository,
     private val syncHealthData: SyncHealthDataUseCase,
     private val integrationPrefs: IntegrationPrefs,
     private val planAreas: PlanAreasRepository,
@@ -182,7 +187,8 @@ class V4TodayViewModel(
     private val career: CareerService,
     private val mind: az.tribe.lifeplanner.data.mind.MindService,
     private val todayMoney: TodayMoney,
-    private val planSpecs: PlanSpecs,
+    private val board: PlanBoard,
+    private val maker: PlanMaker,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -192,6 +198,8 @@ class V4TodayViewModel(
     private val health = MutableStateFlow(HealthToday())
     private val stepsDoneToday = MutableStateFlow(readStepsDone())
     private val dismissed = MutableStateFlow(settings.getStringOrNull(dismissKey()))
+    /** What a catch-up answer did, shown as the coach's line until it is closed. */
+    private val planNote = MutableStateFlow<String?>(null)
     /** Bumped when a swap is made or undone, since that lives in settings, not the database. */
     private val swapTick = MutableStateFlow(0)
 
@@ -229,13 +237,15 @@ class V4TodayViewModel(
         combine(health, moneyChip, combine(weekWorkouts, upcomingPlans, careerRows, ::Triple), swapTick, currentTrip) { h, m, (w, p, cr), _, t -> Extras(h, m, w, t, p, cr) },
         stepsDoneToday,
         planAreas.enabledAreas,
-        combine(dismissed, wrapClosed, planSpecs.all, ::Triple),
-    ) { (habits, goals, evts), x, stepsDone, areas, (dismissedId, closed, specs) ->
+        combine(dismissed, wrapClosed, board.plans, planNote, ::Bits),
+    ) { (habits, goals, evts), x, stepsDone, areas, bits ->
         lastGoals = goals
-        build(habits, goals, evts, x.health, stepsDone, areas, dismissedId, x.money, x.week, x.trip, x.plans, x.career, closed, specs)
+        build(habits, goals, evts, x.health, stepsDone, areas, bits.dismissed, x.money, x.week, x.trip, x.plans, x.career, bits.wrapClosed, bits.plans, bits.note)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TodayUiState(date = today()))
 
     private var lastGoals: List<Goal> = emptyList()
+
+    private data class Bits(val dismissed: String?, val wrapClosed: Boolean, val plans: List<PlanView>, val note: String?)
 
     private data class Extras(val health: HealthToday, val money: TodayMoneyState, val week: List<LifeLog>, val trip: Pair<Trip, List<TripItem>>?, val plans: List<LifeLog>, val career: List<LifeLog>)
 
@@ -362,26 +372,14 @@ class V4TodayViewModel(
         Analytics.habitCheckedIn(habitId, habitRepository.getHabitById(habitId)?.currentStreak ?: 0)
     }
 
+    /** Through the plan service, so the last step finishes the plan and a tick says what is next. */
     private fun toggleStep(item: DayItem) {
         val goalId = item.goalId ?: return
         viewModelScope.launch {
             runCatching {
                 val completing = !item.done
-                goalRepository.toggleMilestoneCompletion(item.refId, completing)
-                if (completing) {
-                    gamificationRepository.awardXp(XpRewards.MILESTONE_COMPLETED.toLong())
-                    Analytics.milestoneCompleted(goalId, item.refId)
-                    writeStepsDone(stepsDoneToday.value + item.refId)
-                } else {
-                    writeStepsDone(stepsDoneToday.value - item.refId)
-                }
-                // Same bookkeeping as the goal screen: progress follows the steps, and the first
-                // finished step starts the goal.
-                goalRepository.getGoalById(goalId)?.let { goal ->
-                    val total = goal.milestones.size
-                    if (total > 0) goalRepository.updateProgress(goalId, goal.milestones.count { it.isCompleted } * 100 / total)
-                    if (completing && goal.status == GoalStatus.NOT_STARTED) goalRepository.updateGoal(goal.copy(status = GoalStatus.IN_PROGRESS))
-                }
+                writeStepsDone(if (completing) stepsDoneToday.value + item.refId else stepsDoneToday.value - item.refId)
+                maker.setStep(goalId, item.refId, completing, announce = true)
                 PostHogAnalytics.capture("v4_today_ticked", mapOf("type" to "step", "done" to completing))
             }.onFailure { Logger.w("V4Today") { "Step toggle failed: ${it.message}" } }
         }
@@ -409,6 +407,9 @@ class V4TodayViewModel(
                 workouts.swapToday()?.let { workouts.undoSwap(it) }
                 swapTick.value++
             }
+            NudgeAction.PLAN_PUSH -> viewModelScope.launch {
+                nudge.planId?.let { id -> planNote.value = runCatching { maker.catchUp(id, CatchUpChoice.PUSH, "today") }.getOrNull() }
+            }
             null -> {
                 nudge.coachPrompt?.let(askCoach)
                 dismissNudge(nudge)
@@ -417,6 +418,17 @@ class V4TodayViewModel(
     }
 
     fun onNudgeSecondary(nudge: CoachNudge) {
+        if (nudge.id == PLAN_NOTE) {
+            planNote.value = null
+            return
+        }
+        if (nudge.action == NudgeAction.PLAN_PUSH) {
+            // "Not now": the plan asks again in a week if it still slips.
+            viewModelScope.launch {
+                nudge.planId?.let { id -> planNote.value = runCatching { maker.catchUp(id, CatchUpChoice.LEAVE, "today") }.getOrNull() }
+            }
+            return
+        }
         if (nudge.action == NudgeAction.SWAP_WORKOUT) {
             workouts.keepToday()
             swapTick.value++
@@ -448,8 +460,11 @@ class V4TodayViewModel(
         allPlanned: List<LifeLog>,
         careerRows: List<LifeLog>,
         wrapClosed: Boolean,
-        specs: Map<String, PlanSpec>,
+        views: List<PlanView>,
+        planNote: String?,
     ): TodayUiState {
+        val specs = views.mapNotNull { v -> v.spec?.let { v.id to it } }.toMap()
+        val byId = views.associateBy { it.id }
         val planned = allPlanned.filter { !FitnessWeek.isWorkout(it) && !MindCheckIns.isCheckIn(it) }
         val today = today()
         val items = mutableListOf<DayItem>()
@@ -472,13 +487,16 @@ class V4TodayViewModel(
             )
         }
 
-        goals.filter { it.status != GoalStatus.COMPLETED && !it.isArchived && specs[it.id]?.isPaused(today) != true }.forEach { goal ->
+        goals.filter { !it.isArchived && specs[it.id]?.isPaused(today) != true }.forEach { goal ->
+            val view = byId[goal.id]
             goal.milestones.forEach { m ->
                 val due = m.dueDate
-                // Earlier ones wait under "From yesterday" instead of piling up here as overdue.
-                val show = (!m.isCompleted && due == today) || (m.isCompleted && m.id in stepsDone)
+                val tickedToday = view?.progress?.ticks?.get(m.id)?.takeIf { m.isCompleted && it.at.date == today }
+                // Only the step for today; earlier ones wait under "From yesterday" instead of piling
+                // up here. A step ticked today, by hand or by something logged, stays to show it.
+                val show = (!m.isCompleted && due == today && goal.status != GoalStatus.COMPLETED) ||
+                    (m.isCompleted && (m.id in stepsDone || tickedToday != null))
                 if (show) {
-                    val overdue = false
                     items += DayItem(
                         key = "s_${m.id}",
                         type = DayItemType.STEP,
@@ -486,7 +504,7 @@ class V4TodayViewModel(
                         time = null,
                         title = m.title,
                         area = PlanSpec.areaOf(goal, specs),
-                        meta = goal.title + if (overdue) ", overdue" else "",
+                        meta = stepMeta(goal, m, view, tickedToday),
                         done = m.isCompleted,
                         checkable = true,
                         goalId = goal.id,
@@ -639,7 +657,7 @@ class V4TodayViewModel(
             )
         } else null
         // The wrap-up says what the evening coach line would, and more.
-        val nudge = pickNudge(checkable, h, habits, week).takeIf { it?.id != dismissedId }
+        val nudge = pickNudge(checkable, h, habits, week, views, planNote).takeIf { it?.id != dismissedId }
             ?.takeUnless { wrapUp != null && it.id in setOf("evening", "all_done", "start") }
 
         val busy = checkable.size > BUSY_AT
@@ -674,9 +692,10 @@ class V4TodayViewModel(
             WorkoutKind.fromTitle(it.title) !in setOf(WorkoutKind.WALK, WorkoutKind.YOGA)
     }
 
-    private fun pickNudge(checkable: List<DayItem>, h: HealthToday, habits: List<HabitRow>, week: List<LifeLog>): CoachNudge? {
+    private fun pickNudge(checkable: List<DayItem>, h: HealthToday, habits: List<HabitRow>, week: List<LifeLog>, views: List<PlanView>, planNote: String?): CoachNudge? {
         val hour = Clock.System.now().toLocalDateTime(tz).hour
         val sleep = h.sleepHours
+        planNote?.let { return CoachNudge(id = PLAN_NOTE, text = it, primary = null, secondary = "Thanks") }
         workouts.swapToday()?.let { swap ->
             val moved = week.firstOrNull { it.id == swap.originalId }
             return CoachNudge(
@@ -707,6 +726,7 @@ class V4TodayViewModel(
                 coachPrompt = "I only slept ${formatHours(sleep)} last night. Help me make today lighter without losing my streaks.",
             )
         }
+        catchUpNudge(views)?.let { return it }
         if (habits.isEmpty() && checkable.isEmpty()) {
             return CoachNudge(
                 id = "empty",
@@ -740,6 +760,36 @@ class V4TodayViewModel(
             primary = null,
             secondary = "Okay",
         )
+    }
+
+    /** "Your 5K plan slipped about a week. Give it one more week, same steps?" for the first plan behind. */
+    private fun catchUpNudge(views: List<PlanView>): CoachNudge? {
+        val v = views.firstOrNull { it.state == PlanState.ACTIVE && it.catchUp != null } ?: return null
+        val c = v.catchUp ?: return null
+        val name = if (v.track == PlanTrack.RUN && v.title.startsWith("Run a ")) "Your ${v.title.removePrefix("Run a ")} plan"
+        else "Your plan to ${v.title.replaceFirstChar { it.lowercase() }}"
+        val more = if (c.pushWeeks > 1) "${c.pushWeeks} more weeks" else "one more week"
+        return CoachNudge(
+            id = "plan_catch_${v.id}",
+            text = "$name slipped ${PlanScheduler.behindWords(c.behindDays)}. Give it $more, same steps?",
+            primary = more.replaceFirstChar { it.uppercase() },
+            secondary = "Not now",
+            action = NudgeAction.PLAN_PUSH,
+            planId = v.id,
+        )
+    }
+
+    /** "Run a 5K, step 2 of 6", or "Run a 5K. Ticked from your run at 07:40". */
+    private fun stepMeta(goal: Goal, m: az.tribe.lifeplanner.domain.model.Milestone, view: PlanView?, tickedToday: az.tribe.lifeplanner.domain.service.Evidence?): String {
+        if (tickedToday != null) {
+            val t = tickedToday.at.time
+            val at = if (t == LocalTime(12, 0)) "" else " at ${t.hour.toString().padStart(2, '0')}:${t.minute.toString().padStart(2, '0')}"
+            return "${goal.title}. ${tickedToday.text.substringBefore(",")}$at"
+        }
+        val steps = view?.steps ?: goal.milestones
+        val n = steps.indexOfFirst { it.id == m.id } + 1
+        val pace = view?.pace?.takeIf { view.state == PlanState.ACTIVE && !it.good && !m.isCompleted }?.let { ". ${it.label}" } ?: ""
+        return "${goal.title}, step $n of ${steps.size}$pace"
     }
 
     private fun readStepsDone(): Set<String> =
@@ -790,6 +840,8 @@ class V4TodayViewModel(
     }
 
     companion object {
+        private const val PLAN_NOTE = "plan_note"
+
         /** More things than this to tick and Today groups them instead of listing them all. */
         const val BUSY_AT = 10
         /** This many habits left on a long day and the check-in deck is offered. */

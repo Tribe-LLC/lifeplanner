@@ -175,11 +175,12 @@ class PlanMaker(
     // ── Ticking and finishing ────────────────────────────────────────────────
 
     /**
-     * Ticks a step or unticks it. [byData] is a tick from logged data; a manual untick is remembered
-     * so the same old data does not tick it straight back. Ticking the last step finishes the plan.
-     * Returns true when that happened.
+     * Ticks a step or unticks it. [byData] is a tick from logged data, with [evidence] saying what
+     * ticked it; a manual untick is remembered so the same old data does not tick it straight back.
+     * Ticking the last step finishes the plan; returns true when that happened. With [announce], or
+     * for any tick from data, a short line goes out on [events] saying what comes next.
      */
-    suspend fun setStep(goalId: String, milestoneId: String, done: Boolean, byData: Boolean = false): Boolean {
+    suspend fun setStep(goalId: String, milestoneId: String, done: Boolean, byData: Boolean = false, announce: Boolean = false, evidence: String? = null): Boolean {
         goals.toggleMilestoneCompletion(milestoneId, done)
         if (done) board.clearUntick(milestoneId) else if (!byData) board.untick(milestoneId)
         if (done) {
@@ -191,12 +192,29 @@ class PlanMaker(
         val total = goal.milestones.size
         val doneCount = goal.milestones.count { it.isCompleted }
         if (total > 0) goals.updateProgress(goalId, doneCount * 100 / total)
-        return when {
+        val finished = when {
             done && total > 0 && doneCount == total && goal.status != GoalStatus.COMPLETED -> { finish(goal); true }
             !done && goal.status == GoalStatus.COMPLETED -> { reopen(goal); false }
             done && goal.status == GoalStatus.NOT_STARTED -> { goals.updateGoal(goal.copy(status = GoalStatus.IN_PROGRESS)); false }
             else -> false
         }
+        if (!finished && (announce || byData)) stepLine(goal, milestoneId, done, byData, evidence)?.let { _events.tryEmit(PlanEvent(goalId, false, it)) }
+        return finished
+    }
+
+    /** "Nice. Next step: Run 1 km, Sun 11 Oct. It ticks itself from your runs." */
+    private suspend fun stepLine(goal: Goal, milestoneId: String, done: Boolean, byData: Boolean, evidence: String?): String? {
+        val m = goal.milestones.firstOrNull { it.id == milestoneId } ?: return null
+        val track = specs.get(goal.id)?.track ?: PlanTrack.CHECKLIST
+        if (!done) {
+            return if (PlanProgress.threshold(m.title, track) != null) "Un-ticked. It ticks again from something new you log." else null
+        }
+        if (byData) return "${m.title}: ${evidence?.replaceFirstChar { it.lowercase() } ?: "ticked from what you logged"}."
+        val next = goal.milestones.filter { !it.isCompleted }.sortedWith(compareBy({ it.dueDate == null }, { it.dueDate })).firstOrNull()
+            ?: return "Nice. That was the last step left."
+        val auto = PlanProgress.threshold(next.title, track) != null && track != PlanTrack.STUDY
+        return "Nice. Next step: ${next.title}" + (next.dueDate?.let { ", ${PlanScheduler.dayLabel(it)}" } ?: "") + "." +
+            if (auto) " It ticks itself from what you log." else ""
     }
 
     private suspend fun finish(goal: Goal) {
