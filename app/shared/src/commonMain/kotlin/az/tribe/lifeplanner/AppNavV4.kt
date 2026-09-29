@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -181,11 +182,14 @@ internal fun V4AppRoot(
             }
         }
 
+        // While typing, every screen ends at the top of the keyboard (Android and iPhone alike), and
+        // the tab bar steps aside so a field or the coach's composer sits right on the keyboard.
+        val typing = az.tribe.lifeplanner.ui.v4.components.keyboardUp()
         Box(Modifier.fillMaxSize().background(V4.colors.background)) {
             NavHost(
                 navController = navController,
                 startDestination = startDestination,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().imePadding(),
                 enterTransition = { fadeIn(tween(220)) },
                 exitTransition = { fadeOut(tween(220)) },
                 popEnterTransition = { fadeIn(tween(220)) },
@@ -226,7 +230,7 @@ internal fun V4AppRoot(
                 appNavWheel(navController)
             }
 
-            if (currentRoute in V4Routes.TABS) {
+            if (currentRoute in V4Routes.TABS && !typing) {
                 Column(Modifier.align(Alignment.BottomCenter)) {
                     if (currentRoute in V4Routes.ADD_BAR) {
                         V4AddAnythingBar(

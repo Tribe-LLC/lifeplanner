@@ -1,5 +1,7 @@
 package az.tribe.lifeplanner.ui.v4.components
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -382,3 +384,11 @@ fun V4TimeDialog(initial: kotlinx.datetime.LocalTime?, onPick: (kotlinx.datetime
         dismissButton = { V4TextButton("Cancel", onClick = onDismiss, color = V4.colors.ink2) },
     )
 }
+
+/**
+ * Whether the keyboard is up, on Android and iPhone alike (isImeVisible is Android only). Reads
+ * the raw keyboard inset, so it still works under the root imePadding.
+ */
+@Composable
+fun keyboardUp(): Boolean =
+    WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
