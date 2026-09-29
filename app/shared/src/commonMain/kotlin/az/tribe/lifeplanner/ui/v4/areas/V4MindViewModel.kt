@@ -68,7 +68,7 @@ data class MoodDay(val level: Int, val note: String?)
 class V4MindViewModel(
     private val mind: MindService,
     logs: LifeLogRepository,
-    journal: JournalRepository,
+    private val journal: JournalRepository,
     habits: HabitService,
     private val healthRepository: HealthRepository,
     private val moodNudges: MoodNudges,
@@ -156,7 +156,7 @@ class V4MindViewModel(
             supportsMindful = supports,
             canWriteHealth = canWrite,
             promptOffset = offset,
-            entries = entries.sortedByDescending { it.createdAt }.take(2),
+            entries = entries.sortedByDescending { it.createdAt },
             lowRun = MindInsights.lowRun(scoresInOrder),
             year = MoodYear.rows(today, yearDaily),
             moodDays = yearDaily.mapValues { (d, avg) ->
@@ -249,6 +249,19 @@ class V4MindViewModel(
             mind.write("Three good things", list.mapIndexed { i, t -> "${i + 1}. $t" }.joinToString("\n"), todayScore(), null, listOf("gratitude"))
         }
         PostHogAnalytics.capture("v4_mind_journal_written", mapOf("kind" to "three_good"))
+    }
+
+    /** Saves a change made while reading an entry on the page. */
+    fun editEntry(entry: az.tribe.lifeplanner.domain.model.JournalEntry, title: String, content: String) = viewModelScope.launch {
+        runCatching {
+            journal.updateEntry(entry.copy(title = title.trim().ifBlank { entry.title }, content = content.trim()))
+        }
+        PostHogAnalytics.capture("v4_mind_journal_edited", emptyMap())
+    }
+
+    fun deleteEntry(id: String) = viewModelScope.launch {
+        runCatching { journal.deleteEntry(id) }
+        PostHogAnalytics.capture("v4_mind_journal_deleted", emptyMap())
     }
 
     private fun todayScore(): Int? = (editing.value ?: state.value.lastToday)?.let { MindCheckIns.score(it) }

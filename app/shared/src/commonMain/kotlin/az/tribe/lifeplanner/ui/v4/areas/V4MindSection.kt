@@ -90,6 +90,8 @@ fun MindSection(onRoute: (String) -> Unit, viewModel: V4MindViewModel = koinView
     var breathing by remember { mutableStateOf(false) }
     var breathStart by remember { mutableLongStateOf(0L) }
     var writing by remember { mutableStateOf(false) }
+    var reading by remember { mutableStateOf<az.tribe.lifeplanner.domain.model.JournalEntry?>(null) }
+    var allEntries by remember { mutableStateOf(false) }
     var goalSheet by remember { mutableStateOf(false) }
     var pickedDay by remember { mutableStateOf<LocalDate?>(null) }
     val reminder by viewModel.reminder.collectAsState()
@@ -266,21 +268,32 @@ fun MindSection(onRoute: (String) -> Unit, viewModel: V4MindViewModel = koinView
         Text("Today's question", style = V4.type.label, color = tint.ink)
         Text(prompt, style = V4.type.headline, color = c.ink)
         V4PillButton("Write", onClick = { writing = true }, container = tint.color)
-        s.entries.forEach { en ->
+        // Entries open over the page and the list grows in place: no trip to another screen.
+        s.entries.take(if (allEntries) s.entries.size else 3).forEach { en ->
             Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button) { onRoute("journal_entry_detail/${en.id}") }.heightIn(min = 44.dp).padding(vertical = 6.dp),
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button) { reading = en }.heightIn(min = 44.dp).padding(vertical = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 OneLine(en.title.ifBlank { "Journal entry" }, V4.type.bodyStrong, c.ink)
                 Text("${V4TodayViewModel.dayLabel(en.date)}, feeling ${MindCheckIns.label(en.mood.score).lowercase()}", style = V4.type.caption, color = c.ink3)
             }
         }
-        V4TextButton("All entries", onClick = { onRoute("journal") })
+        if (s.entries.size > 3) {
+            V4TextButton(if (allEntries) "Show fewer" else "Show all ${s.entries.size}", onClick = { allEntries = !allEntries })
+        }
     }
 
     if (!s.lowRun) HelpCard()
 
     if (breathing) GuidedBreathSession(onClose = { breathing = false }, onFinished = { viewModel.breathed(breathStart) })
+    reading?.let { en ->
+        EntrySheet(
+            entry = en,
+            onSave = { title, text -> viewModel.editEntry(en, title, text); reading = null },
+            onDelete = { viewModel.deleteEntry(en.id); reading = null },
+            onDismiss = { reading = null },
+        )
+    }
     if (writing) WriteSheet(
         prompt = V4MindViewModel.prompt(s.promptOffset),
         onAnother = viewModel::nextPrompt,
@@ -538,4 +551,41 @@ private fun MoodReminderCard(r: NudgePrefs.Snapshot, onToggle: (Boolean) -> Unit
         onPick = { t -> onMinute(t.hour * 60 + t.minute); picking = false },
         onDismiss = { picking = false },
     )
+}
+
+
+/** Reading one journal entry over the page: the words, the day and mood, edit in place, delete. */
+@Composable
+private fun EntrySheet(
+    entry: az.tribe.lifeplanner.domain.model.JournalEntry,
+    onSave: (String, String) -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val c = V4.colors
+    var title by remember(entry.id) { mutableStateOf(entry.title) }
+    var text by remember(entry.id) { mutableStateOf(entry.content) }
+    var confirmDelete by remember(entry.id) { mutableStateOf(false) }
+    val changed = title.trim() != entry.title.trim() || text.trim() != entry.content.trim()
+    AreaSheet("Your entry", onDismiss) {
+        Text(
+            "${V4TodayViewModel.dayLabel(entry.date)}, feeling ${MindCheckIns.label(entry.mood.score).lowercase()}",
+            style = V4.type.caption, color = c.ink3,
+        )
+        entry.promptUsed?.takeIf { it.isNotBlank() && it != entry.title }?.let { Text(it, style = V4.type.label, color = c.ink2) }
+        FormLabel("Title")
+        MultiLineField(title, { title = it }, "A title", "Entry title", minLines = 1)
+        FormLabel("Entry")
+        MultiLineField(text, { text = it }, "What you wrote", "Entry text", minLines = 5)
+        if (changed) V4PillButton("Save changes", onClick = { onSave(title, text) }, modifier = Modifier.fillMaxWidth())
+        if (confirmDelete) {
+            Text("Delete this entry? This cannot be undone.", style = V4.type.body, color = c.ink)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                V4PillButton("Delete it", onClick = onDelete)
+                V4PillButton("Keep it", onClick = { confirmDelete = false }, filled = false)
+            }
+        } else {
+            V4TextButton("Delete entry", onClick = { confirmDelete = true })
+        }
+    }
 }
