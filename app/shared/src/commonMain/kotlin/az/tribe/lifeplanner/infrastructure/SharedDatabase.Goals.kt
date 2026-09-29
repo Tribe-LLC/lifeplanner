@@ -251,6 +251,8 @@ suspend fun SharedDatabase.insertMilestone(milestone: MilestoneEntity) {
             sync_version = 0L,
             last_synced_at = null
         )
+        // Bump the parent goal so observeAllGoals re-emits with the new step.
+        db.lifePlannerDBQueries.touchGoalByMilestone(id = milestone.id)
     }
 }
 
@@ -269,6 +271,8 @@ suspend fun SharedDatabase.updateMilestone(milestone: MilestoneEntity) {
             estimatedEffort = milestone.estimatedEffort,
             id = milestone.id
         )
+        // Without this a moved or renamed step (Today, Tomorrow, Let it go) stayed on screen as it was.
+        db.lifePlannerDBQueries.touchGoalByMilestone(id = milestone.id)
     }
 }
 
@@ -281,6 +285,7 @@ suspend fun SharedDatabase.getGoalIdForMilestone(milestoneId: String): String? {
 suspend fun SharedDatabase.deleteMilestone(id: String) {
     this { db ->
         db.lifePlannerDBQueries.softDeleteMilestone(nowTimestamp(), id)
+        db.lifePlannerDBQueries.touchGoalByMilestone(id = id)
     }
 }
 
