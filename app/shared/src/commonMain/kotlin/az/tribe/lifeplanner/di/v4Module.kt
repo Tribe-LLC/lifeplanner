@@ -20,6 +20,7 @@ import az.tribe.lifeplanner.domain.repository.TripRepository
 import az.tribe.lifeplanner.ui.v4.areas.V4MoneyViewModel
 import az.tribe.lifeplanner.ui.v4.areas.V4FitnessViewModel
 import az.tribe.lifeplanner.data.fitness.WorkoutService
+import az.tribe.lifeplanner.ui.v4.plans.PlanSheetViewModel
 import az.tribe.lifeplanner.ui.v4.quickadd.QuickAddViewModel
 import az.tribe.lifeplanner.data.travel.TripWeather
 import az.tribe.lifeplanner.domain.service.StreakPauses
@@ -94,6 +95,7 @@ val v4Module = module {
     viewModelOf(::V4ReviewViewModel)
     viewModelOf(::V4LifeViewModel)
     viewModelOf(::QuickAddViewModel)
+    viewModelOf(::PlanSheetViewModel)
     viewModelOf(::V4MoneyViewModel)
     viewModelOf(::V4FitnessViewModel)
     viewModelOf(::V4TravelViewModel)

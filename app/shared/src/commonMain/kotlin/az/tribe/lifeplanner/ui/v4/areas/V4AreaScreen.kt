@@ -46,7 +46,8 @@ data class AreaActions(
     val onBack: () -> Unit,
     val onOpenGoal: (String) -> Unit,
     val onOpenHabit: (String) -> Unit,
-    val onNewPlan: () -> Unit,
+    /** Opens the plan sheet for this area, with a line ready when an idea was tapped. */
+    val onNewPlan: (area: PlanArea, line: String) -> Unit,
     val onNewRoutine: () -> Unit,
     val onRoute: (String) -> Unit,
     val onQuickAdd: () -> Unit,
@@ -86,7 +87,7 @@ fun V4AreaScreen(
             PlanArea.STUDY -> StudySection(onOpenFocus = { actions.onRoute("focus_setup") })
             PlanArea.MEALS -> MealsSection(onAskCoach = actions.onAskCoach)
             PlanArea.HABITS -> HabitsSection(onAskCoach = actions.onAskCoach, onRoute = actions.onRoute)
-            PlanArea.CAREER -> CareerSection(onNewPlan = actions.onNewPlan, onOpenGoal = actions.onOpenGoal, onRoute = actions.onRoute)
+            PlanArea.CAREER -> CareerSection(onNewPlan = { actions.onNewPlan(PlanArea.CAREER, "") }, onOpenGoal = actions.onOpenGoal, onRoute = actions.onRoute)
             else -> {}
         }
 
@@ -117,7 +118,7 @@ fun V4AreaScreen(
                 }
             }
         }
-        V4PillButton("New plan", onClick = actions.onNewPlan, filled = false)
+        V4PillButton("New plan", onClick = { actions.onNewPlan(area, "") }, filled = false)
 
         // The Habits page lists its habits in full above, with schedules and history.
         if (area == PlanArea.HABITS) return@Column

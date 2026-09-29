@@ -50,6 +50,8 @@ import az.tribe.lifeplanner.ui.v4.firstrun.UpdateScreen
 import az.tribe.lifeplanner.ui.v4.firstrun.V4FirstRunViewModel
 import az.tribe.lifeplanner.ui.v4.firstrun.WelcomeScreen
 import az.tribe.lifeplanner.ui.v4.life.V4LifeScreen
+import az.tribe.lifeplanner.ui.v4.plans.PlanSheet
+import az.tribe.lifeplanner.ui.v4.plans.PlanSheetRequest
 import az.tribe.lifeplanner.ui.v4.quickadd.QuickAddSheet
 import az.tribe.lifeplanner.ui.v4.shell.V4AddAnythingBar
 import az.tribe.lifeplanner.ui.v4.shell.V4BottomBar
@@ -183,6 +185,7 @@ internal fun V4AppRoot(
         var hubSelectedTab by remember { mutableStateOf(0) }
         var coachPrompt by remember { mutableStateOf<String?>(null) }
         var showQuickAdd by remember { mutableStateOf(false) }
+        var planSheet by remember { mutableStateOf<PlanSheetRequest?>(null) }
 
         fun openTab(route: String) {
             navController.navigate(route) {
@@ -216,6 +219,7 @@ internal fun V4AppRoot(
                     onCoachPrompt = { coachPrompt = it },
                     openTab = ::openTab,
                     onQuickAdd = { showQuickAdd = true },
+                    onNewPlan = { planSheet = it },
                 )
 
                 // v3 graphs, unchanged. Their "home" is the v4 gate.
@@ -269,6 +273,17 @@ internal fun V4AppRoot(
                 )
             }
 
+            planSheet?.let { req ->
+                PlanSheet(
+                    request = req,
+                    onDismiss = { planSheet = null },
+                    onOpenPlan = { id ->
+                        planSheet = null
+                        navController.navigate("goal_detail/$id") { launchSingleTop = true }
+                    },
+                )
+            }
+
             overlays()
         }
     }
@@ -282,6 +297,7 @@ internal fun NavGraphBuilder.appNavV4(
     onCoachPrompt: (String?) -> Unit,
     openTab: (String) -> Unit,
     onQuickAdd: () -> Unit,
+    onNewPlan: (PlanSheetRequest) -> Unit,
 ) {
     // The gate: first run or Today. Replaces itself, so Back never returns here.
     composable(V4Routes.HOME) {
@@ -449,7 +465,7 @@ internal fun NavGraphBuilder.appNavV4(
                 onBack = { navController.popBackStack() },
                 onOpenGoal = { navController.navigate("goal_detail/$it") { launchSingleTop = true } },
                 onOpenHabit = { navController.navigate("habit_detail_redesign/$it") { launchSingleTop = true } },
-                onNewPlan = { navController.navigate(Screen.GoalWizard.route) { launchSingleTop = true } },
+                onNewPlan = { a, line -> onNewPlan(PlanSheetRequest(a, line, if (line.isBlank()) "area" else "idea")) },
                 onNewRoutine = { navController.navigate(Screen.AddHabit.route) { launchSingleTop = true } },
                 onRoute = { navController.navigate(it) { launchSingleTop = true } },
                 onQuickAdd = onQuickAdd,
