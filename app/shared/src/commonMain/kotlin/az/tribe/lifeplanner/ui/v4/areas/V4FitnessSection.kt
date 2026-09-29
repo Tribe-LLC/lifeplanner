@@ -79,6 +79,9 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
 import kotlinx.datetime.todayIn
 import kotlin.time.Clock
+import kotlin.math.roundToInt
+import kotlinx.datetime.minus
+import androidx.compose.foundation.layout.height
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
@@ -88,7 +91,12 @@ import org.koin.compose.viewmodel.koinViewModel
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun FitnessSection(health: AreaHealth, onOpenHealth: () -> Unit, viewModel: V4FitnessViewModel = koinViewModel()) {
+fun FitnessSection(
+    health: AreaHealth,
+    onHealthConnected: () -> Unit,
+    viewModel: V4FitnessViewModel = koinViewModel(),
+    prefs: az.tribe.lifeplanner.data.integrations.IntegrationPrefs = org.koin.compose.koinInject(),
+) {
     val s by viewModel.state.collectAsState()
     val active by viewModel.active.collectAsState()
     val c = V4.colors
@@ -289,14 +297,27 @@ fun FitnessSection(health: AreaHealth, onOpenHealth: () -> Unit, viewModel: V4Fi
     }
 
     // ── From Health ──
+    // Everything Health gives us, right here: no separate details page to open.
+    val integrations by prefs.state.collectAsState()
+    val connectHealth = az.tribe.lifeplanner.ui.health.rememberHealthPermissionLauncher { granted ->
+        prefs.setHealth(granted)
+        if (granted) onHealthConnected()
+    }
     V4Card {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("From Health", style = V4.type.bodyStrong, color = c.ink)
-            Text(
-                if (s.canWriteHealth) "Workouts from your watch show up here. Workouts you finish here are saved to Health."
-                else "Steps and watch workouts. Connect Health under You, Connected apps.",
-                style = V4.type.caption, color = c.ink2,
-            )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("From Health", style = V4.type.bodyStrong, color = c.ink)
+                Text(
+                    when {
+                        !integrations.health -> "Steps, heart rate, weight, sleep and watch workouts, without typing them in."
+                        s.canWriteHealth -> "Workouts from your watch show up here. Workouts you finish here are saved to Health."
+                        !health.hasAny -> "Connected. Numbers show up here as soon as Health has some."
+                        else -> "Your latest numbers, read from Health."
+                    },
+                    style = V4.type.caption, color = c.ink2,
+                )
+            }
+            if (!integrations.health) V4PillButton("Connect", onClick = connectHealth)
         }
         health.stepsToday?.let { steps ->
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -305,6 +326,38 @@ fun FitnessSection(health: AreaHealth, onOpenHealth: () -> Unit, viewModel: V4Fi
                     Text("${V4TodayViewModel.formatThousands(steps.toLong())} of ${V4TodayViewModel.formatThousands(health.stepsTarget.toLong())}", style = V4.type.bodyStrong, color = c.ink)
                 }
                 V4ProgressBar((steps / health.stepsTarget).toFloat(), fit.color)
+            }
+        }
+        if (health.stepsWeek.size >= 2) StepsWeek(health.stepsWeek, health.stepsTarget, fit.color)
+        val tiles = buildList {
+            health.restingHr?.let { add(Triple("Heart rate", "${it.roundToInt()} bpm", "7 day average")) }
+            health.weightKg?.let { w ->
+                val change = health.weightChangeKg?.let { d ->
+                    val r = (d * 10).roundToInt() / 10.0
+                    when {
+                        r > 0 -> "Up $r kg in a month"
+                        r < 0 -> "Down ${-r} kg in a month"
+                        else -> "Steady this month"
+                    }
+                } ?: "Latest"
+                add(Triple("Weight", "${(w * 10).roundToInt() / 10.0} kg", change))
+            }
+            health.sleepNights.firstOrNull()?.let { (_, h) ->
+                add(Triple("Sleep", "${h.toInt()}h ${((h - h.toInt()) * 60).roundToInt()}m", "Last night"))
+            }
+        }
+        if (tiles.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                tiles.forEach { (label, value, note) ->
+                    Column(
+                        Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).background(c.surfaceMuted).padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(label, style = V4.type.micro, color = c.ink3)
+                        Text(value, style = V4.type.bodyStrong, color = c.ink)
+                        Text(note, style = V4.type.micro, color = c.ink3, maxLines = 1)
+                    }
+                }
             }
         }
         s.lastWatch?.let { w ->
@@ -316,7 +369,6 @@ fun FitnessSection(health: AreaHealth, onOpenHealth: () -> Unit, viewModel: V4Fi
                 Text("${w.durationMin ?: 0} min", style = V4.type.bodyStrong, color = c.ink)
             }
         }
-        V4PillButton("Open health details", onClick = onOpenHealth, filled = false)
     }
 
     // ── Works with your other areas ──
@@ -618,5 +670,36 @@ private fun WeekSheet(
             if (slots.isNotEmpty()) "Your weekly goal becomes ${slots.size}. Move or remove a single day any time and the rest stays."
             else "Planned days you have not changed come off your plan.",
         )
+    }
+}
+
+
+/** Seven small bars, one per day, with today's the strongest. A day at the target fills the bar. */
+@Composable
+private fun StepsWeek(days: List<Pair<kotlinx.datetime.LocalDate, Double>>, target: Double, color: androidx.compose.ui.graphics.Color) {
+    val c = V4.colors
+    val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
+    val byDay = days.toMap()
+    val avg = days.map { it.second }.average()
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("This week, ${V4TodayViewModel.formatThousands(avg.toLong())} a day on average", style = V4.type.caption, color = c.ink2)
+        Row(
+            Modifier.fillMaxWidth().height(56.dp).semantics(mergeDescendants = true) {},
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            (6 downTo 0).forEach { back ->
+                val d = today.minus(kotlinx.datetime.DatePeriod(days = back))
+                val v = byDay[d] ?: 0.0
+                val f = (v / target).coerceIn(0.04, 1.0).toFloat()
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Box(
+                        Modifier.fillMaxWidth().height((40 * f).dp).clip(RoundedCornerShape(4.dp))
+                            .background(if (back == 0) color else color.copy(alpha = if (v >= target) 0.7f else 0.35f)),
+                    )
+                    Text(FitnessWeek.dayName(d.dayOfWeek).take(1), style = V4.type.micro, color = c.ink3)
+                }
+            }
+        }
     }
 }

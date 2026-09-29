@@ -35,7 +35,13 @@ data class AreaHealth(
     val restingHr: Double? = null,
     val weightKg: Double? = null,
     val sleepNights: List<Pair<kotlinx.datetime.LocalDate, Double>> = emptyList(),
-)
+    /** Steps per day for the last 7 days, oldest first; days without data are left out. */
+    val stepsWeek: List<Pair<kotlinx.datetime.LocalDate, Double>> = emptyList(),
+    /** Weight now minus about a month ago, when both are known. */
+    val weightChangeKg: Double? = null,
+) {
+    val hasAny get() = stepsToday != null || restingHr != null || weightKg != null || sleepNights.isNotEmpty() || stepsWeek.isNotEmpty()
+}
 
 data class AreaUiState(
     val plans: List<Goal> = emptyList(),
@@ -96,7 +102,18 @@ class V4AreaViewModel(
         val hr = metrics(HealthMetricType.HEART_RATE, week)().map { it.value }.takeIf { it.isNotEmpty() }?.average()
         val weight = runCatching { healthRepository.getLatestMetric(HealthMetricType.WEIGHT) }.getOrNull()?.value
         val sleep = metrics(HealthMetricType.SLEEP, week.minus(DatePeriod(days = 1)))().sortedByDescending { it.date }.map { it.date to it.value }
-        health.value = AreaHealth(steps, stepsTarget, hr, weight, sleep)
+        val stepsWeek = metrics(HealthMetricType.STEPS, week)().groupBy { it.date }
+            .map { (d, rows) -> d to rows.sumOf { it.value } }.filter { it.second > 0 }.sortedBy { it.first }
+        val weights = metrics(HealthMetricType.WEIGHT, today.minus(DatePeriod(days = 35)))().sortedBy { it.date }
+        val change = if (weights.size >= 2 && weights.last().date.toEpochDays() - weights.first().date.toEpochDays() >= 14) {
+            weights.last().value - weights.first().value
+        } else null
+        health.value = AreaHealth(steps, stepsTarget, hr, weight, sleep, stepsWeek, change)
+    }
+
+    /** After Health is connected from the page, so the numbers show without leaving it. */
+    fun refreshHealth() {
+        if (area == PlanArea.FITNESS || area == PlanArea.MIND) viewModelScope.launch { loadHealth() }
     }
 
     fun toggleRoutine(habit: Habit, done: Boolean) {

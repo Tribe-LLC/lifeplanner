@@ -80,7 +80,7 @@ fun V4AreaScreen(
 
         when (area) {
             PlanArea.MONEY -> MoneySection(onAddSpend = actions.onQuickAdd)
-            PlanArea.FITNESS -> FitnessSection(state.health, onOpenHealth = { actions.onRoute("health") })
+            PlanArea.FITNESS -> FitnessSection(state.health, onHealthConnected = viewModel::refreshHealth)
             PlanArea.TRAVEL -> TravelSection(onOpenTrip = { actions.onRoute("v4_trip/$it") })
             PlanArea.MIND -> MindSection(onRoute = actions.onRoute)
             PlanArea.STUDY -> StudySection(onOpenFocus = { actions.onRoute("focus_setup") })
