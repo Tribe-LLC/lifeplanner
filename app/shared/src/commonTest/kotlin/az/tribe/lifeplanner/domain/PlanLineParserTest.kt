@@ -42,7 +42,8 @@ class PlanLineParserTest {
         assertEquals(3000.0, parse("Build a $3,000 emergency fund").amount)
         assertEquals("USD", parse("Build a $3,000 emergency fund").currency)
         assertEquals(2000.0, parse("save 2k for a car").amount)
-        assertEquals("Car", parse("save 2k for a car").subject)
+        assertEquals("a car", parse("save 2k for a car").subject)
+        assertEquals("Japan", parse("Save 2000 for Japan by May").subject)
         assertEquals(PlanTemplates.DEBT, parse("Pay off €2,000 of debt").template)
     }
 

@@ -491,8 +491,17 @@ internal fun NavGraphBuilder.appNavV4(
 
     composable(V4Routes.PLAN, arguments = listOf(navArgument("goalId") { type = NavType.StringType })) { entry ->
         val goalId = entry.arguments?.read { getStringOrNull("goalId") } ?: return@composable
+        // Back names the screen it returns to; only an area page leaves it to the plan's own area.
+        val backTo = when (navController.previousBackStackEntry?.destination?.route) {
+            V4Routes.TODAY -> "Today"
+            V4Routes.LIFE -> "Life"
+            V4Routes.COACH -> "Coach"
+            V4Routes.AREA -> null
+            else -> "Back"
+        }
         V4PlanScreen(
             goalId = goalId,
+            backLabel = backTo,
             onBack = { navController.popBackStack() },
             onOpenArea = { navController.navigate(V4Routes.area(it)) { launchSingleTop = true } },
             onNewPlan = onNewPlan,

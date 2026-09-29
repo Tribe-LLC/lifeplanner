@@ -5,6 +5,7 @@ import az.tribe.lifeplanner.data.health.WorkoutKind
 import az.tribe.lifeplanner.data.plans.PlanState
 import az.tribe.lifeplanner.data.plans.PlanView
 import az.tribe.lifeplanner.domain.model.LogKind
+import az.tribe.lifeplanner.domain.model.PlanArea
 import az.tribe.lifeplanner.domain.service.ParsedEntry
 import az.tribe.lifeplanner.domain.service.PlanProgress
 import az.tribe.lifeplanner.domain.service.PlanScheduler
@@ -15,7 +16,7 @@ import az.tribe.lifeplanner.ui.v4.plans.SheetInputs
 import kotlinx.datetime.LocalDate
 
 /** "Run a 5K by December" typed into Add anything: what the plan card says. */
-data class PlanOffer(val line: String, val title: String, val text: String)
+data class PlanOffer(val line: String, val title: String, val text: String, val area: PlanArea? = null)
 
 /**
  * Where Add anything meets plans: a line that is a plan gets a card to make it one; a run, study
@@ -35,12 +36,15 @@ object QuickAddPlans {
                 p.recipe.track == PlanTrack.SAVE -> "Sounds like a savings plan, not a spend. " + (p.recipe.answerNote ?: steps)
                 else -> "Sounds like a plan. $steps"
             },
+            area = p.area,
         )
     }
 
     /** "Log a run instead": keeps what was typed as the log it also reads as. */
-    fun altLabel(entries: List<ParsedEntry>): String? {
+    fun altLabel(entries: List<ParsedEntry>, planArea: PlanArea? = null): String? {
         val e = entries.firstOrNull() ?: return null
+        // Only a log in the plan's own area is a fair other reading: "save 500 for a bike" is no workout.
+        if (planArea != null && e.area != planArea) return null
         return when {
             e.kind == LogKind.WORKOUT && WorkoutKind.fromTitle(e.title) == WorkoutKind.RUN -> "Log a run instead"
             e.kind == LogKind.WORKOUT -> "Log a workout instead"

@@ -323,8 +323,9 @@ object PlanLineParser {
     private fun subject(template: String?, rest: String, money: Pair<Double, String>?): String? {
         fun cap(s: String?) = s?.trim()?.trim(',', '.')?.takeIf { it.isNotEmpty() }?.replaceFirstChar { it.uppercase() }
         return when (template) {
-            PlanTemplates.SAVE -> Regex("""\bfor\s+(?:a\s+|an\s+|my\s+|the\s+|our\s+)?([\p{L}][\p{L}\s'-]{1,30})$""", RegexOption.IGNORE_CASE)
-                .find(rest)?.groupValues?.get(1)?.let(::cap)
+            // Kept as typed, article and all: "Put aside for a bike?", "Put aside for Japan?".
+            PlanTemplates.SAVE -> Regex("""\bfor\s+((?:a\s+|an\s+|my\s+|the\s+|our\s+)?[\p{L}][\p{L}\s'-]{1,30})$""", RegexOption.IGNORE_CASE)
+                .find(rest)?.groupValues?.get(1)?.let(::tidy)?.takeIf { it.isNotEmpty() }
             PlanTemplates.LEARN -> Regex("""\b(?:learn|study|master|get better at|practise|practice|improve my)\s+(?:to\s+|how\s+to\s+|some\s+|the\s+)?(.+)$""", RegexOption.IGNORE_CASE)
                 .find(rest)?.groupValues?.get(1)?.replace(trailing, "")?.let(::cap)
             PlanTemplates.EXAM -> Regex("""\bpass\s+(?:my\s+|the\s+|an\s+|a\s+)?(.+)$""", RegexOption.IGNORE_CASE)

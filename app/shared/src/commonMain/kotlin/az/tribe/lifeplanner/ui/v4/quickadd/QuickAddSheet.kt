@@ -119,7 +119,7 @@ fun QuickAddSheet(
             when {
                 state.text.isBlank() -> Hint()
                 plan != null -> PlanOfferCard(
-                    plan, alt = QuickAddPlans.altLabel(entries)?.takeIf { entries.isNotEmpty() },
+                    plan, alt = QuickAddPlans.altLabel(entries, plan.area)?.takeIf { entries.isNotEmpty() },
                     onMake = { onMakePlan(plan.line) }, onAlt = viewModel::logItInstead,
                 )
                 entries.isEmpty() -> {

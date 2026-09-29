@@ -60,6 +60,16 @@ class QuickAddPlansTest {
     }
 
     @Test
+    fun aSavingsPlanForABikeOffersNoWorkout() {
+        val offer = QuickAddPlans.offer("save 500 for a bike by march", today, "EUR")!!
+        assertEquals(PlanArea.MONEY, offer.area)
+        assertNull(QuickAddPlans.altLabel(QuickAddParser.parse("save 500 for a bike by march", now, "EUR").entries, offer.area))
+        // A run plan still offers the run it also reads as.
+        val run = QuickAddPlans.offer("run a 5k by december", today, "EUR")!!
+        assertEquals("Log a run instead", QuickAddPlans.altLabel(QuickAddParser.parse("run a 5k by december", now, "EUR").entries, run.area))
+    }
+
+    @Test
     fun moneyPutAsideIsForAPlanNotSpending() {
         val e = QuickAddParser.parse("put aside 100 for Japan", now, "EUR").entries.single()
         assertEquals(PlanProgress.SAVINGS, e.category)

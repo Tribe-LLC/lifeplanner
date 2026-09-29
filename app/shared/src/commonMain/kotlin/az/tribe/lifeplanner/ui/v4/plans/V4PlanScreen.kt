@@ -78,6 +78,8 @@ private enum class PageSheet { DATE, PAUSE, LET_GO, DELETE, RENAME, PUT_ASIDE, S
 @Composable
 fun V4PlanScreen(
     goalId: String,
+    /** What Back returns to; null means the plan's area page. */
+    backLabel: String? = null,
     onBack: () -> Unit,
     onOpenArea: (PlanArea) -> Unit,
     onNewPlan: (PlanSheetRequest) -> Unit,
@@ -95,7 +97,7 @@ fun V4PlanScreen(
             .verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        TopRow(v, onBack, onRename = { sheet = PageSheet.RENAME }, onDelete = { sheet = PageSheet.DELETE })
+        TopRow(v, backLabel, onBack, onRename = { sheet = PageSheet.RENAME }, onDelete = { sheet = PageSheet.DELETE })
         if (v == null) {
             if (!s.loading) Text("This plan is not here any more.", style = V4.type.body, color = c.ink2)
             return@Column
@@ -148,11 +150,11 @@ fun V4PlanScreen(
 }
 
 @Composable
-private fun TopRow(v: PlanView?, onBack: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit) {
+private fun TopRow(v: PlanView?, backLabel: String?, onBack: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit) {
     val c = V4.colors
     var menu by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        V4BackLink(v?.let { areaName(it.area) } ?: "Back", onBack)
+        V4BackLink(backLabel ?: v?.let { areaName(it.area) } ?: "Back", onBack)
         if (v != null) Box {
             V4IconButton(PhosphorIcons.Regular.DotsThree, "More for this plan", { menu = true })
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = c.surface) {
