@@ -121,4 +121,14 @@ class PlanPageModelTest {
         assertEquals("1 let go", PlanPageModel.doneLink(0, 1))
         assertNull(PlanPageModel.doneLink(0, 0))
     }
+
+    @Test
+    fun theLifeTabSaysHowPlansArePaced() {
+        val today = LocalDate(2026, 10, 20)
+        assertEquals("1 plan" to "On track. Next: Run 2 km", PlanPageModel.lifeLine(listOf(view(today))))
+        val late = LocalDate(2026, 11, 2)
+        val other = view(late, goal.copy(id = "h", title = "Read 12 books"), spec.copy(goalId = "h"))
+        assertEquals("2 plans" to "2 behind. Next: Run 2 km", PlanPageModel.lifeLine(listOf(view(late), other)))
+        assertEquals("1 plan" to "Paused", PlanPageModel.lifeLine(listOf(view(today, s = spec.copy(pausedFrom = today)))))
+    }
 }

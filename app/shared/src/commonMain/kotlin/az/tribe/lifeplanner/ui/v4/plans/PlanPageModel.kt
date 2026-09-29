@@ -154,6 +154,25 @@ object PlanPageModel {
         }
     }
 
+    /**
+     * The Life tab's card for an area whose own numbers are empty: "2 plans" and "1 behind. Next:
+     * Run 3 km". [open] are the area's plans under way or paused.
+     */
+    fun lifeLine(open: List<PlanView>): Pair<String, String> {
+        val head = "${open.size} ${PlanTemplates.plural("plan", open.size)}"
+        val active = open.filter { it.state == PlanState.ACTIVE }
+        val behind = active.count { it.pace.kind == PaceKind.BEHIND || it.pace.kind == PaceKind.PAST }
+        val pace = when {
+            open.size == 1 -> open.first().pace.label
+            active.isEmpty() -> "All paused"
+            behind == 0 -> "All on track"
+            else -> "$behind behind"
+        }
+        val next = active.mapNotNull { it.next }.filter { it.dueDate != null }.minByOrNull { it.dueDate!! }
+            ?: active.firstNotNullOfOrNull { it.next }
+        return head to (pace + (next?.let { ". Next: ${it.title}" } ?: ""))
+    }
+
     /** "2 done, 1 let go", or null when there are none. */
     fun doneLink(done: Int, letGo: Int): String? = listOfNotNull(
         done.takeIf { it > 0 }?.let { "$it done" },

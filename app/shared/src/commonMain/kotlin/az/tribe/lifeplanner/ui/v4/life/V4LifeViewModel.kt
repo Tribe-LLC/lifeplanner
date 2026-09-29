@@ -1,12 +1,14 @@
 package az.tribe.lifeplanner.ui.v4.life
 
-import az.tribe.lifeplanner.domain.service.PlanSpec
+import az.tribe.lifeplanner.data.plans.PlanBoard
+import az.tribe.lifeplanner.data.plans.PlanState
+import az.tribe.lifeplanner.data.plans.PlanView
+import az.tribe.lifeplanner.ui.v4.plans.PlanPageModel
 import az.tribe.lifeplanner.domain.repository.TripRepository
 import az.tribe.lifeplanner.domain.service.TripPlanner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import az.tribe.lifeplanner.domain.enum.HealthMetricType
-import az.tribe.lifeplanner.domain.model.Goal
 import az.tribe.lifeplanner.domain.model.Habit
 import az.tribe.lifeplanner.domain.model.HabitCheckIn
 import az.tribe.lifeplanner.domain.model.LogKind
@@ -91,6 +93,7 @@ class V4LifeViewModel(
     private val trips: TripRepository,
     private val habitService: HabitService,
     private val fx: az.tribe.lifeplanner.data.money.FxRates,
+    private val board: PlanBoard,
 ) : ViewModel() {
 
     private val tz = TimeZone.currentSystemDefault()
@@ -105,18 +108,18 @@ class V4LifeViewModel(
             habitRepository.observeHabitsWithTodayStatus(),
             goalRepository.observeAllGoals(),
             journalRepository.observeAllEntries(),
-        ) { r, areas, _, goals, _ -> Triple(r, areas, goals) }
-            .onEach { (r, areas, goals) -> _state.value = compute(r, areas, goals) }
+        ) { r, areas, _, _, _ -> r to areas }
+            .onEach { (r, areas) -> _state.value = compute(r, areas) }
             .launchIn(viewModelScope)
     }
 
     fun setRange(r: LifeRange) { range.value = r }
 
     fun refresh() {
-        viewModelScope.launch { _state.value = compute(range.value, planAreas.enabledAreas.value, goalRepository.getAllGoals()) }
+        viewModelScope.launch { _state.value = compute(range.value, planAreas.enabledAreas.value) }
     }
 
-    private suspend fun compute(r: LifeRange, areas: Set<PlanArea>, goals: List<Goal>): LifeUiState {
+    private suspend fun compute(r: LifeRange, areas: Set<PlanArea>): LifeUiState {
         val today = Clock.System.todayIn(tz)
         val habits = runCatching { habitRepository.getAllHabits() }.getOrDefault(emptyList()).filter { it.isActive }
         val from = today.minus(DatePeriod(days = 69))
@@ -149,8 +152,8 @@ class V4LifeViewModel(
             }
         }
 
-        val specs = runCatching { PlanSpec.fromBudgets(budgets.getAll()) }.getOrDefault(emptyMap())
-        val summaries = PlanArea.entries.filter { it in areas }.map { area -> summarize(area, today, daily, goals, specs) }
+        val plans = runCatching { board.plans.first() }.getOrDefault(emptyList())
+        val summaries = PlanArea.entries.filter { it in areas }.map { area -> summarize(area, today, daily, plans) }
         val recent = recent(today, habits, checkIns)
 
         // Early on a Monday nothing is over yet: show today's count instead of a 0% that is not earned.
@@ -180,19 +183,14 @@ class V4LifeViewModel(
         return (if (d >= 0) "+$d vs $vs" else "$d vs $vs") to (d >= 0)
     }
 
-    private suspend fun summarize(area: PlanArea, today: LocalDate, daily: DailyHabits, goals: List<Goal>, specs: Map<String, PlanSpec>): AreaSummary {
+    private suspend fun summarize(area: PlanArea, today: LocalDate, daily: DailyHabits, plans: List<PlanView>): AreaSummary {
         val week = (6 downTo 0).map { today.minus(DatePeriod(days = it)) }
-        val areaGoals = goals.filter { !it.isArchived && PlanSpec.areaOf(it, specs) == area }
-        val openGoals = areaGoals.filter { it.status != az.tribe.lifeplanner.domain.enum.GoalStatus.COMPLETED }
+        val openGoals = plans.filter { it.area == area && (it.state == PlanState.ACTIVE || it.state == PlanState.PAUSED) }.sortedBy { it.target }
+        // With nothing else to show, the area's plans and how they are paced.
         fun plansFallback(empty: String, emptyCaption: String): AreaSummary {
             if (openGoals.isEmpty()) return AreaSummary(area, empty, emptyCaption, emptyList())
-            val next = openGoals.flatMap { g -> g.milestones.filter { !it.isCompleted } }.firstOrNull()
-            return AreaSummary(
-                area,
-                "${openGoals.size} ${if (openGoals.size == 1) "plan" else "plans"}",
-                next?.let { "Next: ${it.title}" } ?: "All steps done",
-                openGoals.map { (it.progress ?: 0L).toFloat() },
-            )
+            val (head, line) = PlanPageModel.lifeLine(openGoals)
+            return AreaSummary(area, head, line, openGoals.map { it.progress.fraction })
         }
         return when (area) {
             PlanArea.HABITS -> {
