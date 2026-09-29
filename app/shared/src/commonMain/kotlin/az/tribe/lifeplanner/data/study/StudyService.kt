@@ -189,10 +189,11 @@ class StudyService(
     /**
      * Saves "[subject] every [days], [time], [minutes] min" and plans its blocks for the next days.
      * The repeat row itself is never a plan: Today, rollover and the calendar only ever see blocks.
+     * Returns the repeat's id, so a v4 plan can keep it as its routine.
      */
-    suspend fun addRepeat(subject: String, days: Set<DayOfWeek>, time: LocalTime?, minutes: Int, toCalendar: Boolean) {
-        val name = subject.trim().ifEmpty { return }
-        if (days.isEmpty()) return
+    suspend fun addRepeat(subject: String, days: Set<DayOfWeek>, time: LocalTime?, minutes: Int, toCalendar: Boolean): String? {
+        val name = subject.trim().ifEmpty { return null }
+        if (days.isEmpty()) return null
         val now = Clock.System.now().toLocalDateTime(tz)
         val through = StudyPlanner.firstFilledThrough(now.date, now.time, time)
         val repeat = LifeLog(
@@ -204,6 +205,7 @@ class StudyService(
         logs.save(repeat)
         fill(repeat, now.date)
         PostHogAnalytics.capture("v4_study_repeat_created", mapOf("days" to days.size, "minutes" to minutes, "timed" to (time != null), "calendar" to toCalendar))
+        return repeat.id
     }
 
     /** Stops a repeat: its blocks from today on go, the ones already done stay. */

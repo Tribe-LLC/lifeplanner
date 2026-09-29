@@ -128,6 +128,9 @@ internal fun V4AppRoot(
             LaunchedEffect(Unit) { nudges.run() }
             // Ticks habits that tick themselves from a workout, a breathing break or study time.
             LaunchedEffect("self_tick") { selfTicks.run() }
+            // Ticks plan steps that runs, money put aside, weight or study time have reached.
+            val planTicks: az.tribe.lifeplanner.data.plans.PlanAutoTick = koinInject()
+            LaunchedEffect("plan_tick") { planTicks.run() }
             // Keeps repeating study blocks planned a week ahead.
             val study: az.tribe.lifeplanner.data.study.StudyService = koinInject()
             LaunchedEffect(Unit) { runCatching { study.fillRepeats() } }
