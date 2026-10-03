@@ -89,3 +89,63 @@ All predate v4, none merged, `origin/main` has not moved since 22 Sep.
 - Release signing needs `lifeplanner.jks` plus the `RELEASE_*` properties, which Kamran sets
   himself (keystore in `~/Projects/LifePlanner/keys`).
 - Play requires targetSdk 36 from 31 Aug 2026. v4 is on compileSdk 37 / targetSdk 36 already.
+
+---
+
+# Release plan (2026-10-03)
+
+Context: the Play listing is mid-transfer to the org account **store@tribe.az**. Publishing
+is paused until Google completes the transfer. The live store app is still **2.3** (2 April),
+so the first v4 update is a 2.3 -> 4.0 jump for almost every existing user. That upgrade path
+is migration-verified. v4 is also installed on the S24 (in-place over the sideloaded 3.0.0,
+data kept) as of today.
+
+## The paywall decision (blocks step 4, yours to make)
+
+There is no paywall and no billing SDK. Three ways to go:
+
+- **A. Ship free.** Fastest. Remove the dead gate, publish 4.0 free, add billing later as 4.1.
+  Lowest risk, no revenue day one.
+- **B. Freemium with RevenueCat.** Land PR #5, pick what is free vs paid (candidate: the Coach,
+  or the heavier areas like Travel/Study, or Causal Insights), design a paywall screen, wire
+  products in Play. Adds roughly 3-5 days and needs RevenueCat + Play product setup.
+- **C. Free trial then subscription.** Same wiring as B plus a trial. Most revenue, most work.
+
+Recommendation: **A now, B as 4.1.** Get v4 in front of users on the new account, learn from the
+funnel, then charge once you know which area people actually keep using.
+
+## Phases
+
+### Phase 0: lock in what exists (safe, no decision)
+- [ ] Push `com3run/v4-life-planner` to GitHub. 52 commits live only on this Mac.
+- [ ] Android core-loop pass on a safe device, screenshot each step.
+- [ ] One cloud sync round trip with a real test account (tables are live, never watched).
+
+### Phase 1: the build is releasable
+- [ ] Paywall decision above. If A: delete `DefaultPremiumGate`'s dead branch and the Causal gate.
+- [ ] Merge PR #29 (signing guard) so a release AAB cannot come out unsigned.
+- [ ] Triage PR #25 (decision journal) and PR #24 (architecture) : merge or close, do not leave rotting.
+- [ ] Bump `app-versionName` to 4.0.0, `app-versionCode` to 12 in gradle/libs.versions.toml.
+
+### Phase 2: store paperwork (needs the transfer done)
+- [ ] Confirm the transfer to store@tribe.az completed and the app is editable there.
+- [ ] Update the Play **health declaration**: Exercise read/write, Nutrition + Hydration write,
+      WRITE_MINDFULNESS. Sleep/Weight read-only. Without this the review bounces.
+- [ ] Refresh store listing: screenshots of the v4 shell, description, what's-new for 4.0.
+- [ ] Data safety form review (new areas collect more; keep it honest).
+
+### Phase 3: signed build and internal test
+- [ ] Signed AAB (Kamran enters the keystore passwords; keystore in ~/Projects/LifePlanner/keys).
+      NOTE: a transferred app keeps Google Play App Signing, so the upload key is unchanged.
+- [ ] Confirm Crashlytics receives from the release build (PostHog $exception is off).
+- [ ] Upload to the internal track, install from Play on the S24, verify the real 2.3/3.0 -> 4.0
+      upgrade one more time from a store build, not a sideload.
+
+### Phase 4: ship
+- [ ] Internal -> closed/open test -> staged production rollout.
+- [ ] Watch the funnel on PostHog 293959 for the first cohort.
+
+## Rough effort
+Path A: about 2-3 focused days of my work plus your paywall call, the health declaration, and the
+keystore passwords. Path B adds 3-5 days for billing. The transfer completing is the only hard
+external dependency.
