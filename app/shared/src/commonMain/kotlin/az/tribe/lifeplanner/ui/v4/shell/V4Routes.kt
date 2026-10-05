@@ -29,6 +29,10 @@ object V4Routes {
 
     const val YOU = "v4_you"
 
+    /** LifePlanner Plus: the RevenueCat paywall, and Customer Center to manage a subscription. */
+    const val PLUS = "v4_plus"
+    const val SUBSCRIPTION = "v4_subscription"
+
     /** The swipe decks: check in on what is left today, and review habits that slipped. */
     const val CHECK_IN = "v4_checkin"
     const val REVIEW = "v4_review"

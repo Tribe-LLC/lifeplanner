@@ -19,6 +19,9 @@ import dev.gitlive.firebase.initialize
 import dev.gitlive.firebase.perf.android
 import dev.gitlive.firebase.perf.performance
 import az.tribe.lifeplanner.data.analytics.PostHogAnalytics
+import com.revenuecat.purchases.kmp.LogLevel
+import com.revenuecat.purchases.kmp.Purchases
+import com.revenuecat.purchases.kmp.PurchasesConfiguration
 import org.koin.android.ext.koin.androidContext
 
 open class MainApplication : Application(), KoinComponent {
@@ -52,6 +55,16 @@ open class MainApplication : Application(), KoinComponent {
             Logger.i("PostHog") { "PostHog initialized with session replay" }
         } else {
             Logger.w("PostHog") { "PostHog API key is empty, skipping init" }
+        }
+
+        // RevenueCat. Without a key nothing is configured, PremiumGate stays open and the Plus row
+        // on You hides itself, so a build without billing keys behaves exactly like a free app.
+        if (BuildKonfig.REVENUECAT_ANDROID_API_KEY.isNotBlank() && !Purchases.isConfigured) {
+            Purchases.logLevel = if (BuildKonfig.isDebug) LogLevel.DEBUG else LogLevel.INFO
+            Purchases.configure(PurchasesConfiguration(apiKey = BuildKonfig.REVENUECAT_ANDROID_API_KEY))
+            Logger.i("RevenueCat") { "Purchases configured (Android)" }
+        } else {
+            Logger.w("RevenueCat") { "No RevenueCat key, billing off" }
         }
 
         initKoin {

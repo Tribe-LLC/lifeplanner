@@ -53,6 +53,11 @@ kotlin {
     }
 
     sourceSets {
+        // RevenueCat purchases-kmp uses cinterop on iOS. Opt in on the iOS source sets only, since
+        // the kotlinx.cinterop marker does not exist on Android.
+        matching { it.name.lowercase().startsWith("ios") }.configureEach {
+            languageSettings.optIn("kotlinx.cinterop.ExperimentalForeignApi")
+        }
         androidMain.dependencies {
             // Firebase BOM — supplies versions for the transitive com.google.firebase:*
             // artifacts that the dev.gitlive:firebase-* libs declare without versions.
@@ -152,6 +157,11 @@ kotlin {
             api(libs.kmpnotifier) // in iOS export this library
             //Kermit  for logging
             implementation(libs.kermit)
+
+            // RevenueCat: subscriptions, the dashboard-designed Paywall and Customer Center. Since
+            // 3.0 the native iOS SDK ships inside the library, so the Xcode project needs nothing.
+            implementation(libs.purchases.kmp.core)
+            implementation(libs.purchases.kmp.ui)
         }
 
         iosMain.dependencies {
@@ -247,6 +257,18 @@ buildkonfig {
             FieldSpec.Type.STRING,
             "APP_VERSION",
             libs.versions.app.versionName.get(),
+        )
+        // RevenueCat public SDK keys (goog_... / appl_...). Public by design, but kept out of git
+        // with the rest. Blank means billing stays off and the app is fully free.
+        buildConfigField(
+            FieldSpec.Type.STRING,
+            "REVENUECAT_ANDROID_API_KEY",
+            localProperties["REVENUECAT_ANDROID_API_KEY"]?.toString() ?: "",
+        )
+        buildConfigField(
+            FieldSpec.Type.STRING,
+            "REVENUECAT_IOS_API_KEY",
+            localProperties["REVENUECAT_IOS_API_KEY"]?.toString() ?: "",
         )
     }
 

@@ -19,6 +19,7 @@ firebaseBom = "34.13.0"
 firebaseCommon = "2.4.0"
 supabase = "3.1.1"
 kotlin = "2.3.21"
+purchases-kmp = "3.11.0"
 sqldelight = "2.0.2"
 
 kermit = "2.0.5"
@@ -100,6 +101,8 @@ ktor-client-websockets = { module = "io.ktor:ktor-client-websockets",version.ref
 ktor-client-cio= {module ="io.ktor:ktor-client-cio", version.ref = "ktor"}
 
 kermit = {module = "co.touchlab:kermit", version.ref = "kermit"}
+purchases-kmp-core = { module = "com.revenuecat.purchases:purchases-kmp-core", version.ref = "purchases-kmp" }
+purchases-kmp-ui = { module = "com.revenuecat.purchases:purchases-kmp-ui", version.ref = "purchases-kmp" }
 
 multiplatform-settings = { module = "com.russhwolf:multiplatform-settings", version.ref = "settings" }
 multiplatform-settings-no-arg = { module = "com.russhwolf:multiplatform-settings-no-arg", version.ref = "settings" }

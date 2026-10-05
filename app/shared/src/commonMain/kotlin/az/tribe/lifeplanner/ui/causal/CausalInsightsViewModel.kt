@@ -34,7 +34,7 @@ class CausalInsightsViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            val premium = premiumGate.isPremium
+            val premium = premiumGate.isPremium()
             if (!premium) {
                 _state.value = State(isLoading = false, isPremium = false)
                 return@launch

@@ -100,7 +100,7 @@ so the first v4 update is a 2.3 -> 4.0 jump for almost every existing user. That
 is migration-verified. v4 is also installed on the S24 (in-place over the sideloaded 3.0.0,
 data kept) as of today.
 
-## The paywall decision (blocks step 4, yours to make)
+## The paywall decision: DECIDED 2026-10-05, RevenueCat (path B)
 
 There is no paywall and no billing SDK. Three ways to go:
 
@@ -122,10 +122,10 @@ funnel, then charge once you know which area people actually keep using.
 - [ ] One cloud sync round trip with a real test account (tables are live, never watched). Still open: the LP_V4_Dev guest does not sync, so this needs a signed-in test account.
 
 ### Phase 1: the build is releasable
-- [ ] Paywall decision above. If A: delete `DefaultPremiumGate`'s dead branch and the Causal gate.
-- [ ] Merge PR #29 (signing guard) so a release AAB cannot come out unsigned.
-- [ ] Triage PR #25 (decision journal) and PR #24 (architecture) : merge or close, do not leave rotting.
-- [ ] Bump `app-versionName` to 4.0.0, `app-versionCode` to 12 in gradle/libs.versions.toml.
+- [x] Paywall: RevenueCat chosen (2026-10-05). SDK purchases-kmp 3.11.0 wired on both platforms, gate backed by the `premium` entitlement, Plus paywall + Customer Center screens, a Plus row on You. See "RevenueCat setup" below for the dashboard side. **Still open: which features Plus actually locks** (nothing is locked yet).
+- [x] PR #29 (signing guard) merged to main (ce7ec1a) and on v4; main merged into v4 (26432f2).
+- [x] PR #25 and #24 closed 2026-10-05 with reasons, branches kept. #25: v4 has no entry point to the decision journal. #24: 208-file v3 refactor overlapping v4's core files. PR #5 superseded by the v4 RevenueCat port.
+- [x] Version bumped to 4.0.0 / 12 (47cf4f8), confirmed in the built APK.
 
 ### Phase 2: store paperwork (needs the transfer done)
 - [ ] Confirm the transfer to store@tribe.az completed and the app is editable there.
@@ -135,6 +135,9 @@ funnel, then charge once you know which area people actually keep using.
 - [ ] Data safety form review (new areas collect more; keep it honest).
 
 ### Phase 3: signed build and internal test
+- [ ] Fill local.properties in the v4 worktree before the release build: RELEASE_* (Kamran),
+      REVENUECAT_ANDROID_API_KEY / REVENUECAT_IOS_API_KEY, and **restore POSTHOG_API_KEY** (blank on
+      purpose in this worktree; the main checkout has the real one). A release without it ships blind.
 - [ ] Signed AAB (Kamran enters the keystore passwords; keystore in ~/Projects/LifePlanner/keys).
       NOTE: a transferred app keeps Google Play App Signing, so the upload key is unchanged.
 - [ ] Confirm Crashlytics receives from the release build (PostHog $exception is off).
@@ -149,3 +152,65 @@ funnel, then charge once you know which area people actually keep using.
 Path A: about 2-3 focused days of my work plus your paywall call, the health declaration, and the
 keystore passwords. Path B adds 3-5 days for billing. The transfer completing is the only hard
 external dependency.
+
+
+---
+
+## RevenueCat setup (dashboard side, Kamran)
+
+Code side is done. With no keys in local.properties billing is OFF: the gate stays open and the Plus
+row on You hides itself, so a build without keys behaves exactly like a free app. Turning billing on
+is all dashboard and store work, in this order:
+
+1. RevenueCat: create the project, add the Android app (package `az.tribe.lifeplanner`) and the iOS app
+   (bundle id from Xcode). Free tier: no cost until $2.5k/month tracked revenue.
+2. Play Console (after the transfer to store@tribe.az completes): create the subscription products
+   (e.g. monthly + yearly). Products can only go Active once an AAB with billing has been uploaded to a
+   track, the internal track is enough.
+3. Play: create a service account with financial access and upload its JSON to RevenueCat, so
+   RevenueCat can validate purchases. App Store Connect: the in-app purchase key, same idea.
+4. RevenueCat: create the entitlement with identifier exactly `premium` (the code checks
+   `RevenueCatPremiumGate.PREMIUM_ENTITLEMENT`), attach the products, build an Offering, and design
+   the Paywall there. The app renders whatever paywall the dashboard holds, so copy and prices change
+   without a release.
+5. Put the public SDK keys (`goog_...`, `appl_...`) into local.properties as
+   `REVENUECAT_ANDROID_API_KEY` / `REVENUECAT_IOS_API_KEY`.
+6. Test with a licence tester on the internal track. Sandbox purchases are free.
+
+Decision still open: **what Plus locks.** Natural candidates, in order of how defensible they are:
+the Coach (real AI cost per message, so a daily free allowance with unlimited on Plus), the
+cross-area insights on Life, or the heavier areas (Travel, Study). Nothing is locked today; locking
+a feature is one `premiumGate.isPremium()` check plus a link to `V4Routes.PLUS`.
+
+## Play health declaration answers (Phase 2)
+
+Every permission below is requested in the manifest AND used in code (8 record types referenced in
+HealthDataManager.android.kt, 4 write call sites), so the declaration is honest.
+
+| Permission | Why the app needs it |
+|---|---|
+| READ_STEPS | Fitness page shows daily steps; habits can tick themselves from activity |
+| READ_EXERCISE | Fitness page lists workouts from other apps; plans track progress from them |
+| WRITE_EXERCISE | Workouts logged in LifePlanner are saved to Health Connect |
+| READ_HEART_RATE | Shown with workouts on the Fitness page |
+| READ_SLEEP | Sleep and mind: sleep debt and the coach's workout swap after a short night |
+| READ_WEIGHT | Shown on the Fitness page (read only) |
+| WRITE_NUTRITION | Meals logged in the Meals area are saved to Health Connect |
+| WRITE_HYDRATION | The water habit saves each glass to Health Connect |
+| WRITE_MINDFULNESS | Breathing sessions in Sleep and mind are saved as mindful minutes |
+
+Also sensitive, for the Data safety form: calendar read/write (interviews and study blocks go to the
+calendar), coarse location (weather on Today and trip forecasts).
+
+## What's new in 4.0 (Play release notes, 497/500 chars)
+
+```
+LifePlanner 4 is built around your whole life.
+- Pick your areas: habits, fitness, money, meals, study, travel, career, mind.
+- Today shows what to do now and carries over what you missed, no guilt.
+- Add anything in one line: "lunch ramen 12.50" lands in Meals and Money.
+- Plans whose steps date themselves and track progress from your logs.
+- A coach that sees your week and suggests the next step.
+- Health Connect both ways, and your calendar.
+Everything from earlier versions comes with you.
+```

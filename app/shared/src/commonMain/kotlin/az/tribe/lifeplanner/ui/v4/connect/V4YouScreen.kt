@@ -23,6 +23,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +38,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import az.tribe.lifeplanner.BuildKonfig
+import az.tribe.lifeplanner.core.PremiumGate
 import az.tribe.lifeplanner.data.habits.NudgePrefs
 import az.tribe.lifeplanner.data.habits.NudgeService
 import az.tribe.lifeplanner.data.sync.SyncState
@@ -52,6 +54,7 @@ import az.tribe.lifeplanner.ui.v4.components.V4Divider
 import az.tribe.lifeplanner.ui.v4.components.V4PrimaryButton
 import az.tribe.lifeplanner.ui.v4.components.V4Switch
 import az.tribe.lifeplanner.ui.v4.components.V4TextButton
+import az.tribe.lifeplanner.ui.v4.shell.V4Routes
 import az.tribe.lifeplanner.ui.v4.theme.V4
 import az.tribe.lifeplanner.ui.v4.travel.TravelField
 import az.tribe.lifeplanner.ui.viewmodel.AuthState
@@ -83,6 +86,7 @@ fun V4YouScreen(
     nudgePrefs: NudgePrefs = koinInject(),
     nudges: NudgeService = koinInject(),
     themeController: ThemeController = koinInject(),
+    premiumGate: PremiumGate = koinInject(),
 ) {
     val c = V4.colors
     val user = (authState as? AuthState.Authenticated)?.user ?: (authState as? AuthState.Guest)?.user
@@ -92,6 +96,9 @@ fun V4YouScreen(
     val learned by nudges.learned.collectAsState()
     val theme by themeController.mode.collectAsState()
     var account by remember { mutableStateOf(false) }
+    // Re-read on every visit, so coming back from the paywall after a purchase flips the row.
+    var premium by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(Unit) { premium = premiumGate.isPremium() }
 
     Column(
         Modifier.fillMaxSize().background(c.background).statusBarsPadding().navigationBarsPadding()
@@ -120,6 +127,17 @@ fun V4YouScreen(
                 }
                 Icon(PhosphorIcons.Regular.CaretRight, contentDescription = null, tint = c.ink3, modifier = Modifier.size(18.dp))
             }
+        }
+
+        // Only when billing is configured. Without RevenueCat keys there is nothing to buy and the
+        // row would be a dead end, so it simply is not there.
+        if (premiumGate.billingAvailable && premium != null) {
+            RowsCard(
+                listOf(
+                    if (premium == true) YouRow("LifePlanner Plus", "Active. Manage or restore your plan", "subscription")
+                    else YouRow("Get LifePlanner Plus", "See the plans and what Plus adds", "plus"),
+                ),
+            ) { row -> onRoute(if (row.route == "subscription") V4Routes.SUBSCRIPTION else V4Routes.PLUS) }
         }
 
         RowsCard(

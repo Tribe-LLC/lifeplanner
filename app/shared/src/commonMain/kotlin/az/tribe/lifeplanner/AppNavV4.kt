@@ -44,6 +44,8 @@ import az.tribe.lifeplanner.ui.v4.areas.AreaActions
 import az.tribe.lifeplanner.ui.v4.areas.V4AreaScreen
 import az.tribe.lifeplanner.ui.v4.coach.V4CoachScreen
 import az.tribe.lifeplanner.ui.v4.connect.V4ConnectedAppsScreen
+import az.tribe.lifeplanner.ui.v4.connect.V4PlusScreen
+import az.tribe.lifeplanner.ui.v4.connect.V4SubscriptionScreen
 import az.tribe.lifeplanner.ui.v4.connect.V4YouScreen
 import az.tribe.lifeplanner.ui.v4.firstrun.AreasScreen
 import az.tribe.lifeplanner.ui.v4.firstrun.ConnectScreen
@@ -463,6 +465,14 @@ internal fun NavGraphBuilder.appNavV4(
             onChangeAreas = { navController.navigate(V4Routes.areas(edit = true)) { launchSingleTop = true } },
             onRoute = { navController.navigate(it) { launchSingleTop = true } },
         )
+    }
+
+    composable(V4Routes.PLUS) {
+        V4PlusScreen(onDone = { navController.popBackStack() })
+    }
+
+    composable(V4Routes.SUBSCRIPTION) {
+        V4SubscriptionScreen(onDone = { navController.popBackStack() })
     }
 
     composable(V4Routes.CONNECTED_APPS) {
