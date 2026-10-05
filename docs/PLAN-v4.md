@@ -117,9 +117,9 @@ funnel, then charge once you know which area people actually keep using.
 ## Phases
 
 ### Phase 0: lock in what exists (safe, no decision)
-- [ ] Push `com3run/v4-life-planner` to GitHub. 52 commits live only on this Mac.
-- [ ] Android core-loop pass on a safe device, screenshot each step.
-- [ ] One cloud sync round trip with a real test account (tables are live, never watched).
+- [x] Push `com3run/v4-life-planner` to GitHub (2026-10-05). On origin now.
+- [x] Android core-loop pass on LP_V4_Dev (2026-10-05): Today, Life (dashboard + Career area + month heatmap), Coach (live AI replies + follow-up chips), and a habit check-in (Drink water 0->1 of 8) all work, zero crashes, clean migration.
+- [ ] One cloud sync round trip with a real test account (tables are live, never watched). Still open: the LP_V4_Dev guest does not sync, so this needs a signed-in test account.
 
 ### Phase 1: the build is releasable
 - [ ] Paywall decision above. If A: delete `DefaultPremiumGate`'s dead branch and the Causal gate.
