@@ -7,6 +7,9 @@ import kotlinx.datetime.todayIn
 
 /** What the free plan includes. Plus lifts both. With billing off ([PremiumGate.isPremium] true) nothing is limited. */
 object FreeLimits {
+    /** Off for 4.0: everything is free while we learn what people keep using. Turn on to enforce the limits below. */
+    const val ENABLED = false
+
     const val COACH_MESSAGES_PER_DAY = 20
 
     /** Areas a free user can have on, not counting Habits, which is always on. */
@@ -27,7 +30,7 @@ class CoachQuota(
         if (settings.getString(KEY_DAY, "") == today()) settings.getInt(KEY_COUNT, 0) else 0
 
     /** True when the user may send another message. Premium users always can. */
-    suspend fun canSend(): Boolean = gate.isPremium() || usedToday() < FreeLimits.COACH_MESSAGES_PER_DAY
+    suspend fun canSend(): Boolean = !FreeLimits.ENABLED || gate.isPremium() || usedToday() < FreeLimits.COACH_MESSAGES_PER_DAY
 
     /** Call once per message actually sent. */
     fun record() {

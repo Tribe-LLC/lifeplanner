@@ -13,7 +13,14 @@ class CoachQuotaTest {
     }
 
     @Test
+    fun limits_are_off_for_4_0() {
+        assertFalse(FreeLimits.ENABLED)
+    }
+
+    // Exercises the limit itself; only meaningful while ENABLED is true.
+    @Test
     fun free_user_is_stopped_after_twenty_messages() = runTest {
+        if (!FreeLimits.ENABLED) return@runTest
         val q = CoachQuota(MapSettings(), Gate(premium = false))
         repeat(FreeLimits.COACH_MESSAGES_PER_DAY) {
             assertTrue(q.canSend())

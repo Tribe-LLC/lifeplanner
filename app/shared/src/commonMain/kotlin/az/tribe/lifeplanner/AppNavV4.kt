@@ -355,7 +355,7 @@ internal fun NavGraphBuilder.appNavV4(
         val premium by androidx.compose.runtime.produceState(true) { value = gate.isPremium() }
         AreasScreen(
             initial = enabled,
-            freeAreaLimit = if (premium) null else az.tribe.lifeplanner.core.FreeLimits.AREAS,
+            freeAreaLimit = if (premium || !az.tribe.lifeplanner.core.FreeLimits.ENABLED) null else az.tribe.lifeplanner.core.FreeLimits.AREAS,
             onNeedPlus = { navController.navigate(V4Routes.PLUS) { launchSingleTop = true } },
             stepLabel = if (edit) null else "Step 1 of 3",
             onBack = if (edit) ({ navController.popBackStack() }) else null,
