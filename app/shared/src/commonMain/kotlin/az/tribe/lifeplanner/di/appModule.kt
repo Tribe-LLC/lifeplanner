@@ -321,6 +321,7 @@ val appModule = module {
     single { az.tribe.lifeplanner.domain.service.CalibrationEngine() }
     single { az.tribe.lifeplanner.domain.service.CalibrationProvider(get(), get(), get()) }
     single<az.tribe.lifeplanner.core.PremiumGate> { az.tribe.lifeplanner.core.RevenueCatPremiumGate() }
+    single { az.tribe.lifeplanner.core.CoachQuota(get(), get()) }
     single { CoachOrchestrator() }
     single<ChatRepository> {
         val koin = getKoin()

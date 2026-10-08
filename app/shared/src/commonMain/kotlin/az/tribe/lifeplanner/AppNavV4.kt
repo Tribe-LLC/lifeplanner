@@ -351,8 +351,12 @@ internal fun NavGraphBuilder.appNavV4(
         val edit = entry.arguments?.read { getStringOrNull("mode") } == "edit"
         val vm: V4FirstRunViewModel = koinViewModel()
         val enabled by vm.enabledAreas.collectAsState()
+        val gate: az.tribe.lifeplanner.core.PremiumGate = org.koin.compose.koinInject()
+        val premium by androidx.compose.runtime.produceState(true) { value = gate.isPremium() }
         AreasScreen(
             initial = enabled,
+            freeAreaLimit = if (premium) null else az.tribe.lifeplanner.core.FreeLimits.AREAS,
+            onNeedPlus = { navController.navigate(V4Routes.PLUS) { launchSingleTop = true } },
             stepLabel = if (edit) null else "Step 1 of 3",
             onBack = if (edit) ({ navController.popBackStack() }) else null,
             ctaPrefix = if (edit) "Save" else "Continue with",
@@ -452,6 +456,7 @@ internal fun NavGraphBuilder.appNavV4(
             onPromptConsumed = { onCoachPrompt(null) },
             onAllCoaches = { navController.navigate(Screen.AIChat.route) { launchSingleTop = true } },
             bottomInset = CoachInset,
+            onPaywall = { navController.navigate(V4Routes.PLUS) { launchSingleTop = true } },
         )
     }
 

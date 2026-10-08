@@ -90,8 +90,10 @@ fun V4CoachScreen(
     onPromptConsumed: () -> Unit,
     onAllCoaches: () -> Unit,
     bottomInset: PaddingValues,
+    onPaywall: () -> Unit = {},
     viewModel: ChatViewModel = koinViewModel(),
     facts: az.tribe.lifeplanner.data.life.LifeFactsService = org.koin.compose.koinInject(),
+    quota: az.tribe.lifeplanner.core.CoachQuota = org.koin.compose.koinInject(),
 ) {
     val ui by viewModel.uiState.collectAsState()
     // The coach speaks first, from the user's own week. Worked out on the phone, no AI call.
@@ -109,7 +111,10 @@ fun V4CoachScreen(
     LaunchedEffect(Unit) { if (ui.currentSession == null) viewModel.selectCoachById(DEFAULT_COACH) }
     LaunchedEffect(ui.currentSession?.id, initialPrompt) {
         if (initialPrompt != null && ui.currentSession != null) {
-            viewModel.sendMessage(initialPrompt)
+            if (quota.canSend()) {
+                quota.record()
+                viewModel.sendMessage(initialPrompt)
+            } else onPaywall()
             onPromptConsumed()
         }
     }
@@ -146,10 +151,14 @@ fun V4CoachScreen(
     fun send(text: String) {
         val t = text.trim()
         if (t.isEmpty() || ui.currentSession == null || ui.isSending) return
-        viewModel.sendMessage(t)
-        draft = ""
-        follow = true
-        scope.launch { if (listState.layoutInfo.totalItemsCount > 0) listState.animateScrollToItem(0) }
+        scope.launch {
+            // 20 a day on the free plan, counting only what the user sends. Then the Plus screen.
+            if (!quota.canSend()) { onPaywall(); return@launch }
+            quota.record()
+            viewModel.sendMessage(t)
+            draft = ""
+            follow = true
+            if (listState.layoutInfo.totalItemsCount > 0) listState.animateScrollToItem(0) }
     }
 
     Column(Modifier.fillMaxSize().background(c.background).statusBarsPadding()) {

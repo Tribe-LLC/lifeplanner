@@ -58,6 +58,8 @@ fun AreasScreen(
     onBack: (() -> Unit)?,
     onContinue: (Set<PlanArea>) -> Unit,
     ctaPrefix: String = "Continue with",
+    freeAreaLimit: Int? = null,
+    onNeedPlus: () -> Unit = {},
 ) {
     var picked by remember { mutableStateOf(initial) }
     Column(
@@ -86,7 +88,8 @@ fun AreasScreen(
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("What do you want to plan?", style = V4.type.title.copy(fontSize = V4.type.title.fontSize * 1.15f), color = V4.colors.ink)
                 Text(
-                    "Pick as many as you like. Only these show up in your app, and you can change them any time.",
+                    if (freeAreaLimit != null) "Pick up to $freeAreaLimit, plus Habits. Plus unlocks more. You can change them any time."
+                    else "Pick as many as you like. Only these show up in your app, and you can change them any time.",
                     style = V4.type.body,
                     color = V4.colors.ink2,
                 )
@@ -100,7 +103,15 @@ fun AreasScreen(
                             selected = on,
                             // Habits is the everyday area every user has; it cannot be switched off.
                             locked = area == PlanArea.HABITS,
-                            onToggle = { picked = if (on) picked - area else picked + area },
+                            plus = freeAreaLimit != null && !on && (picked - PlanArea.HABITS).size >= freeAreaLimit,
+                            onToggle = {
+                                when {
+                                    on -> picked = picked - area
+                                    // Past the free limit a new area opens the Plus screen instead.
+                                    freeAreaLimit != null && (picked - PlanArea.HABITS).size >= freeAreaLimit -> onNeedPlus()
+                                    else -> picked = picked + area
+                                }
+                            },
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -121,6 +132,7 @@ private fun AreaPickCard(
     area: PlanArea,
     selected: Boolean,
     locked: Boolean,
+    plus: Boolean = false,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -138,7 +150,7 @@ private fun AreaPickCard(
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             AreaIllustration(area, size = 56.dp)
             Text(areaName(area), style = V4.type.bodyStrong.copy(fontSize = V4.type.headline.fontSize * 0.95f), color = V4.colors.ink)
-            Text(if (locked) "Always on" else areaBlurb(area), style = V4.type.caption, color = V4.colors.ink2)
+            Text(if (locked) "Always on" else if (plus) "Plus" else areaBlurb(area), style = V4.type.caption, color = V4.colors.ink2)
         }
         if (selected || locked) {
             Box(
