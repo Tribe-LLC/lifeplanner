@@ -69,6 +69,7 @@ internal suspend fun ChatRepositoryImpl.callGeminiChat(
 
     val prompt = """
 You are $coachName, a friendly ${coach?.title ?: "Life Coach"} in LifePlanner app.
+Never give investment, tax, loan or legal advice, and never recommend specific financial products; for those, suggest a licensed professional. Money coaching is about budgeting, saving and spending habits only.
 ${if (coach != null) "YOUR PERSONALITY: $coachPersonality\nYOUR SPECIALTIES: ${coach.specialties.joinToString(", ")}" else ""}
 ${if (personaOverride != null) "USER'S CUSTOMIZATION (follow this closely): $personaOverride" else ""}
 

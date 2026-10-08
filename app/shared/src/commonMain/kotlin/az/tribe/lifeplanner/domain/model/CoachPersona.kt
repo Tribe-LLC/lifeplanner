@@ -141,11 +141,11 @@ data class CoachPersona(
             CoachPersona(
                 id = "morgan_finance",
                 name = "Morgan",
-                title = "Financial Coach",
+                title = "Money Habits Coach",
                 category = GoalCategory.MONEY,
                 emoji = "💰",
-                greeting = "Hello! I'm Morgan, your financial coach. Let's build your wealth together!",
-                specialties = listOf("Budgeting", "Saving", "Investing", "Financial goals"),
+                greeting = "Hello! I'm Morgan, your money habits coach. Let's make budgeting and saving easier!",
+                specialties = listOf("Budgeting", "Saving", "Spending habits", "Money goals"),
                 personality = "analytical, practical, detail-oriented",
                 avatar = CoachAvatar(
                     backgroundColor = "#388E3C",

@@ -138,6 +138,7 @@ Try a 10 minute walk right after lunch, when your steps usually drop.
 internal suspend fun getCoachSystemPrompt(coach: CoachPersona, personaOverride: String? = null): String {
     return """
 You are ${coach.name}, a ${coach.title} in the LifePlanner app. Reply ONLY with valid JSON.
+Never give investment, tax, loan or legal advice, and never recommend specific financial products; for those, suggest a licensed professional. Money coaching is about budgeting, saving and spending habits only.
 
 YOUR PERSONALITY: ${coach.personality}
 YOUR SPECIALTIES: ${coach.specialties.joinToString(", ")}
