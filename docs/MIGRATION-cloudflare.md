@@ -353,3 +353,17 @@ Roughly in the order needed. Everything else I can do with the Cloudflare MCP / 
 Phase 1: scaffold `cloudflare/` (Hono Worker, wrangler config, schema generator) and create the staging D1,
 then run the first data copy into staging with row-count verification. No Kamran action needed to start;
 the first thing I will ask for is the Workers Paid answer and the `lp-api` DNS go-ahead before Phase 3.
+
+## 8. Phase 1 log (2026-10-09)
+
+- `cloudflare/` added: Hono Worker skeleton (health only, not deployed), `scripts/gen-d1-schema.py` (live schema to
+  `migrations/0001_init.sql`), `scripts/copy-from-supabase.py` (SELECT-only, idempotent, `--since` for deltas),
+  `scripts/verify-copy.py`. See `cloudflare/README.md`.
+- Staging D1 `lifeplanner-staging` (Com3run account) holds 44 tables (`content_embeddings` dropped) plus
+  `legacy_auth_users` (437 rows, includes bcrypt hashes, staging only). Verifier: counts and `max(updated_at)`
+  equal on every table, 0 mismatches.
+- Findings: `auth.users` is now 437. The client reads `knowledge_lessons` and `knowledge_collections`, which
+  **do not exist in production Supabase** (only in `supabase/knowledge_lessons.sql`), so those fetches silently
+  fail today; decide in Phase 4 whether to create them in D1. Four v4 tables (`life_logs`, `budgets`, `trips`,
+  `trip_items`) have composite primary keys `(user_id, id)`, which the upsert conflict targets must use.
+- Not yet done: `/health` was not confirmed against the deployed binding (dev run printed nothing in 25 s).
