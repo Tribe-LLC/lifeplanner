@@ -8,8 +8,6 @@ export type Env = {
   DEV_AUTH?: string;
   BASE_URL?: string;
   GEMINI_API_KEY?: string;
-  OPENAI_API_KEY?: string;
-  GROK_API_KEY?: string;
   AUTH_SECRET: string;
   SUPABASE_URL?: string;
   SUPABASE_ANON_KEY?: string;

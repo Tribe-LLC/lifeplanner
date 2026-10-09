@@ -19,7 +19,6 @@ function mockProviders(handlers: Record<string, (body: any) => Response>, seen: 
 afterEach(() => vi.restoreAllMocks());
 
 const gemini = "https://generativelanguage.googleapis.com";
-const openai = "https://api.openai.com";
 const sse = (lines: string[]) => new Response(lines.map((l) => `data: ${l}\n\n`).join(""), { headers: { "Content-Type": "text/event-stream" } });
 
 describe("ai-proxy", () => {
@@ -32,7 +31,7 @@ describe("ai-proxy", () => {
   });
 
   it("calls Gemini, appends the style rule, keeps the key out of the URL and logs usage", async () => {
-    (env as any).GEMINI_API_KEY = "g-key"; (env as any).OPENAI_API_KEY = "o-key";
+    (env as any).GEMINI_API_KEY = "g-key";
     const seen: any[] = [];
     mockProviders({ [gemini]: () => Response.json({ candidates: [{ content: { parts: [{ text: "hello" }] } }], usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 4 } }) }, seen);
     const r = await ai({ provider: "GEMINI", prompt: "hi", systemPrompt: "be kind" });
@@ -46,18 +45,20 @@ describe("ai-proxy", () => {
     expect(row).toMatchObject({ provider: "GEMINI", input_tokens: 3, output_tokens: 4, request_type: "generate" });
   });
 
-  it("falls back to the next provider on a rate limit", async () => {
-    (env as any).GEMINI_API_KEY = "g-key"; (env as any).OPENAI_API_KEY = "o-key";
-    mockProviders({
-      [gemini]: () => new Response("quota", { status: 429 }),
-      [openai]: () => Response.json({ choices: [{ message: { content: "from openai" } }], usage: { prompt_tokens: 1, completion_tokens: 2 } }),
-    });
-    const body = (await (await ai({ provider: "GEMINI", prompt: "hi" })).json()) as any;
-    expect(body).toMatchObject({ text: "from openai", provider: "OPENAI" });
+  it("answers OPENAI or GROK requests with Gemini (one provider)", async () => {
+    (env as any).GEMINI_API_KEY = "g-key";
+    mockProviders({ [gemini]: () => Response.json({ candidates: [{ content: { parts: [{ text: "gemini answered" }] } }] }) });
+    const body = (await (await ai({ provider: "OPENAI", prompt: "hi" })).json()) as any;
+    expect(body).toMatchObject({ text: "gemini answered", provider: "GEMINI" });
+  });
+
+  it("is unavailable, not crashing, when no key is configured", async () => {
+    (env as any).GEMINI_API_KEY = "";
+    expect((await ai({ provider: "GEMINI", prompt: "hi" })).status).toBe(503);
   });
 
   it("sanitises upstream errors", async () => {
-    (env as any).GEMINI_API_KEY = "g-key"; (env as any).OPENAI_API_KEY = ""; (env as any).GROK_API_KEY = "";
+    (env as any).GEMINI_API_KEY = "g-key";
     mockProviders({ [gemini]: () => new Response("secret upstream detail", { status: 500 }) });
     const r = await ai({ provider: "GEMINI", prompt: "hi" });
     expect(r.status).toBe(500);
@@ -85,17 +86,15 @@ describe("ai-proxy", () => {
     expect(text).toBe('event: text\ndata: Hel\n\nevent: text\ndata: lo\n\nevent: done\ndata: {"provider":"GEMINI","model":"gemini-2.5-flash","usage":{"inputTokens":5,"outputTokens":2}}\n\n');
   });
 
-  it("streaming falls back before any output and reports total failure as an error event", async () => {
-    (env as any).GEMINI_API_KEY = "g-key"; (env as any).OPENAI_API_KEY = "o-key"; (env as any).GROK_API_KEY = "";
-    mockProviders({
-      [gemini]: () => new Response("boom", { status: 503 }),
-      [openai]: () => sse([JSON.stringify({ choices: [{ delta: { content: "hey" } }] }), JSON.stringify({ choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } }), "[DONE]"]),
-    });
+  it("streaming retries once before any output, then reports failure as an error event", async () => {
+    (env as any).GEMINI_API_KEY = "g-key";
+    let n = 0;
+    mockProviders({ [gemini]: () => (n++ === 0 ? new Response("boom", { status: 503 }) : sse([JSON.stringify({ candidates: [{ content: { parts: [{ text: "hey" }] } }] })])) });
     const ok = await (await ai({ provider: "GEMINI", stream: true, enrichContext: false, messages: [{ role: "user", content: "hi" }] })).text();
     expect(ok).toContain("event: text\ndata: hey");
-    expect(ok).toContain('"provider":"OPENAI"');
+    expect(ok).toContain('"provider":"GEMINI"');
     vi.restoreAllMocks();
-    mockProviders({ [gemini]: () => new Response("boom", { status: 503 }), [openai]: () => new Response("boom", { status: 503 }) });
+    mockProviders({ [gemini]: () => new Response("boom", { status: 503 }) });
     const bad = await (await ai({ provider: "GEMINI", stream: true, enrichContext: false, messages: [{ role: "user", content: "hi" }] })).text();
     expect(bad).toContain("event: error");
   });

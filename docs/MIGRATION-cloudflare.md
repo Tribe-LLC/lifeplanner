@@ -490,3 +490,9 @@ Better Auth 1.7 on D1 (`cloudflare/src/betterauth.ts`, `authroutes.ts`, migratio
   - `mcp-server` (938 lines): still deferred (nothing in the app uses it).
 - **Next (Phase 5):** Cron Triggers for `health` and `store-watch` with Telegram alerts, the Supabase to D1 bridge job,
   auth rate limiting, D1 backups, then deploy staging.
+
+**Update 2026-10-09: Gemini only.** Kamran decided on one AI provider and one key. `ai.ts` is now Gemini only
+(`gemini-2.5-flash`): a request naming OPENAI or GROK is answered by Gemini, streaming retries once before the first
+token, no key configured returns 503. One Worker secret is needed, `GEMINI_API_KEY`; `OPENAI_API_KEY` and
+`GROK_API_KEY` are no longer used anywhere (they were also only used by the unported share-journal moderation).
+Client follow-up in Phase 6: hide the provider picker in profile settings. 27 tests pass.

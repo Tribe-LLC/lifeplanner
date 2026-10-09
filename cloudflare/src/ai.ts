@@ -1,24 +1,22 @@
-// Port of supabase/functions/ai-proxy. Same request/response/SSE contract so AiProxyServiceImpl only changes its URL.
-// Dropped on purpose: the pgvector RAG branch (content_embeddings had 0 rows), the full user-context dump is kept.
+// Port of supabase/functions/ai-proxy, Gemini only (decided 2026-10-09: one provider, one key). Same request/response/SSE
+// contract so AiProxyServiceImpl only changes its URL. A request naming OPENAI or GROK is answered by Gemini.
+// Dropped on purpose: the pgvector RAG branch (content_embeddings had 0 rows); the user-context block is kept.
 import { Hono, type Context } from "hono";
 import { resolveUser, type Env } from "./auth";
 
-type Provider = "GEMINI" | "OPENAI" | "GROK";
 interface AiRequest {
   prompt?: string;
   systemPrompt?: string;
   messages?: { role: string; content: string }[];
   responseSchema?: Record<string, unknown>;
-  provider: Provider;
+  provider?: string;
   enrichContext?: boolean;
   stream?: boolean;
 }
 interface TokenUsage { inputTokens: number; outputTokens: number }
 interface AiResponse { text: string; provider: string; model: string; usage?: TokenUsage }
 
-const ORDER: Provider[] = ["GEMINI", "OPENAI", "GROK"];
-const MODELS: Record<Provider, string> = { GEMINI: "gemini-2.5-flash", OPENAI: "gpt-4o-mini", GROK: "grok-4-1-fast-non-reasoning" };
-const keyOf = (env: Env, p: Provider) => (p === "GEMINI" ? env.GEMINI_API_KEY : p === "OPENAI" ? env.OPENAI_API_KEY : env.GROK_API_KEY) ?? "";
+const MODEL = "gemini-2.5-flash";
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 export const aiRoutes = new Hono<{ Bindings: Env }>();
@@ -28,8 +26,8 @@ const handler = async (c: Context<{ Bindings: Env }>) => {
   if (!userId) return json({ error: "Authentication required" }, 401);
   try {
     const body = (await c.req.json()) as AiRequest;
-    const provider = (body.provider ?? "GEMINI") as Provider;
-    if (!ORDER.includes(provider)) return json({ error: `Unsupported provider: ${provider}` }, 400);
+    if (!["GEMINI", "OPENAI", "GROK"].includes(body.provider ?? "GEMINI")) return json({ error: `Unsupported provider: ${body.provider}` }, 400);
+    if (!c.env.GEMINI_API_KEY) return json({ error: "The AI is unavailable right now. Please try again in a moment." }, 503);
 
     if (body.enrichContext !== false && body.messages) {
       try {
@@ -45,9 +43,9 @@ const handler = async (c: Context<{ Bindings: Env }>) => {
 
     const log = (r: AiResponse, type: string) => c.executionCtx.waitUntil(logUsage(c.env.DB, userId, r, type));
 
-    if (body.stream === true && body.messages) return streamingResponse(c.env, body, provider, (r) => log(r, "chat"));
+    if (body.stream === true && body.messages) return streamingResponse(c.env, body, (r) => log(r, "chat"));
 
-    const result = await callWithFallback(c.env, body, provider);
+    const result = await callGemini(c.env, body);
     log(result, body.messages ? "chat" : body.responseSchema ? "structured" : "generate");
     return json(result);
   } catch (error) {
@@ -131,26 +129,6 @@ function formatUserContext(profile: Row | null, progress: Row | null, goals: Row
 
 // ── providers ──────────────────────────────────────────────────────────────────────────────────
 
-function isRateLimited(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
-  return msg.includes("429") || msg.toLowerCase().includes("rate limit") || msg.toLowerCase().includes("quota");
-}
-
-async function callWithFallback(env: Env, body: AiRequest, preferred: Provider): Promise<AiResponse> {
-  let lastError: unknown;
-  for (const p of [preferred, ...ORDER.filter((x) => x !== preferred)]) {
-    if (!keyOf(env, p)) continue;
-    try {
-      return p === "GEMINI" ? await callGemini(env, body) : await callOpenAICompatible(env, body, p);
-    } catch (err) {
-      lastError = err;
-      if (isRateLimited(err)) { console.warn(`Provider ${p} rate-limited, trying next provider`); continue; }
-      throw err;
-    }
-  }
-  throw lastError ?? new Error("All AI providers failed or are unavailable");
-}
-
 const geminiHeaders = (env: Env) => ({ "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY ?? "" });
 const GEMINI = "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -162,7 +140,7 @@ function geminiContents(body: AiRequest) {
 }
 
 async function callGemini(env: Env, body: AiRequest): Promise<AiResponse> {
-  const model = MODELS.GEMINI;
+  const model = MODEL;
   const req: Record<string, unknown> = { contents: geminiContents(body) };
   if (body.systemPrompt) req.systemInstruction = { parts: [{ text: body.systemPrompt }] };
   if (body.responseSchema) req.generationConfig = { responseMimeType: "application/json", responseSchema: body.responseSchema };
@@ -175,72 +153,36 @@ async function callGemini(env: Env, body: AiRequest): Promise<AiResponse> {
   };
 }
 
-function openAIMessages(body: AiRequest) {
-  const messages: { role: string; content: string }[] = [];
-  if (body.systemPrompt) messages.push({ role: "system", content: body.systemPrompt });
-  const keys = body.responseSchema ? Object.keys(((body.responseSchema as any).properties as object | undefined) ?? {}) : [];
-  if (body.messages && body.messages.length > 0) {
-    if (body.responseSchema) {
-      const keyHint = keys.length ? `The response object MUST have exactly these top-level keys: ${keys.join(", ")}.` : "";
-      messages.push({ role: "system", content: `Respond with a JSON object containing actual DATA values. Do NOT use JSON Schema keywords ("type", "properties", "items", "required", "$schema") as keys in your response, those are schema metadata, not data. ${keyHint} Schema:\n${JSON.stringify(body.responseSchema)}` });
-    }
-    for (const m of body.messages) messages.push({ role: m.role === "model" ? "assistant" : m.role, content: m.content });
-  } else if (body.prompt) {
-    let prompt = body.prompt;
-    if (body.responseSchema) {
-      const keyHint = keys.length ? ` Top-level keys must be: ${keys.join(", ")}.` : "";
-      prompt += `\n\nRespond with actual JSON data (not a JSON Schema).${keyHint} Schema:\n${JSON.stringify(body.responseSchema)}`;
-    }
-    messages.push({ role: "user", content: prompt });
-  }
-  return messages;
-}
-
-const endpoint = (p: Provider) => (p === "GROK" ? "https://api.x.ai/v1/chat/completions" : "https://api.openai.com/v1/chat/completions");
-
-async function callOpenAICompatible(env: Env, body: AiRequest, p: Provider): Promise<AiResponse> {
-  const model = MODELS[p];
-  const req: Record<string, unknown> = { model, messages: openAIMessages(body) };
-  if (body.responseSchema) req.response_format = { type: "json_object" };
-  const r = await fetch(endpoint(p), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${keyOf(env, p)}` }, body: JSON.stringify(req) });
-  if (!r.ok) throw new Error(`${p === "GROK" ? "Grok" : "OpenAI"} API error ${r.status}: ${await r.text()}`);
-  const d = (await r.json()) as any;
-  return {
-    text: d?.choices?.[0]?.message?.content ?? "", provider: p, model,
-    usage: d?.usage ? { inputTokens: d.usage.prompt_tokens ?? 0, outputTokens: d.usage.completion_tokens ?? 0 } : undefined,
-  };
-}
-
 // ── streaming (event: text|done|error, same bytes as before) ──────────────────────────────────
 
 type Send = (event: string, data: string) => void;
 
-function streamingResponse(env: Env, body: AiRequest, preferred: Provider, onDone: (r: AiResponse) => void): Response {
+function streamingResponse(env: Env, body: AiRequest, onDone: (r: AiResponse) => void): Response {
   const stream = new ReadableStream({
     async start(controller) {
       const enc = new TextEncoder();
+      const send: Send = (event, data) => controller.enqueue(enc.encode(`event: ${event}\ndata: ${data}\n\n`));
       let streamedAny = false;
-      const send: Send = (event, data) => { if (event === "text") streamedAny = true; controller.enqueue(enc.encode(`event: ${event}\ndata: ${data}\n\n`)); };
-      for (const p of [preferred, ...ORDER.filter((x) => x !== preferred)]) {
-        if (!keyOf(env, p)) continue;
-        const model = MODELS[p];
+      const sendTracked: Send = (e, d) => { if (e === "text") streamedAny = true; send(e, d); };
+      // One retry while nothing has reached the client (a transient 5xx should not surface mid-chat).
+      for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const usage = p === "GEMINI" ? await streamGemini(env, body, model, send) : await streamOpenAI(env, body, p, model, send);
-          send("done", JSON.stringify({ provider: p, model, usage: usage ?? { inputTokens: 0, outputTokens: 0 } }));
-          onDone({ text: "", provider: p, model, usage });
+          const usage = await streamGemini(env, body, MODEL, sendTracked);
+          send("done", JSON.stringify({ provider: "GEMINI", model: MODEL, usage: usage ?? { inputTokens: 0, outputTokens: 0 } }));
+          onDone({ text: "", provider: "GEMINI", model: MODEL, usage });
           controller.close();
           return;
         } catch (err) {
           const raw = err instanceof Error ? err.message : "Stream error";
-          if (!streamedAny) { console.warn(`Streaming provider ${p} failed before any output (${raw}), falling back to next`); continue; }
-          console.error("Stream error after partial output:", raw);
-          send("error", JSON.stringify({ error: raw.includes("timeout") || raw.includes("ETIMEDOUT") ? "AI provider timed out. Please try again." : "Something went wrong during streaming. Please try again." }));
+          if (!streamedAny && attempt === 0) { console.warn(`Gemini stream failed before any output (${raw}), retrying once`); continue; }
+          console.error("Stream error:", raw);
+          send("error", JSON.stringify({ error: streamedAny
+            ? (raw.includes("timeout") || raw.includes("ETIMEDOUT") ? "AI provider timed out. Please try again." : "Something went wrong during streaming. Please try again.")
+            : "The AI is unavailable right now. Please try again in a moment." }));
           controller.close();
           return;
         }
       }
-      send("error", JSON.stringify({ error: "The AI is unavailable right now. Please try again in a moment." }));
-      controller.close();
     },
   });
   return new Response(stream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive", "Access-Control-Allow-Origin": "*" } });
@@ -273,23 +215,6 @@ async function streamGemini(env: Env, body: AiRequest, model: string, send: Send
       const text = chunk?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (text) send("text", text);
       if (chunk?.usageMetadata) usage = { inputTokens: chunk.usageMetadata.promptTokenCount ?? 0, outputTokens: chunk.usageMetadata.candidatesTokenCount ?? 0 };
-    } catch { /* skip malformed chunk */ }
-  }
-  return usage;
-}
-
-async function streamOpenAI(env: Env, body: AiRequest, p: Provider, model: string, send: Send): Promise<TokenUsage | undefined> {
-  const req = { model, messages: openAIMessages(body), stream: true, stream_options: { include_usage: true } };
-  const r = await fetch(endpoint(p), { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${keyOf(env, p)}` }, body: JSON.stringify(req) });
-  if (!r.ok) throw new Error(`${p} streaming error ${r.status}: ${await r.text()}`);
-  let usage: TokenUsage | undefined;
-  for await (const data of sseData(r)) {
-    if (data === "[DONE]") continue;
-    try {
-      const chunk = JSON.parse(data);
-      const delta = chunk?.choices?.[0]?.delta?.content;
-      if (delta) send("text", delta);
-      if (chunk?.usage) usage = { inputTokens: chunk.usage.prompt_tokens ?? 0, outputTokens: chunk.usage.completion_tokens ?? 0 };
     } catch { /* skip malformed chunk */ }
   }
   return usage;
