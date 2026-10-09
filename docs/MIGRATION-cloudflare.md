@@ -325,7 +325,7 @@ Roughly in the order needed. Everything else I can do with the Cloudflare MCP / 
 1. **Cloudflare:** confirm which account/zone to use and whether the account is on Workers Paid (USD 5/month;
    recommended before Phase 3 for password hashing CPU). Authorise the DNS token / wrangler login for the
    `tribe.az` zone so I can create `lp-api.tribe.az`. (I can create D1, KV, R2 through the connected MCP.)
-2. **Secrets, put by Kamran, never pasted in chat:** `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GROK_API_KEY`,
+2. **Secrets, put by Kamran, never pasted in chat:** `GEMINI_API_KEY` (the only AI key now),
    `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `PERSONA_WEBHOOK_SECRET` as Worker secrets
    (`wrangler secret put NAME` in the Terminal tab; I will give the exact commands). Supabase will not reveal
    them through the API, they need to come from wherever he stored them.
