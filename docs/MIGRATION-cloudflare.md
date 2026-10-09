@@ -237,14 +237,56 @@ Order matters, each step compiles and passes tests before the next:
 6. **Deep links:** keep `lifeplanner://auth` and the `tribe.az/lifeplanner/auth/callback` page; OTP code entry
    already exists, so OTP path needs no deep link at all. iOS `DeepLinkHandler` loses `handleDeeplinks` and
    parses the verify token itself.
-7. **Google sign-in (new feature).** Android: Credential Manager / Google ID token sent to
-   `POST /v1/auth/google` (Better Auth `idToken`). iOS: GoogleSignIn SDK. **App Store guideline 4.8:** adding a
-   third-party login on iOS requires an equivalent option such as Sign in with Apple. Recommendation: ship
-   Google on Android in 4.1, and on iOS together with Sign in with Apple in 4.2 (needs Apple Developer
-   Services ID and key, which only Kamran can create).
+7. **Sign-in is social-first (Kamran's decision, 2026-10-09; supersedes the earlier "Google on Android first").**
+   Android: Google. iOS: Google plus Sign in with Apple. Built once, directly on the new backend (Better Auth
+   `google` and `apple` providers), never on Supabase. Section 4A has the detail.
 8. **Tests:** existing syncer/viewmodel tests use the no-Supabase constructor and survive; `V4SyncSchemaTest`
    is repointed at the Worker's table registry; add contract tests that run the Worker locally (`wrangler dev`
    or Miniflare via vitest-pool-workers) against the same DTO fixtures.
+
+## 4A. New sign-in (social only)
+
+**Product decision:** the sign-in screen shows only social buttons. Android: "Continue with Google". iOS:
+"Continue with Apple" and "Continue with Google" (Apple first and equal prominence, which also satisfies App
+Store guideline 4.8). Nothing else on the screen except a small **"Use email"** text link.
+
+**Correction to the brief's number:** the password population is **36 accounts (24 confirmed)**, not 118
+(118 is `public.users`, people past onboarding). The "Use email" link stays for them and for anyone who
+signed up with a magic link/OTP, so nobody is locked out; it opens the existing email + password form with
+OTP/forgot-password. Guests do not see this screen: they start from the Welcome screen and sign in only when
+they choose to link an account. Silent migration (2.6) means existing users do not need to sign in again.
+
+**Client (shared Kotlin unless noted):**
+- New composable `ui/v4/auth/V4SignInScreen.kt`, built from `ui/v4/theme/V4Theme.kt` and
+  `V4PrimaryButton` / the other `ui/v4/components/V4Components.kt` pieces, replacing `ui/auth/SignInScreen.kt`
+  (520 lines, only caller `AppNavAuth.kt:58`, reached from the v4 shell via `AppNavV4.kt`). The Welcome
+  auth sheet (`WelcomeAuthSheet.kt`, `WelcomeAuthForms.kt`) is aligned to the same buttons in the same pass.
+  `AuthViewModel` gets `signInWithGoogle(idToken)` and `signInWithApple(idToken, nonce, fullName?)`;
+  `AuthService.signInWithGoogle()` stops being a stub.
+- **Android:** Credential Manager with `GetSignInWithGoogleOption` (web client id as `serverClientId`) returns a
+  Google ID token; the app POSTs it to `POST /v1/auth/google`. `androidx.credentials` + `googleid` deps, an
+  `expect/actual` `SocialSignIn` in `androidMain`.
+- **iOS:** GoogleSignIn-iOS SDK (iOS client id, URL scheme in `Info.plist`) returns an ID token; Sign in with
+  Apple via `ASAuthorizationController` (capability on the target, nonce generated per request) returns an
+  identity token. Swift glue in `app/iosApp` hands tokens to Kotlin through an `actual` `SocialSignIn`; both are
+  POSTed to `/v1/auth/google` and `/v1/auth/apple`.
+- Account linking: a guest tapping a social button upgrades **the same user id in place** (the `/auth/link`
+  path from 2.4), so a guest's data is never orphaned. Apple only returns the name on the very first
+  authorization, so the client sends it with the token and the Worker stores it then.
+- Apple App Store rule: apps with account creation must offer in-app **account deletion**; already satisfied
+  by `deleteAccount()`. Apple additionally wants token revocation on delete, so `delete-account` on the Worker
+  calls Apple's revoke endpoint for Apple-linked users (uses the same .p8).
+
+**Worker:** Better Auth `google` provider verifying ID tokens with `idToken` sign-in against the Web client id
+(Android and iOS audiences added to the accepted list), `apple` provider (client id = Services ID / bundle id,
+team id, key id, private key as secrets) with `idToken` sign-in, nonce check, `anonymous` link-in-place hook,
+and verified-email matching so someone with a password account who signs in with Google of the same email is
+attached to the existing user id rather than duplicated (only when the provider reports the email as verified).
+
+**Phase impact:** Phase 3 (auth) grows from 5 to 7 days and Phase 6 (client) from 7 to 9 days; total estimate
+becomes about **4.5 weeks focused, 6 calendar weeks**. The console steps in section 6 gate Phase 3 testing, so
+they move up: ask Kamran for them at the start of Phase 1, since Apple and Google review nothing but Services
+ID and OAuth consent setup can take a day or two to settle.
 
 ## 5. Phases and estimate
 
@@ -258,10 +300,10 @@ surprised. Phases ship nothing to users until the last one.
 | 0 | This inventory and plan | done | doc committed |
 | 1 | `cloudflare/` Worker skeleton, schema generator, D1 staging, data copy script, row-count verifier | 4 | staging D1 holds a faithful copy, counts match per table and per user |
 | 2 | Sync API + table registry + `updated_at`/`sync_version` stamping; port gamification triggers and `update_daily_streak`; parity test replaying real event sequences against Supabase and D1 | 5 | XP, level, badges, challenge progress equal on 20 sampled real users |
-| 3 | Better Auth on D1: anonymous, email+password, OTP (email provider), link-in-place, Google `idToken`, legacy bcrypt verify+rehash, `/auth/migrate` | 5 | all flows green in a local contract suite; legacy hash login works for a throwaway test account |
+| 3 | Better Auth on D1: anonymous, email+password, OTP (email provider), link-in-place, Google and Apple `idToken`, legacy bcrypt verify+rehash, `/auth/migrate` | 5 | all flows green in a local contract suite; legacy hash login works for a throwaway test account |
 | 4 | ai-proxy streaming (OpenAI/Gemini/Grok), usage logs, share-journal, report-content, delete-account, persona webhook, auth-redirect, R2 assets, public content endpoints | 4 | SSE byte-compatible with current parser; delete-account cascades fully |
 | 5 | Ops: Cron Triggers for health and store-watch, Telegram alerts, bridge job (Supabase to D1 delta), observability, rate limits, backups (D1 Time Travel + scheduled export to R2) | 2 | alerts fire on a forced failure |
-| 6 | Client: sections 4.1 to 4.8, both platforms, flag-gated; dev builds on the real emulator/simulator with throwaway accounts only | 7 | in-place upgrade from a 4.0 build with a migrated guest AND a password user keeps all data on both platforms |
+| 6 | Client: sections 4.1 to 4.8 and 4A (new social sign-in screen), both platforms, flag-gated; dev builds on the real emulator/simulator with throwaway accounts only | 7 | in-place upgrade from a 4.0 build with a migrated guest AND a password user keeps all data on both platforms |
 | 7 | Soak: internal track on Cloudflare for a week, watch D1 metrics, Sentry/Crashlytics, sync success rate; final delta copy; staged rollout 10% to 100% | 5 to 7 | no sync regressions vs 4.0 baseline |
 | 8 | Sunset plan: stop bridge, announce, later switch Supabase off (months out, separate decision) | later | |
 
@@ -290,16 +332,21 @@ Roughly in the order needed. Everything else I can do with the Cloudflare MCP / 
 3. **Supabase dashboard (read only):** generate or confirm a service key access for the export script, or
    allow me to export via the Management API / MCP (the MCP already works for reads; for bulk export of
    `auth.users` hashes the SQL route is enough, so this may need nothing).
-4. **Google Cloud (a dedicated LifePlanner project is recommended):** OAuth consent
-   screen, a Web client (server verification), an Android client with the SHA-1 of the Play App Signing key
-   and of the upload/debug keys, an iOS client. These are console and Play Console steps (App signing SHA-1).
+4. **Google Cloud, one-time (a dedicated LifePlanner project is recommended):** OAuth consent screen
+   (publish to production so any account can sign in); a **Web** client (its id is what the Worker verifies
+   ID tokens against); an **Android** client for `az.tribe.lifeplanner` with the **Play App Signing** SHA-1
+   (Play Console > App integrity) and a second one with the **upload key** SHA-1 (plus debug keystore SHA-1
+   for dev builds); an **iOS** client for the iOS bundle id. Give me the three client ids (ids are not secrets).
+   Apple, one-time (Apple Developer account): enable **Sign in with Apple** on the App ID; create a
+   **Services ID**; create a **Sign in with Apple key** (.p8, Key ID, Team ID). The .p8 goes in as a Worker
+   secret that he sets; never pasted in chat.
 5. **Email sender:** pick Resend (create account, verify `tribe.az`, API key as secret) or enable Cloudflare
    Email Service on the zone.
 6. **Apple (for 4.2):** Sign in with Apple Services ID and key, if Google on iOS is wanted.
 7. **Play Console / App Store:** 4.1 release uploads, data safety form update (data processor changes from
    Supabase to Cloudflare), privacy policy text update naming the new processor.
-8. **Decisions I have taken but he can veto:** domain name `lp-api.tribe.az`; Google on Android first; Sign
-   in with Apple deferred to 4.2; `mcp-server` deferred; Supabase kept alive for months.
+8. **Decisions I have taken but he can veto:** domain name `lp-api.tribe.az`; `mcp-server` deferred;
+   Supabase kept alive for months. (Sign-in scope is settled, see 4A.)
 
 ## 7. Single next step
 
