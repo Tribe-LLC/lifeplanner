@@ -409,3 +409,41 @@ Built in `cloudflare/` (Worker still not deployed; staging D1 has migration 0003
 - `scripts/import-d1.sh` loads `gamification_log` first so copied rows never re-award XP through the triggers.
 - Re-verify after Phase 2 (staging): all 44 data tables match Supabase; `legacy_auth_users` differs by 2 because two
   new guests signed up since the copy (live drift, fixed by re-running the copy with `--since`).
+
+## 10. Phase 3 log (2026-10-09)
+
+Better Auth 1.7 on D1 (`cloudflare/src/betterauth.ts`, `authroutes.ts`, migration `0004_auth.sql`). 17 tests pass
+(`npm test`): everything below except the two social providers, which need your console steps.
+
+- **Tables:** `auth_user`, `auth_session`, `auth_account`, `auth_verification` (prefixed so they never read like the
+  app's `users` profile table). Sessions are opaque bearer tokens, 90 days, sliding. The client sends
+  `Authorization: Bearer <token>`; sign-in responses carry it in the `set-auth-token` header. Better Auth also
+  accepts the raw session token, which `/v1/auth/migrate` returns.
+- **Import with identical ids:** `scripts/import-auth.sql` builds Better Auth users and credential accounts from
+  `legacy_auth_users`. Staging result: 437 users (405 guests, 24 verified), 36 credential accounts, all 36 bcrypt.
+  Guests get a placeholder `guest-<id>@guest.invalid` email (Better Auth needs one); the API reports them as guests.
+- **Legacy passwords:** `verify` accepts `$2` bcrypt hashes (bcryptjs) as well as Better Auth's scrypt; an `after`
+  hook replaces the bcrypt hash with scrypt on the first successful `/sign-in/email`. Tested: wrong password 401,
+  right password logs in as the same user id, hash rehashed, second login works.
+- **Guest sign-in:** `POST /v1/auth/sign-in/anonymous`. **Email + password:** `/sign-up/email`, `/sign-in/email`
+  (minimum 6 characters, like Supabase). **Email code:** `/email-otp/send-verification-otp` then `/sign-in/email-otp`
+  (6 digits, 10 minutes). Password reset uses Better Auth's reset flow.
+- **Guest to email account, same user id:** `POST /v1/auth/link-email/start` (stores a pending hash, mails a code),
+  `/link-email/confirm` (code turns the guest into an email account in place). Cannot take an email owned by another
+  user (409), 5 tries per code. A guest who instead signs in over an existing account has their rows moved to it by the
+  anonymous plugin's `onLinkAccount` (`moveUserData`). A guest who taps Google or Apple should use Better Auth's
+  `link-social` with the ID token (keeps the id); not testable until the clients exist.
+- **Silent migration:** `POST /v1/auth/migrate` with the user's Supabase access token. The Worker verifies it with a
+  read-only call to `{SUPABASE_URL}/auth/v1/user`, creates the user if the last import missed them, and returns a
+  Cloudflare session token plus the user for the SAME id. Guests and password users arrive without a prompt.
+  Needs vars `SUPABASE_URL` and `SUPABASE_ANON_KEY` (the anon key is the public one already inside the app).
+- **Delete account:** `POST /v1/auth/delete-account` removes the caller's rows in every owned table and the login in
+  one batch (replaces the Supabase function; Apple token revocation to add with the Apple key).
+- **Email:** `src/email.ts` sends through Resend when `RESEND_API_KEY` is set, otherwise logs (dev/tests).
+- **Social, wired but untested:** Google accepts ID tokens for the Web, Android and iOS client ids
+  (`GOOGLE_WEB_CLIENT_ID`, `GOOGLE_ANDROID_CLIENT_ID`, `GOOGLE_IOS_CLIENT_ID`); Apple turns on with
+  `APPLE_SERVICE_ID` (+ `APPLE_BUNDLE_ID`). Verified-email matching is on for both (`trustedProviders`).
+- **Open, for later phases:** rate limiting of auth endpoints (Phase 5, needs KV), a KV session cache so sync calls skip
+  D1, the Apple client-secret JWT for revocation, email sender choice.
+- **Deploy-time config (not done):** vars `BASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, the three Google ids,
+  `APPLE_SERVICE_ID`, `APPLE_BUNDLE_ID`; secrets `AUTH_SECRET`, `RESEND_API_KEY`, `GOOGLE_WEB_CLIENT_SECRET`.
