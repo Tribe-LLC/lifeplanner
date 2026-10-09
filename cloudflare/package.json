@@ -8,8 +8,19 @@
     "gen:schema": "python3 scripts/gen-d1-schema.py",
     "migrate:staging": "wrangler d1 migrations apply DB --remote",
     "copy": "python3 scripts/copy-from-supabase.py",
-    "verify": "python3 scripts/verify-copy.py"
+    "verify": "python3 scripts/verify-copy.py",
+    "test": "vitest run",
+    "parity": "python3 scripts/parity-gamification.py",
+    "import": "./scripts/import-d1.sh"
   },
-  "dependencies": { "hono": "^4" },
-  "devDependencies": { "wrangler": "^4", "typescript": "^5", "@cloudflare/workers-types": "^4" }
+  "dependencies": {
+    "hono": "^4"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.23.0",
+    "@cloudflare/workers-types": "^4",
+    "typescript": "^5",
+    "vitest": "^4.1.11",
+    "wrangler": "^4"
+  }
 }

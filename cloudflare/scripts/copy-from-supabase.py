@@ -34,6 +34,7 @@ for name in names:
                 u = c["u"]
                 if v is not None and u == "timestamptz": v = iso(v)
                 elif u == "bool" and v is not None: v = 1 if v else 0
+                elif u == "jsonb" and v is not None: v = json.dumps(v, ensure_ascii=False, separators=(",", ":"))
                 vals.append(lit(v))
             lines.append(f'INSERT OR REPLACE INTO "{name}" (' + ",".join(f'"{c["n"]}"' for c in cols)
                          + ") VALUES (" + ",".join(vals) + ");")

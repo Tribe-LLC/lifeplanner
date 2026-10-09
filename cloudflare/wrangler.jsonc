@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "lifeplanner-api",
   "main": "src/index.ts",
-  "compatibility_date": "2026-10-01",
+  "compatibility_date": "2026-08-22",
   "account_id": "16708206509436d326b3d9041f8873cd",
   "observability": { "enabled": true },
   "d1_databases": [

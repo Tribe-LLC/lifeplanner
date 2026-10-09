@@ -9,9 +9,14 @@ names = json.load(open(root / "tables.json"))
 db = sys.argv[1] if len(sys.argv) > 1 else "DB"
 
 def d1(sql):
-    r = subprocess.run(["npx", "wrangler", "d1", "execute", db, "--remote", "--json", "--command", sql],
-                       capture_output=True, text=True, cwd=root.parent)
-    return json.loads(r.stdout)[0]["results"]
+    for attempt in range(4):  # wrangler/D1 occasionally returns a transient error object
+        r = subprocess.run(["npx", "wrangler", "d1", "execute", db, "--remote", "--json", "--command", sql],
+                           capture_output=True, text=True, cwd=root.parent)
+        try:
+            return json.loads(r.stdout)[0]["results"]
+        except (ValueError, KeyError, IndexError):
+            pass
+    raise SystemExit(f"D1 query failed after retries: {sql}\n{r.stdout[:300]}")
 
 bad = 0
 for n in names + ["legacy_auth_users"]:

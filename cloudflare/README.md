@@ -14,7 +14,7 @@ export CLOUDFLARE_ACCOUNT_ID=16708206509436d326b3d9041f8873cd
 python3 scripts/gen-d1-schema.py                 # pg-schema.json -> migrations/0001_init.sql
 npx wrangler d1 migrations apply DB --remote     # staging
 python3 scripts/copy-from-supabase.py [--since ISO] [--tables a,b]   # SELECT-only, writes scripts/out/*.sql
-for f in scripts/out/*.sql; do npx wrangler d1 execute DB --remote --yes --file $f; done
+./scripts/import-d1.sh
 python3 scripts/verify-copy.py                   # counts + max(updated_at) per table
 ```
 
