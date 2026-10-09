@@ -454,3 +454,16 @@ Better Auth 1.7 on D1 (`cloudflare/src/betterauth.ts`, `authroutes.ts`, migratio
   D1, the Apple client-secret JWT for revocation, email sender choice.
 - **Deploy-time config (not done):** vars `BASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, the three Google ids,
   `APPLE_SERVICE_ID`, `APPLE_BUNDLE_ID`; secrets `AUTH_SECRET`, `RESEND_API_KEY`, `GOOGLE_WEB_CLIENT_SECRET`.
+
+## 11. Console log (2026-10-09)
+
+- **Google (done):** project `life-planner-29fbb`, consent screen already In production. Added debug and upload-key
+  SHA-1s to the Firebase Android app and created two Android OAuth clients for them (existing clients: Web, iOS,
+  original Android). Still needed: the **Play App Signing SHA-1** (Play Console, Protected with Play, Manage Play app
+  signing) for release builds.
+- **Apple (waiting):** the iOS app `az.tribe.lifeplanner` is not on the Tribe Solutions team yet (App Store Connect
+  there lists only Same Breath). **After Kamran transfers the app**, create on that team: App IDs `az.tribe.lifeplanner`
+  and `az.tribe.lifeplanner.widgets`, app group `group.az.tribe.lifeplanner`, with capabilities Sign in with Apple,
+  Push Notifications, HealthKit, Associated Domains, App Groups (matching `iosApp.entitlements`). Apple sign-in on iOS
+  ships once that is done; Google on iOS does not depend on it.
+- **Workers plan:** Free for now; move to Paid before the soak (Phase 7) for password hashing CPU.
