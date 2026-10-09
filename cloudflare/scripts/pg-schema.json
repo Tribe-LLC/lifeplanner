@@ -1,0 +1,5272 @@
+[
+ {
+  "table_name": "ai_usage_logs",
+  "cols": [
+   {
+    "n": "id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": "gen_random_uuid()"
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": "auth.uid()"
+   },
+   {
+    "n": "provider",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "model",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "input_tokens",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "output_tokens",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "request_type",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'generate'::text"
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "created_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "badges",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "badge_type",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "earned_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "is_new",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "true"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "user_id",
+     "badge_type"
+    ],
+    "pk": false,
+    "uq": true
+   },
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "beginner_objectives",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "objective_type",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "is_completed",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "completed_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "xp_awarded",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "objective_type"
+    ],
+    "pk": false,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "objective_type"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "blog_posts",
+  "cols": [
+   {
+    "n": "id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": "gen_random_uuid()"
+   },
+   {
+    "n": "slug",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "title",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "description",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "date",
+    "t": "date",
+    "u": "date",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "read_time",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "category",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "tags",
+    "t": "ARRAY",
+    "u": "_text",
+    "null": "NO",
+    "d": "'{}'::text[]"
+   },
+   {
+    "n": "content",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "published",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "true"
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": "now()"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": "now()"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "slug"
+    ],
+    "pk": false,
+    "uq": true
+   }
+  ]
+ },
+ {
+  "table_name": "budgets",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "area",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "metric",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "category",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "amount",
+    "t": "double precision",
+    "u": "float8",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "currency",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "period",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "trip_id",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "created_at",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "user_id",
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "builtin_coaches",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "name",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "title",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "category",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "emoji",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "image_url",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "greeting",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "bio",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "fun_fact",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "specialties",
+    "t": "jsonb",
+    "u": "jsonb",
+    "null": "YES",
+    "d": "'[]'::jsonb"
+   },
+   {
+    "n": "personality",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "city",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "timezone",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": "'UTC'::text"
+   },
+   {
+    "n": "country_flag",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "avatar_bg_color",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": "'#6366F1'::text"
+   },
+   {
+    "n": "avatar_accent_color",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": "'#818CF8'::text"
+   },
+   {
+    "n": "avatar_icon_name",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": "'star'::text"
+   },
+   {
+    "n": "xp_to_unlock",
+    "t": "integer",
+    "u": "int4",
+    "null": "YES",
+    "d": "0"
+   },
+   {
+    "n": "is_default_unlocked",
+    "t": "boolean",
+    "u": "bool",
+    "null": "YES",
+    "d": "true"
+   },
+   {
+    "n": "display_order",
+    "t": "integer",
+    "u": "int4",
+    "null": "YES",
+    "d": "0"
+   },
+   {
+    "n": "is_active",
+    "t": "boolean",
+    "u": "bool",
+    "null": "YES",
+    "d": "true"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": "now()"
+   },
+   {
+    "n": "slug",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "clip_url",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "avatar_url",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   }
+  ]
+ },
+ {
+  "table_name": "cached_personas",
+  "cols": [
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "persona_id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "name",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "description",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "style",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "image_url",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "is_active",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "true"
+   },
+   {
+    "n": "fetched_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "user_id",
+     "persona_id"
+    ],
+    "pk": true,
+    "uq": true
+   }
+  ]
+ },
+ {
+  "table_name": "challenges",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "challenge_type",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "start_date",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "end_date",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "current_progress",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "target_progress",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "is_completed",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "completed_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "xp_earned",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "challenge_type"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "is_completed"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "chat_messages",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "session_id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "content",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "role",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "timestamp",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "related_goal_id",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "metadata",
+    "t": "jsonb",
+    "u": "jsonb",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "session_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "session_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "chat_sessions",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "title",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "last_message_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "summary",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "coach_id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'luna_general'::text"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "coach_group_members",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "group_id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "coach_type",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "coach_id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "display_order",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "group_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "coach_groups",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "name",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "icon",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "description",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "''::text"
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "group_updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "coach_persona_overrides",
+  "cols": [
+   {
+    "n": "coach_id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_persona",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "''::text"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "coach_id",
+     "user_id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "coach_posts",
+  "cols": [
+   {
+    "n": "id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": "gen_random_uuid()"
+   },
+   {
+    "n": "coach_id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "title",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "content",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "category",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'story'::text"
+   },
+   {
+    "n": "emoji",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": "'\ud83d\udcdd'::text"
+   },
+   {
+    "n": "read_time_minutes",
+    "t": "integer",
+    "u": "int4",
+    "null": "YES",
+    "d": "2"
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": "now()"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": "now()"
+   },
+   {
+    "n": "is_published",
+    "t": "boolean",
+    "u": "bool",
+    "null": "YES",
+    "d": "true"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "coach_id",
+     "is_published",
+     "created_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "content_embeddings",
+  "cols": [
+   {
+    "n": "id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": "gen_random_uuid()"
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "source_table",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "source_id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "content",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "embedding",
+    "t": "USER-DEFINED",
+    "u": "vector",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "source_table",
+     "source_id"
+    ],
+    "pk": false,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "custom_coaches",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "name",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "icon",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "icon_background_color",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'#6366F1'::text"
+   },
+   {
+    "n": "icon_accent_color",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'#818CF8'::text"
+   },
+   {
+    "n": "system_prompt",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "characteristics",
+    "t": "jsonb",
+    "u": "jsonb",
+    "null": "NO",
+    "d": "'[]'::jsonb"
+   },
+   {
+    "n": "is_from_template",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "template_id",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "coach_updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "decision_profiles",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "confidence_threshold_value",
+    "t": "double precision",
+    "u": "float8",
+    "null": "NO",
+    "d": "0.5"
+   },
+   {
+    "n": "confidence_threshold_confidence",
+    "t": "double precision",
+    "u": "float8",
+    "null": "NO",
+    "d": "0.0"
+   },
+   {
+    "n": "confidence_threshold_samples",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "novelty_salience_value",
+    "t": "double precision",
+    "u": "float8",
+    "null": "NO",
+    "d": "0.5"
+   },
+   {
+    "n": "novelty_salience_confidence",
+    "t": "double precision",
+    "u": "float8",
+    "null": "NO",
+    "d": "0.0"
+   },
+   {
+    "n": "novelty_salience_samples",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "delay_discounting_value",
+    "t": "double precision",
+    "u": "float8",
+    "null": "NO",
+    "d": "0.5"
+   },
+   {
+    "n": "delay_discounting_confidence",
+    "t": "double precision",
+    "u": "float8",
+    "null": "NO",
+    "d": "0.0"
+   },
+   {
+    "n": "delay_discounting_samples",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "punishment_sensitivity_value",
+    "t": "double precision",
+    "u": "float8",
+    "null": "NO",
+    "d": "0.5"
+   },
+   {
+    "n": "punishment_sensitivity_confidence",
+    "t": "double precision",
+    "u": "float8",
+    "null": "NO",
+    "d": "0.0"
+   },
+   {
+    "n": "punishment_sensitivity_samples",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "reward_sensitivity_value",
+    "t": "double precision",
+    "u": "float8",
+    "null": "NO",
+    "d": "0.5"
+   },
+   {
+    "n": "reward_sensitivity_confidence",
+    "t": "double precision",
+    "u": "float8",
+    "null": "NO",
+    "d": "0.0"
+   },
+   {
+    "n": "reward_sensitivity_samples",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "risk_aversion_value",
+    "t": "double precision",
+    "u": "float8",
+    "null": "NO",
+    "d": "0.5"
+   },
+   {
+    "n": "risk_aversion_confidence",
+    "t": "double precision",
+    "u": "float8",
+    "null": "NO",
+    "d": "0.0"
+   },
+   {
+    "n": "risk_aversion_samples",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": false,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "decisions",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "question",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "options_considered",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "''::text"
+   },
+   {
+    "n": "chosen_option",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "reasoning",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "''::text"
+   },
+   {
+    "n": "related_goal_id",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "expected_outcome",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "''::text"
+   },
+   {
+    "n": "confidence",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "50"
+   },
+   {
+    "n": "decided_at",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "actual_outcome",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "outcome_reviewed_at",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "outcome_quality",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "related_goal_id"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "focus_sessions",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "goal_id",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "milestone_id",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "planned_duration_minutes",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "actual_duration_seconds",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "was_completed",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "xp_earned",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "started_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "completed_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "mood",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "ambient_sound",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "focus_theme",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "goal_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "milestone_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "goal_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "milestone_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "started_at"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "gamification_log",
+  "cols": [
+   {
+    "n": "id",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "nextval('gamification_log_id_seq'::regclass)"
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "event_type",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "source_id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "xp_awarded",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "event_type",
+     "source_id"
+    ],
+    "pk": false,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "event_type",
+     "source_id"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "goal_dependencies",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "source_goal_id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "target_goal_id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "dependency_type",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "source_goal_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "target_goal_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "source_goal_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "target_goal_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "goal_history",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "goal_id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "field",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "old_value",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "new_value",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "changed_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "goals",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "category",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "title",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "description",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "status",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "timeline",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "due_date",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "progress",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "notes",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "''::text"
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "completion_rate",
+    "t": "real",
+    "u": "float4",
+    "null": "NO",
+    "d": "0.0"
+   },
+   {
+    "n": "is_archived",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "ai_reasoning",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "value_id",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "predicted_due_date",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "wheel_area",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "status"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "is_deleted",
+     "status"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "habit_check_ins",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "habit_id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "date",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "completed",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "true"
+   },
+   {
+    "n": "notes",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "''::text"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "count",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "habit_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "habit_id",
+     "date"
+    ],
+    "pk": false,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "habit_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "habits",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "title",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "description",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "''::text"
+   },
+   {
+    "n": "category",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "frequency",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'DAILY'::text"
+   },
+   {
+    "n": "target_count",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "1"
+   },
+   {
+    "n": "current_streak",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "longest_streak",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "total_completions",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "last_completed_date",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "linked_goal_id",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "correlation_score",
+    "t": "real",
+    "u": "float4",
+    "null": "NO",
+    "d": "0.0"
+   },
+   {
+    "n": "is_active",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "true"
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "reminder_time",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "type",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'BUILD'::text"
+   },
+   {
+    "n": "unit",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "health_metric_type",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "health_target",
+    "t": "double precision",
+    "u": "float8",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "completion_source",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "linked_goal_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "identity_statements",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "statement",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "value_id",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "is_active",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "true"
+   },
+   {
+    "n": "sort_order",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "created_at",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "value_id"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "journal_entries",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "title",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "content",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "mood",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'NEUTRAL'::text"
+   },
+   {
+    "n": "linked_goal_id",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "linked_habit_id",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "prompt_used",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "tags",
+    "t": "jsonb",
+    "u": "jsonb",
+    "null": "NO",
+    "d": "'[]'::jsonb"
+   },
+   {
+    "n": "date",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "entry_updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "linked_goal_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "linked_habit_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "date"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "linked_goal_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "linked_habit_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "knowledge_reads",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "read_at",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "user_id",
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "life_logs",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "area",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "kind",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "status",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "title",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "amount",
+    "t": "double precision",
+    "u": "float8",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "currency",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "category",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "quantity",
+    "t": "double precision",
+    "u": "float8",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "unit",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "duration_min",
+    "t": "integer",
+    "u": "int4",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "occurred_at",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "date",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "source",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "external_id",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "trip_id",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "notes",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "created_at",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "user_id",
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "life_values",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "title",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "description",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "''::text"
+   },
+   {
+    "n": "is_active",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "true"
+   },
+   {
+    "n": "sort_order",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "milestones",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "goal_id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "title",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "is_completed",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "due_date",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "estimated_effort",
+    "t": "integer",
+    "u": "int4",
+    "null": "YES",
+    "d": null
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "goal_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "goal_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "personas_cache",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "name",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "title",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'Coach'::text"
+   },
+   {
+    "n": "description",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "style",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "image_url",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "category",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'WELLBEING'::text"
+   },
+   {
+    "n": "emoji",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'\u2728'::text"
+   },
+   {
+    "n": "greeting",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "specialties",
+    "t": "jsonb",
+    "u": "jsonb",
+    "null": "NO",
+    "d": "'[]'::jsonb"
+   },
+   {
+    "n": "personality",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "avatar_bg_color",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'#6366F1'::text"
+   },
+   {
+    "n": "avatar_accent_color",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'#818CF8'::text"
+   },
+   {
+    "n": "avatar_icon_name",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'star'::text"
+   },
+   {
+    "n": "bio",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "fun_fact",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "xp_to_unlock",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "is_default_unlocked",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "true"
+   },
+   {
+    "n": "timezone",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "city",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "country_flag",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "is_active",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "true"
+   },
+   {
+    "n": "source",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'tribebot'::text"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "is_active"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "reminders",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "title",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "message",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "type",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "frequency",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "scheduled_time",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "scheduled_days",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "''::text"
+   },
+   {
+    "n": "linked_goal_id",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "linked_habit_id",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "is_enabled",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "true"
+   },
+   {
+    "n": "is_smart_timing",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "last_triggered_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "snoozed_until",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "reminder_updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "linked_goal_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "linked_habit_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "linked_goal_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "linked_habit_id"
+    ],
+    "pk": false,
+    "uq": false
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "review_reports",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "type",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "period_start",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "period_end",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "generated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "summary",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "highlights_json",
+    "t": "jsonb",
+    "u": "jsonb",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "insights_json",
+    "t": "jsonb",
+    "u": "jsonb",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "recommendations_json",
+    "t": "jsonb",
+    "u": "jsonb",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "stats_json",
+    "t": "jsonb",
+    "u": "jsonb",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "feedback_rating",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "feedback_comment",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "feedback_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "is_read",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "scheduled_posts",
+  "cols": [
+   {
+    "n": "id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": "gen_random_uuid()"
+   },
+   {
+    "n": "platform",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "post_type",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'text'::text"
+   },
+   {
+    "n": "content",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "media_urls",
+    "t": "ARRAY",
+    "u": "_text",
+    "null": "YES",
+    "d": "'{}'::text[]"
+   },
+   {
+    "n": "account_id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "scheduled_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "status",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'pending'::text"
+   },
+   {
+    "n": "published_id",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "published_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "error_message",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": "now()"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": "now()"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "status",
+     "scheduled_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "store_versions",
+  "cols": [
+   {
+    "n": "platform",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "version",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "checked_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "platform"
+    ],
+    "pk": true,
+    "uq": true
+   }
+  ]
+ },
+ {
+  "table_name": "stories",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "title",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "subtitle",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "emoji",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "category",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "gradient_start",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "gradient_end",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "cta_text",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "cta_action",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "sort_order",
+    "t": "integer",
+    "u": "int4",
+    "null": "YES",
+    "d": "0"
+   },
+   {
+    "n": "is_active",
+    "t": "boolean",
+    "u": "bool",
+    "null": "YES",
+    "d": "true"
+   },
+   {
+    "n": "published_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": "now()"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   }
+  ]
+ },
+ {
+  "table_name": "system_prompts",
+  "cols": [
+   {
+    "n": "key",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "name",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "description",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "content",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": "now()"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "key"
+    ],
+    "pk": true,
+    "uq": true
+   }
+  ]
+ },
+ {
+  "table_name": "trip_items",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "trip_id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "kind",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "title",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "notes",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "date",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "is_done",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sort_order",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "created_at",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "user_id",
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "trips",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "destination",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "latitude",
+    "t": "double precision",
+    "u": "float8",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "longitude",
+    "t": "double precision",
+    "u": "float8",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "start_date",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "end_date",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "budget",
+    "t": "double precision",
+    "u": "float8",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "currency",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "travel_mode",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "notes",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "created_at",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "user_id",
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "user_progress",
+  "cols": [
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "current_streak",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "last_check_in_date",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "total_xp",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "current_level",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "1"
+   },
+   {
+    "n": "goals_completed",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "habits_completed",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "journal_entries_count",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "longest_streak",
+    "t": "integer",
+    "u": "int4",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   },
+   {
+    "n": "streak_freeze_count",
+    "t": "integer",
+    "u": "int4",
+    "null": "YES",
+    "d": "2"
+   },
+   {
+    "n": "last_frozen_date",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "user_situations",
+  "cols": [
+   {
+    "n": "id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": "gen_random_uuid()"
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "meta_json",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'{}'::text"
+   },
+   {
+    "n": "career_json",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'{}'::text"
+   },
+   {
+    "n": "money_json",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'{}'::text"
+   },
+   {
+    "n": "body_json",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'{}'::text"
+   },
+   {
+    "n": "people_json",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'{}'::text"
+   },
+   {
+    "n": "purpose_json",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "'{}'::text"
+   },
+   {
+    "n": "last_updated_by",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": "''::text"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": false,
+    "uq": true
+   },
+   {
+    "cols": [
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "users",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "firebase_uid",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "email",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "display_name",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "is_guest",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "selected_symbol",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "priorities",
+    "t": "jsonb",
+    "u": "jsonb",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "age_range",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "profession",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "relationship_status",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "mindset",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "has_completed_onboarding",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "last_synced_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": false,
+    "uq": true
+   },
+   {
+    "cols": [
+     "firebase_uid"
+    ],
+    "pk": false,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id",
+     "updated_at"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "wheel_scores",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "score",
+    "t": "double precision",
+    "u": "float8",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "assessed_at",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "note",
+    "t": "text",
+    "u": "text",
+    "null": "YES",
+    "d": null
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "user_id",
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ },
+ {
+  "table_name": "wheel_snapshots",
+  "cols": [
+   {
+    "n": "id",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "user_id",
+    "t": "uuid",
+    "u": "uuid",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "scores",
+    "t": "jsonb",
+    "u": "jsonb",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "captured_at",
+    "t": "text",
+    "u": "text",
+    "null": "NO",
+    "d": null
+   },
+   {
+    "n": "created_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "updated_at",
+    "t": "timestamp with time zone",
+    "u": "timestamptz",
+    "null": "NO",
+    "d": "now()"
+   },
+   {
+    "n": "is_deleted",
+    "t": "boolean",
+    "u": "bool",
+    "null": "NO",
+    "d": "false"
+   },
+   {
+    "n": "sync_version",
+    "t": "bigint",
+    "u": "int8",
+    "null": "NO",
+    "d": "0"
+   }
+  ],
+  "idx": [
+   {
+    "cols": [
+     "user_id",
+     "id"
+    ],
+    "pk": true,
+    "uq": true
+   },
+   {
+    "cols": [
+     "user_id"
+    ],
+    "pk": false,
+    "uq": false
+   }
+  ]
+ }
+]

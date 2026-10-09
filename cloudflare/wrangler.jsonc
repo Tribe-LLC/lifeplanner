@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lifeplanner-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "account_id": "16708206509436d326b3d9041f8873cd",
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lifeplanner-staging",
+      "database_id": "c7fc9fef-e776-43c3-a392-40a4bd06499f",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
