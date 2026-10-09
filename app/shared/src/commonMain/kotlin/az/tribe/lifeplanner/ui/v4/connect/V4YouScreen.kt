@@ -59,6 +59,7 @@ import az.tribe.lifeplanner.ui.v4.theme.V4
 import az.tribe.lifeplanner.ui.v4.travel.TravelField
 import az.tribe.lifeplanner.ui.viewmodel.AuthState
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
+import az.tribe.lifeplanner.ui.viewmodel.deleteAccount
 import az.tribe.lifeplanner.ui.viewmodel.signOut
 import az.tribe.lifeplanner.ui.viewmodel.updateDisplayName
 import com.adamglin.PhosphorIcons
@@ -227,6 +228,9 @@ private fun AccountSheet(authState: AuthState, authViewModel: AuthViewModel, syn
     val user = (authState as? AuthState.Authenticated)?.user
     var name by remember { mutableStateOf(user?.displayName.orEmpty()) }
     var confirm by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
     AreaSheet("Your account", onDismiss) {
         user?.email?.let { Text(it, style = V4.type.body, color = c.ink2) }
         Text(syncLine(sync), style = V4.type.caption, color = c.ink3)
@@ -238,6 +242,31 @@ private fun AccountSheet(authState: AuthState, authViewModel: AuthViewModel, syn
             modifier = Modifier.fillMaxWidth(),
         )
         V4TextButton("Sign out", onClick = { confirm = true }, color = c.ink2, modifier = Modifier.align(Alignment.CenterHorizontally))
+        V4TextButton("Delete account", onClick = { deleting = true }, color = c.ink3, modifier = Modifier.align(Alignment.CenterHorizontally))
+    }
+    if (deleting) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) deleting = false },
+            title = { Text("Delete your account?") },
+            text = {
+                Text(
+                    if (failed) "That did not work. Check your connection and try again."
+                    else "This permanently deletes your account and everything in it, here and on our servers: habits, plans, money, journal and coach chats. It cannot be undone."
+                )
+            },
+            confirmButton = {
+                V4TextButton(
+                    if (busy) "Deleting..." else "Delete everything",
+                    onClick = {
+                        if (busy) return@V4TextButton
+                        busy = true; failed = false
+                        authViewModel.deleteAccount { ok -> busy = false; if (ok) { deleting = false; onDismiss() } else failed = true }
+                    },
+                    color = androidx.compose.ui.graphics.Color(0xFFD33F3F),
+                )
+            },
+            dismissButton = { V4TextButton("Keep my account", onClick = { if (!busy) deleting = false }) },
+        )
     }
     if (confirm) {
         val unsynced = sync == SyncState.OFFLINE || sync == SyncState.ERROR

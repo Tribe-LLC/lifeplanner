@@ -496,6 +496,18 @@ fun AuthViewModel.signOut() {
 }
 
 /**
+ * Deletes the account on the server, then clears the phone exactly like a sign out. [onResult] gets
+ * false when the server refused (offline, expired session), in which case nothing is cleared.
+ */
+fun AuthViewModel.deleteAccount(onResult: (Boolean) -> Unit) {
+    viewModelScope.launch {
+        val ok = try { authService.deleteAccount() } catch (e: Exception) { false }
+        if (ok) signOut()
+        onResult(ok)
+    }
+}
+
+/**
  * Mark onboarding complete for the current user (no personalization data).
  */
 fun AuthViewModel.completeOnboarding() {

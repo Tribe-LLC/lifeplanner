@@ -186,7 +186,7 @@ val appModule = module {
     single<NotificationSchedulerInterface> { getNotificationScheduler() }
 
     // Auth Service (Supabase, multiplatform, no platform-specific needed)
-    single<AuthService> { SupabaseAuthService(get()) }
+    single<AuthService> { SupabaseAuthService(get(), get()) }
 
     // Auth token provider (Supabase session → JWT, with auto-refresh)
     // Uses a Mutex to prevent concurrent refresh attempts from racing.

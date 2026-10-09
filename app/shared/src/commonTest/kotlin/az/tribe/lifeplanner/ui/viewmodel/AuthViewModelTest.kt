@@ -182,6 +182,9 @@ class MockAuthService : AuthService {
         )
     }
 
+    var deleteResult = true
+    override suspend fun deleteAccount(): Boolean = deleteResult
+
     override suspend fun signOut() {
         signOutCalled = true
     }

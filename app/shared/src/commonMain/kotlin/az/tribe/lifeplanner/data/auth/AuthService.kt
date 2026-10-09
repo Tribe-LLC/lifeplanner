@@ -6,6 +6,10 @@ import io.github.jan.supabase.auth.OtpType
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.providers.builtin.OTP
 import co.touchlab.kermit.Logger
+import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.http.isSuccess
 
 /**
  * Authentication service interface
@@ -16,6 +20,8 @@ interface AuthService {
     suspend fun signInWithGoogle(): AuthResult
     suspend fun signInAnonymously(): AuthResult
     suspend fun signOut()
+    /** Deletes the signed-in account and its server data (edge function delete-account). True on success. */
+    suspend fun deleteAccount(): Boolean
     suspend fun getCurrentUser(): FirebaseUser?
     suspend fun sendPasswordResetEmail(email: String)
     /** Restore the persisted Supabase session (auto-loads from storage in supabase-kt 3.x). */
@@ -37,7 +43,8 @@ interface AuthService {
  * Google OAuth is a stub here, platform-specific handling can be added later.
  */
 class SupabaseAuthService(
-    private val supabase: SupabaseClient
+    private val supabase: SupabaseClient,
+    private val httpClient: io.ktor.client.HttpClient,
 ) : AuthService {
 
     companion object {
@@ -169,6 +176,20 @@ class SupabaseAuthService(
             supabase.auth.signOut()
         } catch (e: Exception) {
             Logger.e("SupabaseAuth") { "Sign out failed: ${e.message}" }
+        }
+    }
+
+    override suspend fun deleteAccount(): Boolean {
+        val token = supabase.auth.currentAccessTokenOrNull() ?: return false
+        return try {
+            val res = httpClient.post("${az.tribe.lifeplanner.BuildKonfig.SUPABASE_URL}/functions/v1/delete-account") {
+                bearerAuth(token)
+                header("apikey", az.tribe.lifeplanner.BuildKonfig.SUPABASE_ANON_KEY)
+            }
+            res.status.isSuccess()
+        } catch (e: Exception) {
+            Logger.e("SupabaseAuth") { "Delete account failed: ${e.message}" }
+            false
         }
     }
 
