@@ -3,6 +3,7 @@ import { createAuth } from "./betterauth";
 
 export type Env = {
   DB: D1Database;
+  ASSETS: R2Bucket;
   /** Test only. When "1", a bearer token of the form `dev:<user-id>` is accepted as that user. Never set in deploys. */
   DEV_AUTH?: string;
   BASE_URL?: string;

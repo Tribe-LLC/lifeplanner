@@ -467,3 +467,26 @@ Better Auth 1.7 on D1 (`cloudflare/src/betterauth.ts`, `authroutes.ts`, migratio
   Push Notifications, HealthKit, Associated Domains, App Groups (matching `iosApp.entitlements`). Apple sign-in on iOS
   ships once that is done; Google on iOS does not depend on it.
 - **Workers plan:** Free for now; move to Paid before the soak (Phase 7) for password hashing CPU.
+
+## 12. Phase 4 log (2026-10-09)
+
+- **ai-proxy** ported to `cloudflare/src/ai.ts`, routes `POST /v1/ai-proxy` (alias `/v1/ai`). Same request fields, same
+  JSON response, same SSE bytes (`event: text|done|error`), same provider order and fallback (Gemini, OpenAI, Grok;
+  rate limits fall back, streaming falls back until the first token), same upstream-error sanitising, same
+  "no long dashes" style rule, same user-context block (now read straight from D1, same limits). Differences: the
+  Gemini key is sent in the `x-goog-api-key` header instead of the URL; the pgvector RAG branch is gone (the table had
+  0 rows); usage logging goes to `ai_usage_logs` via `waitUntil`. Keys are Worker secrets `GEMINI_API_KEY`,
+  `OPENAI_API_KEY`, `GROK_API_KEY` (Kamran sets them). 7 tests with mocked providers.
+- **Coach pictures and welcome videos:** the 11 objects (33 MB) are copied to R2 bucket `lp-assets` and served by
+  `GET /v1/assets/<path>` through the Worker (immutable cache, ETag, byte ranges for the mp4s). `r2.dev` public access
+  was turned on briefly and off again: from this Mac `*.r2.dev` resolves to a block address (ISP filtering), so the Worker
+  route is also the safer public URL. Client change later: `BuiltinCoachFetcher.kt:15` base URL.
+- **Not ported, on purpose:**
+  - `share-journal` and `report-content`: they write `shared_journals` / `content_reports`, which **do not exist in
+    production** (Community Journals is specced, not shipped). Port with the feature.
+  - `auth-redirect` and `resend-verification`: they only serve email-link sign-up, which 4.1 no longer has.
+  - `persona-sync-webhook`: writes `personas_cache`, which has 0 rows; the persona project keeps calling the Supabase
+    function until Supabase is switched off, then repoint.
+  - `mcp-server` (938 lines): still deferred (nothing in the app uses it).
+- **Next (Phase 5):** Cron Triggers for `health` and `store-watch` with Telegram alerts, the Supabase to D1 bridge job,
+  auth rate limiting, D1 backups, then deploy staging.

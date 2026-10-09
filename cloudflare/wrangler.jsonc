@@ -5,6 +5,7 @@
   "compatibility_date": "2026-08-22",
   "account_id": "16708206509436d326b3d9041f8873cd",
   "observability": { "enabled": true },
+  "r2_buckets": [{ "binding": "ASSETS", "bucket_name": "lp-assets" }],
   "d1_databases": [
     {
       "binding": "DB",

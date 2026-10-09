@@ -119,3 +119,19 @@ describe("gamification triggers", () => {
     expect(b.xp_earned).toBe(0);
   });
 });
+
+describe("assets", () => {
+  it("serves R2 objects with caching and ranges", async () => {
+    await env.ASSETS.put("coaches/x.png", new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]), { httpMetadata: { contentType: "image/png" } });
+    const r = await SELF.fetch("https://x/v1/assets/coaches/x.png");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toBe("image/png");
+    expect(r.headers.get("cache-control")).toContain("immutable");
+    expect(new Uint8Array(await r.arrayBuffer())).toHaveLength(8);
+    const part = await SELF.fetch("https://x/v1/assets/coaches/x.png", { headers: { Range: "bytes=2-4" } });
+    expect(part.status).toBe(206);
+    expect(part.headers.get("content-range")).toBe("bytes 2-4/8");
+    expect(new Uint8Array(await part.arrayBuffer())).toEqual(new Uint8Array([3, 4, 5]));
+    expect((await SELF.fetch("https://x/v1/assets/nope.png")).status).toBe(404);
+  });
+});

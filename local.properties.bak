@@ -1,0 +1,26 @@
+## This file must *NOT* be checked into Version Control Systems,
+# as it contains information specific to your local configuration.
+#
+# Location of the SDK. This is only used by Gradle.
+# For customization when using a Version Control System, please read the
+# header note.
+#Thu May 14 01:23:57 ICT 2026
+sdk.dir=/Users/com3run/Library/Android/sdk
+
+# RevenueCat — Test Store key (works without Apple/Google product setup). Replace with
+# goog_… (Android) and appl_… (iOS) keys for production.
+REVENUECAT_ANDROID_API_KEY=test_JhoePVGHKfKfmmswZoizzvZsyAq
+REVENUECAT_IOS_API_KEY=test_JhoePVGHKfKfmmswZoizzvZsyAq
+
+# Supabase backend — project rkdggdfabwgukspylybu. The anon key is a public client
+# credential (RLS enforces access), safe to embed via BuildKonfig.
+SUPABASE_URL=https://rkdggdfabwgukspylybu.supabase.co
+SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZGdnZGZhYndndWtzcHlseWJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NjU3NzAsImV4cCI6MjA4ODA0MTc3MH0.5IYGrE1fr7u4ujDwAJnzJAz2yNUJFzO4miHWG35p7JY
+
+
+PERSONA_API_SECRET=425d1f7a52785dcc3e9d4cfd786f67502bdbbce8e040f06dc9654b9bc13c3c0f
+# PostHog project API key (client-side ingest key, safe to embed). Project "LifePlanner" (293959).
+# Powers analytics AND the ForceUpdateChecker feature flag - a blank key disables both.
+POSTHOG_API_KEY=phc_nuwl5eoUIUUiBUiQhmHxAJq7ljcFxN0Qj4FKr2152l8
+POSTHOG_HOST=https://us.i.posthog.com
+RELEASE_STORE_FILE=~/Projects/LifePlanner/keys/lifeplanner.jks

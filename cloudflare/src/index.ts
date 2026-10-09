@@ -114,6 +114,31 @@ app.get("/v1/content/:table", async (c) => {
   return c.json(results.map((r) => fromDb(table, r)));
 });
 
+// ---- public assets (coach pictures, welcome videos) from R2; served by the Worker so no extra domain is needed ----
+app.get("/v1/assets/*", async (c) => {
+  const key = decodeURIComponent(c.req.path.replace(/^\/v1\/assets\//, ""));
+  if (!key || key.includes("..")) return c.json({ error: "not found" }, 404);
+  const range = c.req.header("Range");
+  const obj = await c.env.ASSETS.get(key, range ? { range: c.req.raw.headers } : undefined);
+  if (!obj) return c.json({ error: "not found" }, 404);
+  const h = new Headers();
+  obj.writeHttpMetadata(h);
+  h.set("etag", obj.httpEtag);
+  h.set("cache-control", "public, max-age=31536000, immutable");
+  h.set("accept-ranges", "bytes");
+  h.set("access-control-allow-origin", "*");
+  if (c.req.header("If-None-Match") === obj.httpEtag) return new Response(null, { status: 304, headers: h });
+  if (range && "range" in obj && obj.range) {
+    const r = obj.range as { offset?: number; length?: number };
+    const start = r.offset ?? 0, len = r.length ?? obj.size - start;
+    h.set("content-range", `bytes ${start}-${start + len - 1}/${obj.size}`);
+    h.set("content-length", String(len));
+    return new Response(obj.body, { status: 206, headers: h });
+  }
+  h.set("content-length", String(obj.size));
+  return new Response(obj.body, { headers: h });
+});
+
 // ---- the user's own AI usage (ai_usage_logs RLS: select own) ----
 app.get("/v1/ai-usage", authed, async (c) => {
   const since = c.req.query("since");
