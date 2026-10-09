@@ -345,8 +345,10 @@ Roughly in the order needed. Everything else I can do with the Cloudflare MCP / 
      keys, so **no Services ID and no key are needed to sign in**. Only: enable the **Sign in with Apple** capability on
      the iOS App ID (Apple Developer, store@tribe.az account) and in Xcode. A key (.p8) is optional, needed only to
      revoke the Apple token on account deletion (Apple recommends it); skip until later.
-5. **Email sender:** pick Resend (create account, verify `tribe.az`, API key as secret) or enable Cloudflare
-   Email Service on the zone.
+5. **Email sender: not needed for 4.1** (decided 2026-10-09). Sign-up is social only, so nothing mails a code. The small
+   "Use email" link is password sign-in only, for the 36 existing password accounts. Cost of this choice: no self-service
+   "forgot password" for those 36 (reset by hand if someone asks, or add Resend free tier later). Server code for email
+   codes and guest-to-email linking stays in the Worker, switched off in the app.
 6. **Apple (for 4.2):** Sign in with Apple Services ID and key, if Google on iOS is wanted.
 7. **Play Console / App Store:** 4.1 release uploads, data safety form update (data processor changes from
    Supabase to Cloudflare), privacy policy text update naming the new processor.
@@ -444,7 +446,7 @@ Better Auth 1.7 on D1 (`cloudflare/src/betterauth.ts`, `authroutes.ts`, migratio
   Needs vars `SUPABASE_URL` and `SUPABASE_ANON_KEY` (the anon key is the public one already inside the app).
 - **Delete account:** `POST /v1/auth/delete-account` removes the caller's rows in every owned table and the login in
   one batch (replaces the Supabase function; Apple token revocation to add with the Apple key).
-- **Email:** `src/email.ts` sends through Resend when `RESEND_API_KEY` is set, otherwise logs (dev/tests).
+- **Email:** `src/email.ts` sends through Resend when `RESEND_API_KEY` is set, otherwise logs (dev/tests). Not used in 4.1 (see section 6, item 5).
 - **Social, wired but untested:** Google accepts ID tokens for the Web, Android and iOS client ids
   (`GOOGLE_WEB_CLIENT_ID`, `GOOGLE_ANDROID_CLIENT_ID`, `GOOGLE_IOS_CLIENT_ID`); Apple turns on with
   `APPLE_SERVICE_ID` (+ `APPLE_BUNDLE_ID`). Verified-email matching is on for both (`trustedProviders`).
