@@ -4,7 +4,7 @@ agp = "9.2.1"
 # BuildKonfig.APP_VERSION all read from here, so the value the ForceUpdateChecker compares
 # against can never drift from the version actually on the store. iOS keeps its own
 # MARKETING_VERSION/CURRENT_PROJECT_VERSION in project.pbxproj — bump those to match.
-app-versionCode = "12"
+app-versionCode = "13"
 app-versionName = "4.0.0"
 android-compileSdk = "37"
 android-minSdk = "26"
