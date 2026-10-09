@@ -332,14 +332,19 @@ Roughly in the order needed. Everything else I can do with the Cloudflare MCP / 
 3. **Supabase dashboard (read only):** generate or confirm a service key access for the export script, or
    allow me to export via the Management API / MCP (the MCP already works for reads; for bulk export of
    `auth.users` hashes the SQL route is enough, so this may need nothing).
-4. **Google Cloud, one-time (a dedicated LifePlanner project is recommended):** OAuth consent screen
-   (publish to production so any account can sign in); a **Web** client (its id is what the Worker verifies
-   ID tokens against); an **Android** client for `az.tribe.lifeplanner` with the **Play App Signing** SHA-1
-   (Play Console > App integrity) and a second one with the **upload key** SHA-1 (plus debug keystore SHA-1
-   for dev builds); an **iOS** client for the iOS bundle id. Give me the three client ids (ids are not secrets).
-   Apple, one-time (Apple Developer account): enable **Sign in with Apple** on the App ID; create a
-   **Services ID**; create a **Sign in with Apple key** (.p8, Key ID, Team ID). The .p8 goes in as a Worker
-   secret that he sets; never pasted in chat.
+4. **Google and Apple sign-in, same recipe as Same Breath** (no Firebase Auth in the path; the Worker verifies the
+   provider's ID token itself, Firebase/Google Cloud only holds the OAuth clients):
+   - **Google:** use LifePlanner's existing Firebase project (`app/androidApp/google-services.json`). Add the
+     **Play App Signing SHA-1 (both keys Play shows, classical and post-quantum), the upload key SHA-1 and the debug
+     SHA-1** to the Firebase Android app `az.tribe.lifeplanner`; Google then creates the matching Android OAuth clients
+     itself. The Web client id (auto-created in that project) is what Credential Manager asks for and what the Worker
+     checks. Add an iOS app in the same project for the iOS client id. **Publish the OAuth consent screen to
+     Production** (Same Breath's Play build failed Google sign-in while it was still in Testing). Send me the three
+     client ids (not secrets).
+   - **Apple:** on iOS the ID token's audience is the app's bundle id, which the Worker checks against Apple's public
+     keys, so **no Services ID and no key are needed to sign in**. Only: enable the **Sign in with Apple** capability on
+     the iOS App ID (Apple Developer, store@tribe.az account) and in Xcode. A key (.p8) is optional, needed only to
+     revoke the Apple token on account deletion (Apple recommends it); skip until later.
 5. **Email sender:** pick Resend (create account, verify `tribe.az`, API key as secret) or enable Cloudflare
    Email Service on the zone.
 6. **Apple (for 4.2):** Sign in with Apple Services ID and key, if Google on iOS is wanted.
