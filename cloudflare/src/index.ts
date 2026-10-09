@@ -4,6 +4,7 @@ import { resolveUser, type Env } from "./auth";
 import { BadRequest, fromDb, nowIso, normTs, upsertStatement } from "./db";
 import { awardBadgesStatement } from "./badges";
 import { authRoutes } from "./authroutes";
+import { aiRoutes } from "./ai";
 import { SYNC_TABLES, TABLES } from "./tables";
 
 const app = new Hono<{ Bindings: Env; Variables: { userId: string } }>();
@@ -30,6 +31,7 @@ const authed = async (c: any, next: () => Promise<void>) => {
 };
 
 app.route("/", authRoutes);
+app.route("/", aiRoutes);
 
 // ---- sync: replaces postgrest[t].upsert(dtos) and postgrest[t].select { eq(user_id); gt(updated_at) } ----
 
