@@ -1,5 +1,6 @@
-// Port of supabase/functions/ai-proxy, Gemini only (decided 2026-10-09: one provider, one key). Same request/response/SSE
-// contract so AiProxyServiceImpl only changes its URL. A request naming OPENAI or GROK is answered by Gemini.
+// Port of supabase/functions/ai-proxy, Anthropic Claude only (decided 2026-10-19: one provider, one key, no picker).
+// Same request/response/SSE contract so AiProxyServiceImpl only changes its URL. Any `provider` field is ignored.
+// Anthropic bills per token, so every request is capped (MAX_TOKENS, last MAX_MESSAGES turns) and each user has a daily quota.
 // Dropped on purpose: the pgvector RAG branch (content_embeddings had 0 rows); the user-context block is kept.
 import { Hono, type Context } from "hono";
 import { resolveUser, type Env } from "./auth";
@@ -16,7 +17,14 @@ interface AiRequest {
 interface TokenUsage { inputTokens: number; outputTokens: number }
 interface AiResponse { text: string; provider: string; model: string; usage?: TokenUsage }
 
-const MODEL = "gemini-2.5-flash";
+// Change the model here, or per environment with the ANTHROPIC_MODEL var, without touching the rest.
+const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
+const MAX_TOKENS = 1024;
+const MAX_TOKENS_STRUCTURED = 2048;
+const MAX_MESSAGES = 30;
+const DEFAULT_DAILY_LIMIT = 60; // requests per user per rolling 24 h, override with the AI_DAILY_LIMIT var
+const PROVIDER = "ANTHROPIC";
+const modelOf = (env: Env) => env.ANTHROPIC_MODEL || DEFAULT_MODEL;
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 export const aiRoutes = new Hono<{ Bindings: Env }>();
@@ -26,8 +34,9 @@ const handler = async (c: Context<{ Bindings: Env }>) => {
   if (!userId) return json({ error: "Authentication required" }, 401);
   try {
     const body = (await c.req.json()) as AiRequest;
-    if (!["GEMINI", "OPENAI", "GROK"].includes(body.provider ?? "GEMINI")) return json({ error: `Unsupported provider: ${body.provider}` }, 400);
-    if (!c.env.GEMINI_API_KEY) return json({ error: "The AI is unavailable right now. Please try again in a moment." }, 503);
+    if (!c.env.ANTHROPIC_API_KEY) return json({ error: "The AI is unavailable right now. Please try again in a moment." }, 503);
+    if (await overDailyLimit(c.env, userId)) return json({ error: "You have reached today's AI limit. It resets within 24 hours." }, 429);
+    if (body.messages && body.messages.length > MAX_MESSAGES) body.messages = body.messages.slice(-MAX_MESSAGES);
 
     if (body.enrichContext !== false && body.messages) {
       try {
@@ -45,7 +54,7 @@ const handler = async (c: Context<{ Bindings: Env }>) => {
 
     if (body.stream === true && body.messages) return streamingResponse(c.env, body, (r) => log(r, "chat"));
 
-    const result = await callGemini(c.env, body);
+    const result = await callClaude(c.env, body);
     log(result, body.messages ? "chat" : body.responseSchema ? "structured" : "generate");
     return json(result);
   } catch (error) {
@@ -62,6 +71,15 @@ aiRoutes.post("/v1/ai-proxy", handler);
 aiRoutes.post("/v1/ai", handler);
 
 // ── usage + user context (D1 instead of per-user PostgREST) ─────────────────────────────────
+
+async function overDailyLimit(env: Env, userId: string): Promise<boolean> {
+  const limit = Number(env.AI_DAILY_LIMIT) || DEFAULT_DAILY_LIMIT;
+  try {
+    const row = await env.DB.prepare("SELECT count(*) AS n FROM ai_usage_logs WHERE user_id = ? AND created_at > strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 day')")
+      .bind(userId).first<{ n: number }>();
+    return (row?.n ?? 0) >= limit;
+  } catch (e) { console.warn("Daily limit check failed (allowing):", e instanceof Error ? e.message : e); return false; }
+}
 
 async function logUsage(db: D1Database, userId: string, r: AiResponse, type: string) {
   try {
@@ -127,29 +145,41 @@ function formatUserContext(profile: Row | null, progress: Row | null, goals: Row
   return lines.join("\n");
 }
 
-// ── providers ──────────────────────────────────────────────────────────────────────────────────
+// ── Anthropic Messages API ─────────────────────────────────────────────────────────────────────
 
-const geminiHeaders = (env: Env) => ({ "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY ?? "" });
-const GEMINI = "https://generativelanguage.googleapis.com/v1beta/models";
+const ANTHROPIC = "https://api.anthropic.com/v1/messages";
+const headers = (env: Env) => ({ "Content-Type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY ?? "", "anthropic-version": "2023-06-01" });
 
-function geminiContents(body: AiRequest) {
-  if (body.messages && body.messages.length > 0) {
-    return body.messages.map((m) => ({ role: m.role === "assistant" ? "model" : m.role, parts: [{ text: m.content }] }));
+function claudeRequest(env: Env, body: AiRequest, stream: boolean) {
+  const raw = body.messages && body.messages.length > 0 ? body.messages : [{ role: "user", content: body.prompt ?? "" }];
+  // Claude needs strictly alternating turns that start with the user: merge neighbours with the same role, drop a leading assistant turn.
+  const messages: { role: "user" | "assistant"; content: string }[] = [];
+  for (const m of raw) {
+    const role = m.role === "assistant" || m.role === "model" ? "assistant" : "user";
+    if (messages.length === 0 && role === "assistant") continue;
+    const last = messages[messages.length - 1];
+    if (last && last.role === role) last.content += "\n\n" + m.content; else messages.push({ role, content: m.content });
   }
-  return [{ role: "user", parts: [{ text: body.prompt ?? "" }] }];
+  if (messages.length === 0) messages.push({ role: "user", content: body.prompt ?? "" });
+  let system = body.systemPrompt ?? "";
+  if (body.responseSchema) {
+    system += "\n\nReply with a single JSON value that matches this JSON schema and nothing else (no prose, no code fences):\n" + JSON.stringify(body.responseSchema);
+  }
+  const req: Record<string, unknown> = { model: modelOf(env), max_tokens: body.responseSchema ? MAX_TOKENS_STRUCTURED : MAX_TOKENS, messages, stream };
+  if (system.trim()) req.system = system.trim();
+  return req;
 }
 
-async function callGemini(env: Env, body: AiRequest): Promise<AiResponse> {
-  const model = MODEL;
-  const req: Record<string, unknown> = { contents: geminiContents(body) };
-  if (body.systemPrompt) req.systemInstruction = { parts: [{ text: body.systemPrompt }] };
-  if (body.responseSchema) req.generationConfig = { responseMimeType: "application/json", responseSchema: body.responseSchema };
-  const r = await fetch(`${GEMINI}/${model}:generateContent`, { method: "POST", headers: geminiHeaders(env), body: JSON.stringify(req) });
-  if (!r.ok) throw new Error(`Gemini API error ${r.status}: ${await r.text()}`);
+const stripFence = (t: string) => t.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+
+async function callClaude(env: Env, body: AiRequest): Promise<AiResponse> {
+  const r = await fetch(ANTHROPIC, { method: "POST", headers: headers(env), body: JSON.stringify(claudeRequest(env, body, false)) });
+  if (!r.ok) throw new Error(`Anthropic API error ${r.status}: ${await r.text()}`);
   const d = (await r.json()) as any;
+  const text = (d?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
   return {
-    text: d?.candidates?.[0]?.content?.parts?.[0]?.text ?? "", provider: "GEMINI", model,
-    usage: d?.usageMetadata ? { inputTokens: d.usageMetadata.promptTokenCount ?? 0, outputTokens: d.usageMetadata.candidatesTokenCount ?? 0 } : undefined,
+    text: body.responseSchema ? stripFence(text) : text, provider: PROVIDER, model: d?.model ?? modelOf(env),
+    usage: d?.usage ? { inputTokens: d.usage.input_tokens ?? 0, outputTokens: d.usage.output_tokens ?? 0 } : undefined,
   };
 }
 
@@ -167,14 +197,14 @@ function streamingResponse(env: Env, body: AiRequest, onDone: (r: AiResponse) =>
       // One retry while nothing has reached the client (a transient 5xx should not surface mid-chat).
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const usage = await streamGemini(env, body, MODEL, sendTracked);
-          send("done", JSON.stringify({ provider: "GEMINI", model: MODEL, usage: usage ?? { inputTokens: 0, outputTokens: 0 } }));
-          onDone({ text: "", provider: "GEMINI", model: MODEL, usage });
+          const usage = await streamClaude(env, body, sendTracked);
+          send("done", JSON.stringify({ provider: PROVIDER, model: modelOf(env), usage: usage ?? { inputTokens: 0, outputTokens: 0 } }));
+          onDone({ text: "", provider: PROVIDER, model: modelOf(env), usage });
           controller.close();
           return;
         } catch (err) {
           const raw = err instanceof Error ? err.message : "Stream error";
-          if (!streamedAny && attempt === 0) { console.warn(`Gemini stream failed before any output (${raw}), retrying once`); continue; }
+          if (!streamedAny && attempt === 0) { console.warn(`Claude stream failed before any output (${raw}), retrying once`); continue; }
           console.error("Stream error:", raw);
           send("error", JSON.stringify({ error: streamedAny
             ? (raw.includes("timeout") || raw.includes("ETIMEDOUT") ? "AI provider timed out. Please try again." : "Something went wrong during streaming. Please try again.")
@@ -202,20 +232,18 @@ async function* sseData(res: Response): AsyncGenerator<string> {
   }
 }
 
-async function streamGemini(env: Env, body: AiRequest, model: string, send: Send): Promise<TokenUsage | undefined> {
-  const req: Record<string, unknown> = { contents: geminiContents(body) };
-  if (body.systemPrompt) req.systemInstruction = { parts: [{ text: body.systemPrompt }] };
-  const r = await fetch(`${GEMINI}/${model}:streamGenerateContent?alt=sse`, { method: "POST", headers: geminiHeaders(env), body: JSON.stringify(req) });
-  if (!r.ok) throw new Error(`Gemini streaming error ${r.status}: ${await r.text()}`);
-  let usage: TokenUsage | undefined;
+async function streamClaude(env: Env, body: AiRequest, send: Send): Promise<TokenUsage | undefined> {
+  const r = await fetch(ANTHROPIC, { method: "POST", headers: headers(env), body: JSON.stringify(claudeRequest(env, body, true)) });
+  if (!r.ok) throw new Error(`Anthropic streaming error ${r.status}: ${await r.text()}`);
+  let inputTokens = 0, outputTokens = 0, seenUsage = false;
   for await (const data of sseData(r)) {
     if (!data) continue;
-    try {
-      const chunk = JSON.parse(data);
-      const text = chunk?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text) send("text", text);
-      if (chunk?.usageMetadata) usage = { inputTokens: chunk.usageMetadata.promptTokenCount ?? 0, outputTokens: chunk.usageMetadata.candidatesTokenCount ?? 0 };
-    } catch { /* skip malformed chunk */ }
+    let ev: any;
+    try { ev = JSON.parse(data); } catch { continue; /* skip malformed chunk */ }
+    if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta" && ev.delta.text) send("text", ev.delta.text);
+    else if (ev.type === "message_start" && ev.message?.usage) { inputTokens = ev.message.usage.input_tokens ?? 0; outputTokens = ev.message.usage.output_tokens ?? 0; seenUsage = true; }
+    else if (ev.type === "message_delta" && ev.usage) { outputTokens = ev.usage.output_tokens ?? outputTokens; if (ev.usage.input_tokens) inputTokens = ev.usage.input_tokens; seenUsage = true; }
+    else if (ev.type === "error") throw new Error(`Anthropic stream error: ${ev.error?.type ?? "unknown"}`);
   }
-  return usage;
+  return seenUsage ? { inputTokens, outputTokens } : undefined;
 }

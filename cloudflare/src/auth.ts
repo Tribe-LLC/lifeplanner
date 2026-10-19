@@ -7,7 +7,9 @@ export type Env = {
   /** Test only. When "1", a bearer token of the form `dev:<user-id>` is accepted as that user. Never set in deploys. */
   DEV_AUTH?: string;
   BASE_URL?: string;
-  GEMINI_API_KEY?: string;
+  ANTHROPIC_API_KEY?: string;
+  ANTHROPIC_MODEL?: string;
+  AI_DAILY_LIMIT?: string;
   AUTH_SECRET: string;
   SUPABASE_URL?: string;
   SUPABASE_ANON_KEY?: string;

@@ -110,7 +110,7 @@ note it so nobody thinks it was forgotten.
 | `health` | 157 | Pings all functions, Telegram alert | Telegram | Cron Trigger |
 | `store-watch` | 193 | Polls App Store / Play for version, Telegram alert, writes `store_versions` | iTunes lookup, Play page | Cron Trigger |
 
-Secrets in use (never copy values into the repo): `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GROK_API_KEY`,
+Secrets in use on Supabase (never copy values into the repo; 4.1 on Cloudflare needs only `ANTHROPIC_API_KEY` of the AI ones): `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GROK_API_KEY`,
 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `HEALTH_KEY`, `PERSONA_WEBHOOK_SECRET`, plus Supabase's own.
 
 ### 1.6 Scheduled jobs
@@ -232,8 +232,11 @@ Order matters, each step compiles and passes tests before the next:
    migration only.
 4. **Backend selection behind a flag** `BACKEND = SUPABASE | CLOUDFLARE` in BuildKonfig, so debug builds can run
    either and the same code can be soaked on a device before the default flips.
-5. **AI:** `AiProxyServiceImpl` only changes its URL and header (drop `apikey`). SSE format kept byte
-   compatible so the parser does not change.
+5. **AI:** `AiProxyServiceImpl` only changes its URL and header (drop `apikey`). SSE event shapes (`text`, `done`,
+   `error`) are unchanged, so the parser does not change. One provider (Anthropic Claude), so the `AiProvider`
+   picker and the provider setting in profile settings are removed in this step, and the client stops sending a
+   `provider` field (the Worker ignores it anyway, so a 4.0 client pointed at it keeps working). The client must
+   handle a `429` ("daily AI limit") with a friendly message.
 6. **Deep links:** keep `lifeplanner://auth` and the `tribe.az/lifeplanner/auth/callback` page; OTP code entry
    already exists, so OTP path needs no deep link at all. iOS `DeepLinkHandler` loses `handleDeeplinks` and
    parses the verify token itself.
@@ -301,7 +304,7 @@ surprised. Phases ship nothing to users until the last one.
 | 1 | `cloudflare/` Worker skeleton, schema generator, D1 staging, data copy script, row-count verifier | 4 | staging D1 holds a faithful copy, counts match per table and per user |
 | 2 | Sync API + table registry + `updated_at`/`sync_version` stamping; port gamification triggers and `update_daily_streak`; parity test replaying real event sequences against Supabase and D1 | 5 | XP, level, badges, challenge progress equal on 20 sampled real users |
 | 3 | Better Auth on D1: anonymous, email+password, OTP (email provider), link-in-place, Google and Apple `idToken`, legacy bcrypt verify+rehash, `/auth/migrate` | 5 | all flows green in a local contract suite; legacy hash login works for a throwaway test account |
-| 4 | ai-proxy streaming (OpenAI/Gemini/Grok), usage logs, share-journal, report-content, delete-account, persona webhook, auth-redirect, R2 assets, public content endpoints | 4 | SSE byte-compatible with current parser; delete-account cascades fully |
+| 4 | ai-proxy streaming (Anthropic Claude only), usage logs, daily limit, share-journal, report-content, delete-account, persona webhook, auth-redirect, R2 assets, public content endpoints | 4 | SSE byte-compatible with current parser; delete-account cascades fully |
 | 5 | Ops: Cron Triggers for health and store-watch, Telegram alerts, bridge job (Supabase to D1 delta), observability, rate limits, backups (D1 Time Travel + scheduled export to R2) | 2 | alerts fire on a forced failure |
 | 6 | Client: sections 4.1 to 4.8 and 4A (new social sign-in screen), both platforms, flag-gated; dev builds on the real emulator/simulator with throwaway accounts only | 7 | in-place upgrade from a 4.0 build with a migrated guest AND a password user keeps all data on both platforms |
 | 7 | Soak: internal track on Cloudflare for a week, watch D1 metrics, Sentry/Crashlytics, sync success rate; final delta copy; staged rollout 10% to 100% | 5 to 7 | no sync regressions vs 4.0 baseline |
@@ -325,7 +328,8 @@ Roughly in the order needed. Everything else I can do with the Cloudflare MCP / 
 1. **Cloudflare:** confirm which account/zone to use and whether the account is on Workers Paid (USD 5/month;
    recommended before Phase 3 for password hashing CPU). Authorise the DNS token / wrangler login for the
    `tribe.az` zone so I can create `lp-api.tribe.az`. (I can create D1, KV, R2 through the connected MCP.)
-2. **Secrets, put by Kamran, never pasted in chat:** `GEMINI_API_KEY` (the only AI key now),
+2. **Secrets, put by Kamran, never pasted in chat:** `ANTHROPIC_API_KEY` (the only AI key; create it in the Anthropic
+   Console, it is billed per token and is separate from the Claude Max plan, and set a monthly spend limit there),
    `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `PERSONA_WEBHOOK_SECRET` as Worker secrets
    (`wrangler secret put NAME` in the Terminal tab; I will give the exact commands). Supabase will not reveal
    them through the API, they need to come from wherever he stored them.
@@ -491,8 +495,38 @@ Better Auth 1.7 on D1 (`cloudflare/src/betterauth.ts`, `authroutes.ts`, migratio
 - **Next (Phase 5):** Cron Triggers for `health` and `store-watch` with Telegram alerts, the Supabase to D1 bridge job,
   auth rate limiting, D1 backups, then deploy staging.
 
-**Update 2026-10-09: Gemini only.** Kamran decided on one AI provider and one key. `ai.ts` is now Gemini only
-(`gemini-2.5-flash`): a request naming OPENAI or GROK is answered by Gemini, streaming retries once before the first
-token, no key configured returns 503. One Worker secret is needed, `GEMINI_API_KEY`; `OPENAI_API_KEY` and
-`GROK_API_KEY` are no longer used anywhere (they were also only used by the unported share-journal moderation).
-Client follow-up in Phase 6: hide the provider picker in profile settings. 27 tests pass.
+**Update 2026-10-09: Gemini only.** (Superseded 2026-10-19, see below.)
+
+**Update 2026-10-19: Anthropic Claude only.** `ai.ts` now calls the Anthropic Messages API (`POST
+https://api.anthropic.com/v1/messages`, headers `x-api-key` and `anthropic-version: 2023-06-01`) and nothing else.
+All Gemini, OpenAI and Grok code is gone from the Worker; production Supabase `ai-proxy` is untouched, so 4.0
+keeps using it.
+
+- **Model:** default `claude-haiku-4-5-20251001` (constant `DEFAULT_MODEL` in `ai.ts`), overridable with the
+  `ANTHROPIC_MODEL` Worker var, no redeploy of code needed to switch.
+- **Secret:** `ANTHROPIC_API_KEY` only. Optional vars: `ANTHROPIC_MODEL`, `AI_DAILY_LIMIT`.
+- **Same contract:** request fields unchanged, any `provider` field is ignored. Streaming maps `content_block_delta`
+  text to `event: text`, and `message_start` / `message_delta` usage to the `done` event (`inputTokens`,
+  `outputTokens`); a failure before the first token retries once, later failures become `event: error`. Structured
+  output (`responseSchema`) is done by instructing JSON in the system prompt and stripping any code fence.
+  Chat turns are mapped to Claude roles (`model` becomes `assistant`), merged so roles alternate, and a leading
+  assistant turn (the welcome message) is dropped.
+- **Cost guards (Anthropic bills per token):** `max_tokens` is capped at 1024 (2048 for structured replies); only
+  the last 30 turns of a chat are sent; each user is limited to 60 AI requests per rolling 24 h (counted from
+  `ai_usage_logs`, `429` with a friendly message beyond that; `AI_DAILY_LIMIT` changes it); `ai_usage_logs` keeps
+  input and output tokens per request so real spend can be read back.
+- **Rough monthly cost for about 118 users** at Haiku 4.5 prices (USD 1 per million input tokens, 5 per million
+  output), one request being about 2,500 input tokens (system prompt plus the user-data block plus history) and 400
+  output tokens, so about USD 0.0045 per request:
+  - light (35 people use the AI, 3 requests a day): about USD 14 a month;
+  - moderate (35 people, 10 requests a day): about USD 47 a month;
+  - heavy (all 118, 10 requests a day): about USD 160 a month;
+  - theoretical ceiling if everyone hit the daily limit with long chats every day: low thousands, which is why the
+    **monthly spend limit in the Anthropic Console is the hard backstop** and should be set (USD 30 to 50 to start).
+  Re-check against real numbers after the soak: `select sum(input_tokens), sum(output_tokens) from ai_usage_logs`.
+- **Client (Phase 6):** remove the `AiProvider` picker and the provider setting; no provider choice anywhere.
+- **Sequencing:** iOS App Store release is blocked until the app transfer to the Tribe Solutions team completes, so
+  the migration ships **Android first** (Google sign-in, Play internal track soak, staged rollout) and iOS follows
+  from the same shared code once the transfer is done and the iOS App IDs exist. The Worker, schema and AI proxy are
+  platform neutral, so nothing server side waits on iOS.
+- 29 tests pass.
