@@ -36,23 +36,26 @@ export default function DeleteAccountPage() {
 
     setIsSubmitting(true);
 
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setSubmitted(true);
-    } catch {
-      setSubmitted(true);
-    } finally {
-      setIsSubmitting(false);
-    }
+    // The request goes out as an email from the user's own mail app, so we
+    // can verify it came from the address on the account before deleting.
+    const body = [
+      'Please permanently delete my Life Planner account and all associated data.',
+      '',
+      `Account email: ${email.trim()}`,
+      `Reason: ${reason || 'not given'}`,
+    ].join('\n');
+    window.location.href = `mailto:support@tribe.az?subject=${encodeURIComponent('Life Planner account deletion request')}&body=${encodeURIComponent(body)}`;
+    setSubmitted(true);
+    setIsSubmitting(false);
   };
 
   if (submitted) {
     return (
-      <div className="min-h-screen dark:bg-[#0a0a0f] bg-gray-50 dark:text-white text-gray-900 transition-colors duration-500">
+      <div className="min-h-screen dark:bg-lp-bg-dark bg-lp-bg dark:text-white text-gray-900 transition-colors duration-500">
         {/* Animated Background */}
         <div className="fixed inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-[-20%] right-[-10%] w-[50vw] h-[50vw] dark:bg-green-600/10 bg-green-200/30 rounded-full blur-[150px]" />
-          <div className="absolute bottom-[-20%] left-[-10%] w-[40vw] h-[40vw] dark:bg-emerald-600/10 bg-emerald-200/30 rounded-full blur-[150px]" />
+          <div className="absolute top-[-20%] right-[-10%] w-[50vw] h-[50vw] dark:bg-lp-primary/10 bg-lp-primary/30 rounded-full blur-[150px]" />
+          <div className="absolute bottom-[-20%] left-[-10%] w-[40vw] h-[40vw] dark:bg-lp-primary/10 bg-lp-primary/30 rounded-full blur-[150px]" />
         </div>
 
         {/* Navigation */}
@@ -63,7 +66,7 @@ export default function DeleteAccountPage() {
         >
           <div className="max-w-4xl mx-auto flex items-center justify-between">
             <Link
-              href="/lifeplanner"
+              href="/"
               className="inline-flex items-center gap-2 px-4 py-2 rounded-full dark:bg-white/10 bg-black/5 dark:hover:bg-white/20 hover:bg-black/10 transition-all dark:text-white/80 text-gray-600 backdrop-blur-sm"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -81,30 +84,29 @@ export default function DeleteAccountPage() {
             className="max-w-lg w-full"
           >
             <div className="relative">
-              <div className="absolute -inset-1 bg-gradient-to-r from-green-500 to-emerald-500 rounded-3xl blur-xl opacity-20" />
-              <div className="relative dark:bg-gray-900/80 bg-white/80 backdrop-blur-xl rounded-3xl p-8 border dark:border-white/10 border-gray-200 shadow-xl text-center">
-                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-green-500/20 flex items-center justify-center">
-                  <CheckCircle className="w-10 h-10 text-green-500" />
+              <div className="absolute -inset-1 bg-gradient-to-r from-lp-primary to-lp-primary rounded-3xl blur-xl opacity-20" />
+              <div className="relative dark:bg-lp-surface-dark bg-lp-surface backdrop-blur-xl rounded-3xl p-8 border dark:border-white/10 border-gray-200 shadow-xl text-center">
+                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-lp-primary/20 flex items-center justify-center">
+                  <CheckCircle className="w-10 h-10 text-lp-primary" />
                 </div>
-                <h1 className="text-2xl font-bold mb-4">Request Submitted</h1>
+                <h1 className="text-2xl font-bold mb-4">Send the email to finish</h1>
                 <p className="dark:text-white/70 text-gray-600 mb-6">
-                  Your account deletion request has been received. We will process your request within <strong>30 days</strong> as required by applicable regulations.
+                  Your mail app should have opened with the deletion request filled in. Send it from the email address linked to your account. If nothing opened, email <a href="mailto:support@tribe.az?subject=Life%20Planner%20account%20deletion%20request" className="text-lp-primary hover:underline">support@tribe.az</a> with the subject &quot;Life Planner account deletion request&quot;. We process requests within <strong>30 days</strong>.
                 </p>
 
-                <div className="dark:bg-emerald-500/10 bg-emerald-50 border-l-4 border-emerald-500 rounded-r-xl p-5 mb-6 text-left">
+                <div className="dark:bg-lp-primary/10 bg-lp-tint border-l-4 border-lp-primary rounded-r-xl p-5 mb-6 text-left">
                   <h3 className="font-semibold mb-2">What happens next?</h3>
                   <ul className="text-sm dark:text-white/70 text-gray-600 space-y-2">
-                    <li>• You will receive a confirmation email</li>
+                    <li>• We reply to confirm we received your request</li>
                     <li>• Your data will be permanently deleted within 30 days</li>
                     <li>• All your goals, tasks, and progress data will be removed</li>
                     <li>• Your profile and preferences will be deleted</li>
-                    <li>• Any active subscription will be cancelled</li>
-                  </ul>
+                                      </ul>
                 </div>
 
                 <p className="text-sm dark:text-white/50 text-gray-500">
                   If you have any questions, contact us at{' '}
-                  <a href="mailto:support@tribe.az" className="text-emerald-500 hover:underline">
+                  <a href="mailto:support@tribe.az" className="text-lp-primary hover:underline">
                     support@tribe.az
                   </a>
                 </p>
@@ -117,10 +119,10 @@ export default function DeleteAccountPage() {
   }
 
   return (
-    <div className="min-h-screen dark:bg-[#0a0a0f] bg-gray-50 dark:text-white text-gray-900 transition-colors duration-500">
+    <div className="min-h-screen dark:bg-lp-bg-dark bg-lp-bg dark:text-white text-gray-900 transition-colors duration-500">
       {/* Animated Background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-20%] right-[-10%] w-[50vw] h-[50vw] dark:bg-emerald-600/10 bg-emerald-200/30 rounded-full blur-[150px]" />
+        <div className="absolute top-[-20%] right-[-10%] w-[50vw] h-[50vw] dark:bg-lp-primary/10 bg-lp-primary/30 rounded-full blur-[150px]" />
         <div className="absolute bottom-[-20%] left-[-10%] w-[40vw] h-[40vw] dark:bg-red-600/10 bg-red-200/30 rounded-full blur-[150px]" />
       </div>
 
@@ -132,7 +134,7 @@ export default function DeleteAccountPage() {
       >
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Link
-            href="/lifeplanner"
+            href="/"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full dark:bg-white/10 bg-black/5 dark:hover:bg-white/20 hover:bg-black/10 transition-all dark:text-white/80 text-gray-600 backdrop-blur-sm"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -150,14 +152,14 @@ export default function DeleteAccountPage() {
           className="max-w-2xl mx-auto"
         >
           <div className="relative">
-            <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-red-500 rounded-3xl blur-xl opacity-10" />
-            <div className="relative dark:bg-gray-900/80 bg-white/80 backdrop-blur-xl rounded-3xl p-8 md:p-12 border dark:border-white/10 border-gray-200 shadow-xl">
+            <div className="absolute -inset-1 bg-gradient-to-r from-lp-primary to-red-500 rounded-3xl blur-xl opacity-10" />
+            <div className="relative dark:bg-lp-surface-dark bg-lp-surface backdrop-blur-xl rounded-3xl p-8 md:p-12 border dark:border-white/10 border-gray-200 shadow-xl">
               {/* Header */}
               <div className="text-center mb-10">
                 <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-red-500/20 flex items-center justify-center">
                   <Trash2 className="w-10 h-10 text-red-500" />
                 </div>
-                <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-emerald-500 to-red-500 bg-clip-text text-transparent">
+                <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-lp-primary to-red-500 bg-clip-text text-transparent">
                   Delete Your Account
                 </h1>
                 <p className="dark:text-white/60 text-gray-600">
@@ -180,8 +182,7 @@ export default function DeleteAccountPage() {
                       <li>• Your progress tracking history</li>
                       <li>• Notes, reflections, and journal entries</li>
                       <li>• App preferences and settings</li>
-                      <li>• Subscription and payment history</li>
-                    </ul>
+                                          </ul>
                   </div>
                 </div>
               </div>
@@ -190,8 +191,7 @@ export default function DeleteAccountPage() {
               <div className="dark:bg-amber-500/10 bg-amber-50 border-l-4 border-amber-500 p-5 rounded-r-xl mb-8">
                 <h3 className="font-semibold dark:text-amber-300 text-amber-700 mb-2">Before you delete your account</h3>
                 <ul className="text-sm dark:text-amber-300/80 text-amber-600 space-y-2">
-                  <li>• If you have an active subscription, it will be automatically cancelled</li>
-                  <li>• Consider exporting your data first from the app settings</li>
+                                    <li>• Consider exporting your data first from the app settings</li>
                   <li>• You can create a new account later, but your data cannot be recovered</li>
                   <li>• If you're having issues with the app, contact support first - we may be able to help</li>
                 </ul>
@@ -210,7 +210,7 @@ export default function DeleteAccountPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="your@email.com"
-                    className="w-full px-4 py-3 dark:bg-white/5 bg-gray-100 border dark:border-white/10 border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all dark:text-white text-gray-900 dark:placeholder:text-white/30 placeholder:text-gray-400"
+                    className="w-full px-4 py-3 dark:bg-white/5 bg-gray-100 border dark:border-white/10 border-gray-200 rounded-xl focus:ring-2 focus:ring-lp-primary focus:border-lp-primary outline-none transition-all dark:text-white text-gray-900 dark:placeholder:text-white/30 placeholder:text-gray-400"
                     required
                   />
                   <p className="mt-2 text-sm dark:text-white/50 text-gray-500">
@@ -227,7 +227,7 @@ export default function DeleteAccountPage() {
                     id="reason"
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
-                    className="w-full px-4 py-3 dark:bg-white/5 bg-gray-100 border dark:border-white/10 border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all dark:text-white text-gray-900"
+                    className="w-full px-4 py-3 dark:bg-white/5 bg-gray-100 border dark:border-white/10 border-gray-200 rounded-xl focus:ring-2 focus:ring-lp-primary focus:border-lp-primary outline-none transition-all dark:text-white text-gray-900"
                   >
                     <option value="">Select a reason...</option>
                     <option value="no_longer_using">I'm no longer using the app</option>
@@ -235,7 +235,6 @@ export default function DeleteAccountPage() {
                     <option value="too_many_notifications">Too many notifications</option>
                     <option value="not_helpful">The app wasn't helpful for my goals</option>
                     <option value="found_alternative">Found an alternative app</option>
-                    <option value="subscription_too_expensive">Subscription is too expensive</option>
                     <option value="technical_issues">Technical issues with the app</option>
                     <option value="achieved_goals">I've achieved my goals</option>
                     <option value="other">Other reason</option>
@@ -307,7 +306,7 @@ export default function DeleteAccountPage() {
               <div className="mt-8 text-center">
                 <p className="dark:text-white/60 text-gray-600">
                   Having issues? Contact us at{' '}
-                  <a href="mailto:support@tribe.az" className="text-emerald-500 hover:underline font-medium">
+                  <a href="mailto:support@tribe.az" className="text-lp-primary hover:underline font-medium">
                     support@tribe.az
                   </a>
                 </p>
@@ -318,8 +317,8 @@ export default function DeleteAccountPage() {
 
               {/* Links */}
               <div className="mt-8 pt-6 border-t dark:border-white/10 border-gray-200 flex justify-center gap-6 text-sm">
-                <Link href="/lifeplanner/privacy-policy" className="text-emerald-500 hover:underline">Privacy Policy</Link>
-                <Link href="/lifeplanner/terms" className="text-emerald-500 hover:underline">Terms & Conditions</Link>
+                <Link href="/privacy-policy" className="text-lp-primary hover:underline">Privacy Policy</Link>
+                <Link href="/terms" className="text-lp-primary hover:underline">Terms & Conditions</Link>
               </div>
             </div>
           </div>

@@ -4,13 +4,13 @@ export default function LifePlannerTermsPage() {
   return (
     <LegalLayout
       title="Terms & Conditions"
-      lastUpdated="November 29, 2024"
+      lastUpdated="October 22, 2026"
       backLink="/"
       backLabel="Back to Life Planner"
       accentColor="emerald"
     >
       <p className="dark:text-white/80 text-gray-700 mb-8 text-lg">
-        Welcome to <span className="font-bold text-emerald-500">Life Planner - Goals Tracker</span>!
+        Welcome to <span className="font-bold text-lp-primary">Life Planner - Goals Tracker</span>!
         These Terms and Conditions ("Terms") govern your use of the Life Planner mobile application ("App," "Service," or "we").
         By downloading, installing, or using our App, you agree to be bound by these Terms.
       </p>
@@ -128,10 +128,10 @@ export default function LifePlannerTermsPage() {
           </ul>
         </div>
 
-        <div className="dark:bg-emerald-500/10 bg-emerald-50 border-l-4 border-emerald-500 p-5 rounded-r-lg my-4">
-          <h3 className="font-semibold dark:text-emerald-300 text-emerald-700 mb-2">Goal Achievement Disclaimer</h3>
-          <p className="dark:text-emerald-300 text-emerald-700">Life Planner is a tool to help you organize and track your goals. Success depends on your own effort and actions. We do not guarantee:</p>
-          <ul className="list-disc pl-6 space-y-2 dark:text-emerald-300 text-emerald-700 mt-2">
+        <div className="dark:bg-lp-primary/10 bg-lp-tint border-l-4 border-lp-primary p-5 rounded-r-lg my-4">
+          <h3 className="font-semibold dark:text-lp-primary text-lp-primary mb-2">Goal Achievement Disclaimer</h3>
+          <p className="dark:text-lp-primary text-lp-primary">Life Planner is a tool to help you organize and track your goals. Success depends on your own effort and actions. We do not guarantee:</p>
+          <ul className="list-disc pl-6 space-y-2 dark:text-lp-primary text-lp-primary mt-2">
             <li>Achievement of any specific goals</li>
             <li>Specific outcomes or results</li>
             <li>Professional advice (financial, health, career, or otherwise)</li>
@@ -197,15 +197,16 @@ export default function LifePlannerTermsPage() {
 
       <LegalHighlight title="16. Contact Information" accentColor="emerald">
         <p>If you have any questions about these Terms, please contact us:</p>
-        <p className="mt-2"><strong>Email:</strong> <a href="mailto:support@tribe.az" className="text-emerald-500 hover:underline">support@tribe.az</a></p>
+        <p className="mt-2"><strong>Email:</strong> <a href="mailto:support@tribe.az" className="text-lp-primary hover:underline">support@tribe.az</a></p>
         <p><strong>App:</strong> Life Planner - Goals Tracker</p>
-        <p><strong>Developer:</strong> tribe.az</p>
+        <p><strong>Developer:</strong> Tribe Solutions MMC (tribe.az)</p>
       </LegalHighlight>
 
       <LegalFooter links={[
-        { label: 'Privacy Policy', href: '/lifeplanner/privacy-policy' },
-        { label: 'Delete Account', href: '/lifeplanner/delete-account' },
-        { label: 'Back to Life Planner', href: '/lifeplanner' },
+        { label: 'Privacy Policy', href: '/privacy-policy' },
+        { label: 'Delete Account', href: '/delete-account' },
+        { label: 'Support', href: '/support' },
+        { label: 'Back to Life Planner', href: '/' },
       ]} />
 
       <p className="mt-8 text-center dark:text-white/50 text-gray-500 text-sm">
