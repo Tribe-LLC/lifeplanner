@@ -1,0 +1,13 @@
+// Life Planner website: a static Next.js export served as Worker static assets.
+// Build with `npm run build` (writes out/), then `npm run deploy`.
+{
+  "name": "lifeplanner-site",
+  "account_id": "16708206509436d326b3d9041f8873cd",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./out",
+    "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash"
+  },
+  "workers_dev": true
+}

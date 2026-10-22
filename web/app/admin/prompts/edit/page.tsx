@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 
@@ -13,10 +13,9 @@ interface SystemPrompt {
   updated_at: string;
 }
 
-export default function EditPromptPage() {
-  const params = useParams();
+function EditPromptPageInner() {
   const router = useRouter();
-  const key = params.key as string;
+  const key = useSearchParams().get('key') ?? '';
 
   const [prompt, setPrompt] = useState<SystemPrompt | null>(null);
   const [content, setContent] = useState('');
@@ -125,5 +124,14 @@ export default function EditPromptPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// useSearchParams needs a Suspense boundary in a static export.
+export default function EditPromptPage() {
+  return (
+    <Suspense fallback={null}>
+      <EditPromptPageInner />
+    </Suspense>
   );
 }

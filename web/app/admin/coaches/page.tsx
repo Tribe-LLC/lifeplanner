@@ -89,7 +89,7 @@ export default function CoachesListPage() {
 
             {/* Edit link */}
             <Link
-              href={`/admin/coaches/${coach.id}`}
+              href={`/admin/coaches/edit?id=${encodeURIComponent(coach.id)}`}
               className="flex-shrink-0 text-xs text-indigo-400 hover:text-indigo-300 font-medium"
             >
               Edit

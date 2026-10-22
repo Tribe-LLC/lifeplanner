@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import localFont from 'next/font/local'
 import Script from 'next/script'
-import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/landing/theme-provider'
 import { FirebaseAnalytics } from '@/components/firebase-analytics'
 import './globals.css'
@@ -89,7 +88,6 @@ fbq('track', 'PageView');`,
           {children}
         </ThemeProvider>
         <FirebaseAnalytics />
-        <Analytics />
       </body>
     </html>
   )
