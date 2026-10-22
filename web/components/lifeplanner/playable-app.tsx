@@ -5,8 +5,20 @@ import Image from 'next/image';
 
 type ScreenId = 'today' | 'checkin' | 'life' | 'coach' | 'money' | 'travel' | 'meals';
 
-// A hotspot is a tappable area on a screenshot, in percent of the screen.
+// A hotspot is a tappable area, in percent of the full 1080x2400 capture.
+// The images have the status bar and gesture bar (63px each) cut off, so
+// toImage() maps those numbers onto the cropped picture.
 type Hotspot = { label: string; to: ScreenId; x: number; y: number; w: number; h: number };
+
+const CAPTURE_H = 2400;
+const BAR_H = 63;
+const IMAGE_H = CAPTURE_H - 2 * BAR_H;
+
+function toImage(h: Hotspot) {
+  const top = ((h.y / 100) * CAPTURE_H - BAR_H) / IMAGE_H * 100;
+  const height = (h.h / 100) * CAPTURE_H / IMAGE_H * 100;
+  return { left: `${h.x}%`, top: `${Math.max(0, top)}%`, width: `${h.w}%`, height: `${height}%` };
+}
 
 const TABS: Hotspot[] = [
   { label: 'Today tab', to: 'today', x: 0, y: 90, w: 33, h: 8 },
@@ -98,7 +110,7 @@ export function PlayableApp({ intro }: { intro: ReactNode }) {
 
       <div className="order-2 md:col-start-2 md:row-start-1 md:row-span-2 md:sticky md:top-6 mx-auto w-[260px] sm:w-[300px]">
         <div className="rounded-[2.25rem] bg-lp-ink p-2 shadow-2xl shadow-lp-primary/20 dark:bg-black">
-          <div className="relative overflow-hidden rounded-[1.75rem] aspect-[1080/2400] bg-lp-bg">
+          <div className="relative overflow-hidden rounded-[1.75rem] aspect-[1080/2274] bg-lp-bg">
             {(Object.keys(SCREENS) as ScreenId[]).map((id) => (
               <Image
                 key={id}
@@ -119,13 +131,13 @@ export function PlayableApp({ intro }: { intro: ReactNode }) {
                 aria-label={h.label}
                 onClick={() => go(h.to)}
                 className="absolute rounded-xl cursor-pointer transition-colors hover:bg-lp-primary/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-lp-primary"
-                style={{ left: `${h.x}%`, top: `${h.y}%`, width: `${h.w}%`, height: `${h.h}%` }}
+                style={toImage(h)}
               />
             ))}
             {!touched && (
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute left-1/2 top-[54.5%] -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/50 animate-ping"
+                className="pointer-events-none absolute left-1/2 top-[54.7%] -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/50 animate-ping"
               />
             )}
           </div>
