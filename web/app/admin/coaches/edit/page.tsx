@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useState, useCallback, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 
@@ -27,8 +27,8 @@ interface BuiltinCoach {
   display_order: number;
 }
 
-export default function CoachEditPage() {
-  const { id } = useParams<{ id: string }>();
+function CoachEditPageInner() {
+  const id = useSearchParams().get('id') ?? '';
   const router = useRouter();
 
   const [coach, setCoach] = useState<BuiltinCoach | null>(null);
@@ -203,5 +203,14 @@ export default function CoachEditPage() {
         </Link>
       </div>
     </div>
+  );
+}
+
+// useSearchParams needs a Suspense boundary in a static export.
+export default function CoachEditPage() {
+  return (
+    <Suspense fallback={null}>
+      <CoachEditPageInner />
+    </Suspense>
   );
 }

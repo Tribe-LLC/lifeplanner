@@ -11,7 +11,10 @@ interface Props {
   params: Promise<{ slug: string }>;
 }
 
-export const revalidate = 3600;
+// Static export: posts are fetched when the site is built and deployed.
+export const dynamic = 'force-static';
+
+export const dynamicParams = false;
 
 export async function generateStaticParams() {
   return (await getAllSlugs()).map((slug) => ({ slug }));

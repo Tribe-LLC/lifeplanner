@@ -1,0 +1,30 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": [
+          "A265CB68GF.az.tribe.lifeplanner",
+          "9T27H6JKJM.az.tribe.lifeplanner"
+        ],
+        "components": [
+          {
+            "/": "/*"
+          }
+        ]
+      },
+      {
+        "appID": "A265CB68GF.az.tribe.lifeplanner",
+        "paths": [
+          "/*"
+        ]
+      },
+      {
+        "appID": "9T27H6JKJM.az.tribe.lifeplanner",
+        "paths": [
+          "/*"
+        ]
+      }
+    ]
+  }
+}

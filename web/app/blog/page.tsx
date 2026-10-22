@@ -26,7 +26,8 @@ export const metadata: Metadata = {
   },
 };
 
-export const revalidate = 3600;
+// Static export: posts are fetched when the site is built and deployed.
+export const dynamic = 'force-static';
 
 export default async function BlogListPage() {
   const posts = await getAllPosts();

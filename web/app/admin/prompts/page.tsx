@@ -57,7 +57,7 @@ export default function PromptsListPage() {
               </p>
             </div>
             <Link
-              href={`/admin/prompts/${p.key}`}
+              href={`/admin/prompts/edit?key=${encodeURIComponent(p.key)}`}
               className="flex-shrink-0 text-xs text-indigo-400 hover:text-indigo-300 font-medium"
             >
               Edit

@@ -9,7 +9,7 @@ This is a multi-target monorepo, not just an Android app. Be aware of which surf
 - `app/shared/` — Kotlin Multiplatform library (Android + iOS). All app logic, UI, widgets, services, and Android `actual` implementations live here. Namespace `az.tribe.lifeplanner.shared`. Uses the AGP 9 `com.android.kotlin.multiplatform.library` plugin and exposes an iOS framework named `ComposeApp`.
 - `app/androidApp/` — Thin Android application module. Contains only `AndroidManifest.xml`, `google-services.json`, `proguard-rules.pro`, the signing/release build types, Firebase Gradle plugins (`google-services`, `crashlytics`, `firebase-perf`), and Play services (in-app update/review). Application id `az.tribe.lifeplanner`. Depends on `:app:shared` via `implementation(projects.app.shared)`.
 - `app/iosApp/` — Swift/SwiftUI host that embeds the `ComposeApp` framework from `:app:shared`. iOS Kotlin code changes happen in `app/shared/src/iosMain` or `commonMain`, not here. Xcode run-script invokes `./gradlew :app:shared:embedAndSignAppleFrameworkForXcode`.
-- `web/` — Separate Next.js 16 / React 19 marketing + admin + chat site (`lifeplanner-web`). Independent from the mobile app; uses its own `package.json`.
+- `web/` — Separate Next.js 16 / React 19 marketing + admin + chat site (`lifeplanner-web`), built as a static export (`output: 'export'`, no server routes) and served from Cloudflare as the Worker `lifeplanner-site` (static assets, Tribe account). Independent from the mobile app; uses its own `package.json`.
 - `supabase/` — Postgres schema (`schema.sql`), seed SQL for built-in coaches and system prompts, and Edge Functions (`functions/ai-proxy`, `auth-redirect`, `mcp-server`, `persona-sync-webhook`, `resend-verification`).
 - `../lifeplanner-assets/` (sibling, not in this repo) — `docs/`, `design/`, `screenshots/`, `postman/`, `scripts/` live here. `../lifeplanner-assets/docs/terminology.md` remains the authoritative glossary for domain terms (categories, XP rules, badge tiers, dependency types, sync states, route names) — consult it before naming new concepts.
 
@@ -49,9 +49,11 @@ Coverage (Kover) is not currently wired into the new module layout — re-add fi
 cd web
 npm install
 npm run dev      # next dev
-npm run build    # next build
-npm run lint     # next lint
+npm run build    # static export into web/out (needs NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY)
+npm run deploy   # wrangler deploy of web/out to the lifeplanner-site Worker
 ```
+
+Deploys are manual (nothing deploys on merge). Blog posts are fetched at build time, so a new post needs a rebuild and deploy. The app-link files are static in `web/public/.well-known/`, with JSON headers set in `web/public/_headers`. Never add a server route that uses the Supabase service-role key.
 
 ## Local configuration
 
