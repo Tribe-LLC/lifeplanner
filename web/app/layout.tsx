@@ -1,20 +1,29 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import localFont from 'next/font/local'
 import Script from 'next/script'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/landing/theme-provider'
 import { FirebaseAnalytics } from '@/components/firebase-analytics'
 import './globals.css'
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans' })
+// Satoshi is the app's own typeface (copied from composeResources/font).
+const satoshi = localFont({
+  src: [
+    { path: './fonts/Satoshi-Regular.ttf', weight: '400', style: 'normal' },
+    { path: './fonts/Satoshi-Medium.ttf', weight: '500', style: 'normal' },
+    { path: './fonts/Satoshi-Bold.ttf', weight: '700', style: 'normal' },
+  ],
+  variable: '--font-sans',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   title: {
-    default: 'Life Planner — AI-Powered Goals, Habits & Personal Growth App',
-    template: '%s — Life Planner',
+    default: 'Life Planner: your whole life, one calm planner',
+    template: '%s | Life Planner',
   },
   description:
-    'Set goals, build habits, journal your thoughts, and get personalized AI coaching — all in one beautifully designed app. Free to use, offline-first.',
+    'Habits, money, travel, meals, study and more in one calm planner, with a coach that sees your whole week. Free on iPhone and Android.',
 }
 
 export default function RootLayout({
@@ -24,7 +33,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} font-sans antialiased`}>
+      <body className={`${satoshi.variable} font-sans antialiased`}>
         <Script
           id="gtm-script"
           strategy="beforeInteractive"

@@ -36,6 +36,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'yearly',
       priority: 0.3,
     },
+    {
+      url: 'https://lifeplanner.tribe.az/support',
+      lastModified: new Date('2026-10-22'),
+      changeFrequency: 'yearly',
+      priority: 0.4,
+    },
     ...blogEntries,
   ];
 }

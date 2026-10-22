@@ -1,406 +1,122 @@
-'use client';
-
 import Link from 'next/link';
 import Image from 'next/image';
-import { motion } from 'framer-motion';
-import { Download } from 'lucide-react';
-import { ThemeToggle } from '@/components/landing/theme-toggle';
 import { SmartAppBanner } from '@/components/lifeplanner/smart-app-banner';
+import { PlayableApp } from '@/components/lifeplanner/playable-app';
 
-const features = [
-  {
-    title: "Goals & Milestones",
-    description: "Set SMART goals with AI, track progress with milestones, and visualize dependencies on an interactive graph.",
-    screenshot: "/lifeplanner/screenshots/en_02_goals.png",
-  },
-  {
-    title: "Habit Tracker",
-    description: "Build daily routines with streak tracking, XP rewards, and habit-to-goal linking to stay consistent.",
-    screenshot: "/lifeplanner/screenshots/en_03_habits.png",
-  },
-  {
-    title: "Journal & Mood",
-    description: "Reflect daily with mood tracking, tags, and an AI-assisted journal wizard with built-in prompt categories.",
-    screenshot: "/lifeplanner/screenshots/en_04_journal.png",
-  },
-  {
-    title: "AI Coach",
-    description: "Chat with 7 unique coach personas or create your own. Get actionable advice based on your goals and progress.",
-    screenshot: "/lifeplanner/screenshots/en_05_ai_coach.png",
-  },
-  {
-    title: "Focus Timer",
-    description: "Pomodoro sessions with ambient sounds and visual themes. Tie focus time directly to your goal milestones.",
-    screenshot: "/lifeplanner/screenshots/en_06_focus_timer.png",
-  },
-];
+const APP_STORE_URL = 'https://apps.apple.com/app/life-planner-ai-coach/id6745726864';
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=az.tribe.lifeplanner';
 
-// NOTE: keep these in sync with docs/terminology.md and the live app build.
-// Last verified against code: 19 May 2026 (BadgeType.kt = 30 badges across 8 badge-categories;
-// GoalCategory = 7; Life Balance adds an 8th "Personal Growth"; 28 templates).
-const highlights = [
-  "AI-powered SMART goal generation",
-  "7 life categories (Career, Financial, Physical, Social, Emotional, Spiritual, Family) + Life Balance overlay",
-  "30 badges across 8 categories with XP & leveling",
-  "Goal dependency graph — visualize what blocks what",
-  "Life Balance analyzer with trend tracking",
-  "Offline-first with optional cloud sync",
-  "28 goal templates to get started fast",
-  "Full data export & import",
-];
+function AppleLogo() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden="true">
+      <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
+    </svg>
+  );
+}
+
+function PlayLogo() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden="true">
+      <path d="M3.6 2.2c-.3.3-.4.7-.4 1.2v17.2c0 .5.1.9.4 1.2l.1.1 9.6-9.6v-.2L3.7 2.1l-.1.1zm12.9 12.9-3.2-3.2v-.2l3.2-3.2.1.1 3.8 2.2c1.1.6 1.1 1.6 0 2.2l-3.8 2.2-.1-.1zm.1.1L13.3 12l-9.7 9.7c.4.4.9.4 1.6.1l11.4-6.6m0-6.4L5.2 2.2C4.5 1.8 4 1.9 3.6 2.3l9.7 9.7 3.3-3.3z" />
+    </svg>
+  );
+}
+
+function StoreButtons() {
+  const base =
+    'inline-flex items-center gap-3 rounded-2xl px-5 py-3 font-medium transition-colors';
+  return (
+    <div className="flex flex-wrap gap-3">
+      <a
+        href={APP_STORE_URL}
+        className={`${base} bg-lp-ink text-white hover:bg-black dark:bg-white dark:text-lp-ink dark:hover:bg-lp-tint`}
+      >
+        <AppleLogo />
+        <span className="text-left leading-tight">
+          <span className="block text-[11px] opacity-70">Download on the</span>
+          App Store
+        </span>
+      </a>
+      <a
+        href={PLAY_STORE_URL}
+        className={`${base} bg-lp-ink text-white hover:bg-black dark:bg-white dark:text-lp-ink dark:hover:bg-lp-tint`}
+      >
+        <PlayLogo />
+        <span className="text-left leading-tight">
+          <span className="block text-[11px] opacity-70">Get it on</span>
+          Google Play
+        </span>
+      </a>
+    </div>
+  );
+}
 
 export default function LifePlannerPage() {
   return (
-    <div className="min-h-screen dark:bg-[#0a0a0f] bg-gray-50 dark:text-white text-gray-900 transition-colors duration-500">
+    <div className="min-h-screen bg-lp-bg text-lp-ink dark:bg-lp-bg-dark dark:text-lp-ink-dark">
       <SmartAppBanner />
 
-      {/* Animated Background */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-20%] right-[-10%] w-[60vw] h-[60vw] dark:bg-emerald-600/20 bg-emerald-300/30 rounded-full blur-[150px] animate-pulse" />
-        <div className="absolute bottom-[-20%] left-[-10%] w-[50vw] h-[50vw] dark:bg-teal-600/20 bg-teal-300/30 rounded-full blur-[150px] animate-pulse" style={{ animationDelay: '1s' }} />
-      </div>
+      <header className="max-w-6xl mx-auto px-4 sm:px-6 py-5 flex items-center justify-between">
+        <Link href="/" className="flex items-center gap-3">
+          <Image src="/lifeplanner/icon-light.png" alt="" width={36} height={36} className="rounded-xl dark:hidden" />
+          <Image src="/lifeplanner/icon-dark.png" alt="" width={36} height={36} className="rounded-xl hidden dark:block" />
+          <span className="text-lg font-bold">Life Planner</span>
+        </Link>
+        <nav className="flex items-center gap-5 text-sm text-lp-muted dark:text-lp-muted-dark">
+          <Link href="/blog" className="hover:text-lp-primary">Blog</Link>
+          <Link href="/support" className="hover:text-lp-primary">Support</Link>
+        </nav>
+      </header>
 
-      {/* Navigation */}
-      <motion.nav
-        initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="fixed top-0 left-0 right-0 z-50 p-4"
-      >
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl overflow-hidden">
-              <Image src="/lifeplanner/icon-dark.png" alt="Life Planner" width={32} height={32} className="hidden dark:block" />
-              <Image src="/lifeplanner/icon-light.png" alt="Life Planner" width={32} height={32} className="dark:hidden" />
-            </div>
-            <span className="font-bold bg-gradient-to-r from-emerald-500 to-teal-600 bg-clip-text text-transparent">
-              Life Planner
-            </span>
-          </div>
-          <ThemeToggle />
-        </div>
-      </motion.nav>
-
-      {/* Hero Section */}
-      <section className="relative z-10 min-h-screen flex items-center pt-20">
-        <div className="container mx-auto px-6">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            {/* Left Content */}
-            <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6 }}
-            >
-              {/* App Icon & Name */}
-              <div className="flex items-center gap-4 mb-8">
-                <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-lg shadow-emerald-500/25">
-                  <Image
-                    src="/lifeplanner/icon-dark.png"
-                    alt="Life Planner icon"
-                    width={64}
-                    height={64}
-                    className="hidden dark:block"
-                  />
-                  <Image
-                    src="/lifeplanner/icon-light.png"
-                    alt="Life Planner icon"
-                    width={64}
-                    height={64}
-                    className="dark:hidden"
-                  />
+      <main>
+        <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-8 pb-16">
+          <PlayableApp
+            intro={
+              <div className="mb-8">
+                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-[1.08] tracking-tight">
+                  Your whole life,{' '}
+                  <span className="text-lp-primary dark:text-lp-primary-dark">one calm planner.</span>
+                </h1>
+                <p className="mt-6 text-lg text-lp-muted dark:text-lp-muted-dark max-w-xl">
+                  Habits, money, travel, meals, study and more, in one place. Pick the areas that matter to you, and a coach that sees your whole week helps you keep going.
+                </p>
+                <div className="mt-8">
+                  <StoreButtons />
                 </div>
-                <div>
-                  <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-500 to-teal-600 bg-clip-text text-transparent">
-                    Life Planner
-                  </h1>
-                  <p className="dark:text-white/60 text-gray-500 text-sm">AI Coach</p>
-                </div>
+                <p className="mt-4 text-sm text-lp-muted dark:text-lp-muted-dark">Free on iPhone and Android.</p>
               </div>
+            }
+          />
+        </section>
 
-              {/* Headline */}
-              <h2 className="text-5xl xl:text-6xl font-bold leading-tight mb-6">
-                Your goals, habits &
-                <span className="block bg-gradient-to-r from-emerald-500 to-teal-600 bg-clip-text text-transparent">
-                  AI-powered growth
-                </span>
-              </h2>
-
-              <p className="text-xl dark:text-white/60 text-gray-600 mb-8 max-w-lg">
-                Set goals, build habits, journal your thoughts, and get personalized AI coaching — all in one beautifully designed app.
-              </p>
-
-              {/* Download Buttons */}
-              <div className="flex flex-col sm:flex-row gap-4 mb-8">
-                <motion.a
-                  href="https://apps.apple.com/app/life-planner-ai-coach/id6745726864"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="group relative overflow-hidden px-8 py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl font-semibold text-lg inline-flex items-center gap-3 shadow-lg shadow-emerald-500/25"
-                >
-                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.53 4.08zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
-                  </svg>
-                  <div className="text-left">
-                    <div className="text-xs opacity-80">Download on the</div>
-                    <div className="text-base font-bold -mt-0.5">App Store</div>
-                  </div>
-                  <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500" />
-                </motion.a>
-
-                <motion.a
-                  href="https://play.google.com/store/apps/details?id=az.tribe.lifeplanner"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="group px-8 py-4 dark:bg-white/10 bg-gray-900 dark:text-white text-white rounded-2xl font-semibold text-lg inline-flex items-center gap-3 border dark:border-white/20 border-transparent dark:hover:bg-white/20 hover:bg-gray-800 transition-all"
-                >
-                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.198l2.807 1.626a1 1 0 0 1 0 1.73l-2.808 1.626L15.206 12l2.492-2.491zM5.864 2.658L16.8 8.99l-2.302 2.302-8.634-8.634z"/>
-                  </svg>
-                  <div className="text-left">
-                    <div className="text-xs opacity-80">Get it on</div>
-                    <div className="text-base font-bold -mt-0.5">Google Play</div>
-                  </div>
-                </motion.a>
-              </div>
-
-              {/* Trust strip — swap placeholders for real review numbers once you have them.
-                  TODO(marketing): replace "Loved by early users" with rating once App Store
-                  ratings stabilise (e.g. "4.8★ · 200+ ratings"). */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.4 }}
-                className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm dark:text-white/60 text-gray-600"
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="text-amber-400">★★★★★</span>
-                  <span>Loved by early users</span>
-                </span>
-                <span aria-hidden className="dark:text-white/20 text-gray-300">·</span>
-                <span>Available on iOS &amp; Android</span>
-                <span aria-hidden className="dark:text-white/20 text-gray-300">·</span>
-                <span>Offline-first, your data stays yours</span>
-                <span aria-hidden className="dark:text-white/20 text-gray-300">·</span>
-                <span>Free to start</span>
-              </motion.div>
-            </motion.div>
-
-            {/* Right - App Screenshot */}
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              className="relative flex justify-center"
-            >
-              <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-[3rem] blur-3xl opacity-20" />
-                <div className="relative w-72 rounded-[2rem] overflow-hidden shadow-2xl shadow-emerald-900/30">
-                  <Image
-                    src="/lifeplanner/screenshots/en_01_home.png"
-                    alt="Life Planner home screen"
-                    width={320}
-                    height={640}
-                    className="w-full h-auto"
-                    priority
-                  />
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* Features with Screenshots */}
-      <section className="relative z-10 py-24">
-        <div className="container mx-auto px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center mb-20"
-          >
-            <h2 className="text-4xl md:text-5xl font-bold mb-6">
-              Everything you need to
-              <span className="block bg-gradient-to-r from-emerald-500 to-teal-600 bg-clip-text text-transparent">level up your life</span>
-            </h2>
-            <p className="text-xl dark:text-white/60 text-gray-600 max-w-2xl mx-auto">
-              Goals, habits, journaling, AI coaching, and focus tools — designed to work together.
-            </p>
-          </motion.div>
-
-          <div className="space-y-32">
-            {features.map((feature, index) => (
-              <motion.div
-                key={feature.title}
-                initial={{ opacity: 0, y: 40 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-100px" }}
-                transition={{ duration: 0.5 }}
-                className={`grid md:grid-cols-2 gap-12 items-center ${index % 2 === 1 ? 'md:direction-rtl' : ''}`}
-              >
-                <div className={index % 2 === 1 ? 'md:order-2' : ''}>
-                  <h3 className="text-3xl md:text-4xl font-bold mb-4">{feature.title}</h3>
-                  <p className="text-lg dark:text-white/60 text-gray-600 leading-relaxed">
-                    {feature.description}
-                  </p>
-                </div>
-                <div className={`flex justify-center ${index % 2 === 1 ? 'md:order-1' : ''}`}>
-                  <div className="relative">
-                    <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/20 to-teal-600/20 rounded-[2rem] blur-2xl" />
-                    <div className="relative w-60 rounded-[1.5rem] overflow-hidden shadow-xl shadow-black/20">
-                      <Image
-                        src={feature.screenshot}
-                        alt={feature.title}
-                        width={280}
-                        height={560}
-                        className="w-full h-auto"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Highlights Grid */}
-      <section className="relative z-10 py-24">
-        <div className="container mx-auto px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center mb-16"
-          >
-            <h2 className="text-4xl md:text-5xl font-bold mb-6">
-              And <span className="bg-gradient-to-r from-emerald-500 to-teal-600 bg-clip-text text-transparent">so much more</span>
-            </h2>
-          </motion.div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-5xl mx-auto">
-            {highlights.map((item, index) => (
-              <motion.div
-                key={item}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.05 }}
-                className="p-5 rounded-2xl dark:bg-white/5 bg-white border dark:border-white/10 border-gray-200 backdrop-blur-sm"
-              >
-                <div className="w-2 h-2 rounded-full bg-emerald-500 mb-3" />
-                <p className="text-sm font-medium dark:text-white/80 text-gray-700">{item}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Gamification Section */}
-      <section className="relative z-10 py-16">
-        <div className="container mx-auto px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="max-w-3xl mx-auto p-8 rounded-3xl dark:bg-emerald-500/10 bg-emerald-50 border dark:border-emerald-500/20 border-emerald-200"
-          >
-            <div className="text-center">
-              <div className="text-4xl mb-4">🎮</div>
-              <h3 className="text-2xl font-bold mb-3 dark:text-emerald-200 text-emerald-800">Stay Motivated with Gamification</h3>
-              <p className="dark:text-emerald-200/70 text-emerald-700">
-                Earn XP for completing goals, habits, and journal entries. Level up from Novice to Life Master,
-                unlock 29 badges, and take on daily, weekly, and monthly challenges. Your growth journey just got fun.
+        <section className="max-w-6xl mx-auto px-4 sm:px-6 pb-20">
+          <div className="rounded-3xl bg-gradient-to-br from-lp-primary to-lp-violet px-6 py-12 sm:px-12 text-white flex flex-col md:flex-row md:items-center md:justify-between gap-8">
+            <div>
+              <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">Start with one area today.</h2>
+              <p className="mt-3 text-white/80 max-w-md">
+                Pick what matters right now. Add more when you are ready. Your data stays yours.
               </p>
             </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="relative z-10 py-32">
-        <div className="container mx-auto px-6 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-          >
-            <h2 className="text-4xl md:text-6xl font-bold mb-6">
-              Start planning your
-              <span className="block bg-gradient-to-r from-emerald-500 to-teal-600 bg-clip-text text-transparent">best life today</span>
-            </h2>
-            <p className="text-xl dark:text-white/60 text-gray-600 mb-12 max-w-2xl mx-auto">
-              Free to use. No account required. Your data stays on your device.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <motion.a
-                href="https://apps.apple.com/app/life-planner-ai-coach/id6745726864"
-                target="_blank"
-                rel="noopener noreferrer"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="inline-flex items-center gap-3 px-10 py-5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-full font-bold text-xl shadow-lg shadow-emerald-500/25"
-              >
-                <Download className="w-6 h-6" />
-                App Store
-              </motion.a>
-              <motion.a
-                href="https://play.google.com/store/apps/details?id=az.tribe.lifeplanner"
-                target="_blank"
-                rel="noopener noreferrer"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="inline-flex items-center gap-3 px-10 py-5 dark:bg-white/10 bg-gray-900 text-white rounded-full font-bold text-xl border dark:border-white/20 border-transparent dark:hover:bg-white/20 hover:bg-gray-800 transition-all"
-              >
-                <Download className="w-6 h-6" />
-                Google Play
-              </motion.a>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="relative z-10 border-t dark:border-white/10 border-gray-200">
-        <div className="container mx-auto px-6 py-12">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl overflow-hidden">
-                <Image src="/lifeplanner/icon-dark.png" alt="Life Planner" width={40} height={40} className="hidden dark:block" />
-                <Image src="/lifeplanner/icon-light.png" alt="Life Planner" width={40} height={40} className="dark:hidden" />
-              </div>
-              <div>
-                <span className="text-xl font-bold bg-gradient-to-r from-emerald-500 to-teal-600 bg-clip-text text-transparent">
-                  Life Planner
-                </span>
-                <p className="dark:text-white/40 text-gray-500 text-sm">by tribe.az</p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-center gap-6 text-sm">
-              <Link href="/blog" className="dark:text-white/60 text-gray-600 hover:text-emerald-500 transition-colors">
-                Blog
-              </Link>
-              <Link href="/privacy-policy" className="dark:text-white/60 text-gray-600 hover:text-emerald-500 transition-colors">
-                Privacy Policy
-              </Link>
-              <Link href="/terms" className="dark:text-white/60 text-gray-600 hover:text-emerald-500 transition-colors">
-                Terms
-              </Link>
-              <Link href="/delete-account" className="dark:text-white/60 text-gray-600 hover:text-emerald-500 transition-colors">
-                Delete Account
-              </Link>
-              <a href="mailto:support@tribe.az" className="dark:text-white/60 text-gray-600 hover:text-emerald-500 transition-colors">
-                Contact
+            <div className="flex flex-wrap gap-3">
+              <a href={APP_STORE_URL} className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 font-medium text-lp-ink hover:bg-lp-tint">
+                <AppleLogo /> App Store
+              </a>
+              <a href={PLAY_STORE_URL} className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 font-medium text-lp-ink hover:bg-lp-tint">
+                <PlayLogo /> Google Play
               </a>
             </div>
           </div>
+        </section>
+      </main>
 
-          <div className="mt-8 pt-8 border-t dark:border-white/10 border-gray-200 text-center dark:text-white/40 text-gray-500 text-sm">
-            <p>&copy; {new Date().getFullYear()} tribe.az. All rights reserved.</p>
+      <footer className="border-t border-lp-line dark:border-lp-line-dark">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between text-sm text-lp-muted dark:text-lp-muted-dark">
+          <p>&copy; {new Date().getFullYear()} Tribe Solutions MMC</p>
+          <div className="flex flex-wrap gap-5">
+            <Link href="/support" className="hover:text-lp-primary">Support</Link>
+            <Link href="/privacy-policy" className="hover:text-lp-primary">Privacy</Link>
+            <Link href="/terms" className="hover:text-lp-primary">Terms</Link>
+            <Link href="/delete-account" className="hover:text-lp-primary">Delete account</Link>
           </div>
         </div>
       </footer>

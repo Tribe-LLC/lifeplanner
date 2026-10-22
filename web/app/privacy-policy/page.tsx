@@ -4,14 +4,14 @@ export default function LifePlannerPrivacyPolicyPage() {
   return (
     <LegalLayout
       title="Privacy Policy"
-      lastUpdated="March 14, 2025"
+      lastUpdated="October 22, 2026"
       backLink="/"
       backLabel="Back to Life Planner"
       accentColor="emerald"
     >
       <p className="dark:text-white/80 text-gray-700 mb-8 text-lg">
-        This Privacy Policy describes how <span className="font-bold text-emerald-500">Life Planner: AI Coach</span> (&quot;Life Planner,&quot; &quot;we,&quot; &quot;our,&quot; or &quot;us&quot;),
-        operated by tribe.az, collects, uses, shares, and protects your personal information when you use our mobile application
+        This Privacy Policy describes how <span className="font-bold text-lp-primary">Life Planner: AI Coach</span> (&quot;Life Planner,&quot; &quot;we,&quot; &quot;our,&quot; or &quot;us&quot;),
+        operated by Tribe Solutions MMC (&quot;tribe.az&quot;), collects, uses, shares, and protects your personal information when you use our mobile application
         available on Android (Google Play) and iOS (App Store). This policy applies to all users worldwide.
       </p>
 
@@ -146,7 +146,7 @@ export default function LifePlannerPrivacyPolicyPage() {
           <li><strong className="dark:text-white text-gray-900">Right to Opt-Out of Sale/Sharing:</strong> We do not sell your personal information. California residents may still exercise this right under CCPA/CPRA</li>
           <li><strong className="dark:text-white text-gray-900">Right to Non-Discrimination:</strong> We will not discriminate against you for exercising your privacy rights</li>
         </ul>
-        <p className="mt-3">To exercise any of these rights, please visit our <LegalLink href="/lifeplanner/delete-account">account deletion page</LegalLink> or contact us at <a href="mailto:support@tribe.az" className="text-emerald-500 hover:underline">support@tribe.az</a>. We will respond to verified requests within 30 days (or sooner where required by law).</p>
+        <p className="mt-3">To exercise any of these rights, please visit our <LegalLink href="/delete-account">account deletion page</LegalLink> or contact us at <a href="mailto:support@tribe.az" className="text-lp-primary hover:underline">support@tribe.az</a>. We will respond to verified requests within 30 days (or sooner where required by law).</p>
       </LegalSection>
 
       <LegalSection title="9. California Residents (CCPA/CPRA)">
@@ -157,7 +157,7 @@ export default function LifePlannerPrivacyPolicyPage() {
           <li>You may request deletion of your personal information</li>
           <li>You may designate an authorized agent to make requests on your behalf</li>
         </ul>
-        <p className="mt-3">To submit a verifiable consumer request, contact us at <a href="mailto:support@tribe.az" className="text-emerald-500 hover:underline">support@tribe.az</a>.</p>
+        <p className="mt-3">To submit a verifiable consumer request, contact us at <a href="mailto:support@tribe.az" className="text-lp-primary hover:underline">support@tribe.az</a>.</p>
       </LegalSection>
 
       <LegalSection title="10. International Data Transfers">
@@ -173,7 +173,7 @@ export default function LifePlannerPrivacyPolicyPage() {
 
       <LegalSection title="11. Children's Privacy">
         <p>Life Planner is not directed at children under the age of 13 (or the applicable minimum age in your jurisdiction, such as 16 in certain EEA countries). We do not knowingly collect personal information from children below the applicable age threshold.</p>
-        <p className="mt-3">If you are a parent or guardian and believe your child has provided us with personal information, please contact us immediately at <a href="mailto:support@tribe.az" className="text-emerald-500 hover:underline">support@tribe.az</a>. We will take steps to delete such information promptly.</p>
+        <p className="mt-3">If you are a parent or guardian and believe your child has provided us with personal information, please contact us immediately at <a href="mailto:support@tribe.az" className="text-lp-primary hover:underline">support@tribe.az</a>. We will take steps to delete such information promptly.</p>
       </LegalSection>
 
       <LegalSection title="12. Cookies and Tracking Technologies">
@@ -200,16 +200,17 @@ export default function LifePlannerPrivacyPolicyPage() {
 
       <LegalHighlight title="15. Contact Us" accentColor="emerald">
         <p>If you have any questions, concerns, or requests regarding this Privacy Policy or our data practices, please contact us:</p>
-        <p className="mt-2"><strong>Email:</strong> <a href="mailto:support@tribe.az" className="text-emerald-500 hover:underline">support@tribe.az</a></p>
+        <p className="mt-2"><strong>Email:</strong> <a href="mailto:support@tribe.az" className="text-lp-primary hover:underline">support@tribe.az</a></p>
         <p><strong>App:</strong> Life Planner: AI Coach</p>
-        <p><strong>Developer:</strong> tribe.az</p>
+        <p><strong>Developer:</strong> Tribe Solutions MMC (tribe.az)</p>
         <p className="mt-3">If you are located in the EEA and believe your data protection rights have not been adequately addressed, you have the right to lodge a complaint with your local supervisory authority.</p>
       </LegalHighlight>
 
       <LegalFooter links={[
-        { label: 'Terms & Conditions', href: '/lifeplanner/terms' },
-        { label: 'Delete Account', href: '/lifeplanner/delete-account' },
-        { label: 'Back to Life Planner', href: '/lifeplanner' },
+        { label: 'Terms & Conditions', href: '/terms' },
+        { label: 'Delete Account', href: '/delete-account' },
+        { label: 'Support', href: '/support' },
+        { label: 'Back to Life Planner', href: '/' },
       ]} />
 
       <p className="mt-8 text-center dark:text-white/50 text-gray-500 text-sm">
