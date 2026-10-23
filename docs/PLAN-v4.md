@@ -62,6 +62,17 @@ Carried from the 29 Sep session plus what this session found.
 9. **Confirm Crashlytics receives from the release build.** PostHog has `$exception` capture off,
    so Crashlytics is the only crash signal that exists.
 
+10. **Sign-up emails fail in production (found 2026-10-23).** `POST /auth/v1/signup` returns
+    `unexpected_failure (Error sending confirmation email)`, so nobody can create an account right
+    now; magic link and resend will fail the same way. Check the Supabase Auth SMTP settings and the
+    email provider before release. This also blocked the signed-in delete-account round trip.
+
+Done 2026-10-23: in-app account deletion (Apple 5.1.1(v), Play account-deletion policy). You ->
+"Delete account" (guests: "Erase data on this device") -> confirmation sheet -> edge function
+`delete-account` (deployed, v1) removes the auth user and every cascaded row -> local DB cleared ->
+Welcome screen. Guest path verified on `LP_V4_Dev` against production (anonymous user deleted, 200).
+Signed-in path covered by `AuthViewModelTest` only, see item 10.
+
 Known rough edges, deliberate for now: routines outlive a deleted plan; Health distance is not
 imported so run plans fall back to minutes; the coach's step suggestion has never been called live;
 the workout swap nudge is untested on a device (needs real sleep data); undoing a workout does not

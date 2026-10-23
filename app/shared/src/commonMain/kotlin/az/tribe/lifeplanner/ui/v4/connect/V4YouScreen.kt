@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
@@ -60,6 +61,7 @@ import az.tribe.lifeplanner.ui.v4.travel.TravelField
 import az.tribe.lifeplanner.ui.viewmodel.AuthState
 import az.tribe.lifeplanner.ui.viewmodel.AuthViewModel
 import az.tribe.lifeplanner.ui.viewmodel.deleteAccount
+import az.tribe.lifeplanner.ui.viewmodel.eraseDeviceData
 import az.tribe.lifeplanner.ui.viewmodel.signOut
 import az.tribe.lifeplanner.ui.viewmodel.updateDisplayName
 import com.adamglin.PhosphorIcons
@@ -97,6 +99,7 @@ fun V4YouScreen(
     val learned by nudges.learned.collectAsState()
     val theme by themeController.mode.collectAsState()
     var account by remember { mutableStateOf(false) }
+    var deleteSheet by remember { mutableStateOf(false) }
     // Re-read on every visit, so coming back from the paywall after a purchase flips the row.
     var premium by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(Unit) { premium = premiumGate.isPremium() }
@@ -205,6 +208,13 @@ fun V4YouScreen(
             ),
         ) { onRoute(it.route) }
 
+        RowsCard(
+            listOf(
+                if (isGuest) YouRow("Erase data on this device", "Removes everything saved on this phone", "erase")
+                else YouRow("Delete account", "Removes your account and all synced data, for good", "delete"),
+            ),
+        ) { deleteSheet = true }
+
         Text(
             "Life Planner ${BuildKonfig.APP_VERSION}",
             style = V4.type.caption, color = c.ink3, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
@@ -212,6 +222,69 @@ fun V4YouScreen(
     }
 
     if (account) AccountSheet(authState, authViewModel, sync.state, onDismiss = { account = false })
+    if (deleteSheet) DeleteAccountSheet(isGuest = isGuest, authViewModel = authViewModel, onDismiss = { deleteSheet = false })
+}
+
+/**
+ * The confirmation before deleting an account (or, for a guest, erasing this phone). Plain words about
+ * what goes and that it cannot be undone. On success the view model lands on Unauthenticated, which
+ * navigation turns into the Welcome screen, so the sheet only has to close itself.
+ */
+@Composable
+private fun DeleteAccountSheet(isGuest: Boolean, authViewModel: AuthViewModel, onDismiss: () -> Unit) {
+    val c = V4.colors
+    var busy by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
+    val title = if (isGuest) "Erase data on this device?" else "Delete your account?"
+    val removed = if (isGuest) listOf(
+        "Every habit, plan, log and journal entry saved on this phone",
+        "Your coach chats and settings",
+    ) else listOf(
+        "Your login and the account itself",
+        "Everything synced to it: habits, plans, money, meals, journal and coach chats",
+        "The copy on this phone",
+    )
+    AreaSheet(title, onDismiss = { if (!busy) onDismiss() }) {
+        Text(
+            if (isGuest) "You are using LifePlanner without an account, so nothing is stored on our servers. This removes what is on this phone:"
+            else "This removes, for good:",
+            style = V4.type.body, color = c.ink2,
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            removed.forEach { line ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("\u2022", style = V4.type.body, color = c.ink2)
+                    Text(line, style = V4.type.body, color = c.ink)
+                }
+            }
+        }
+        Text("This cannot be undone. There is no backup to restore from afterwards.", style = V4.type.bodyStrong, color = c.ink)
+        if (failed) {
+            Text(
+                "That did not work. Check your connection and try again. Nothing was removed.",
+                style = V4.type.body, color = c.danger,
+            )
+        }
+        V4PrimaryButton(
+            if (busy) (if (isGuest) "Erasing..." else "Deleting...") else (if (isGuest) "Erase everything on this phone" else "Delete my account"),
+            onClick = {
+                if (busy) return@V4PrimaryButton
+                busy = true; failed = false
+                if (isGuest) authViewModel.eraseDeviceData { busy = false; onDismiss() }
+                else authViewModel.deleteAccount { ok -> busy = false; if (ok) onDismiss() else failed = true }
+            },
+            enabled = !busy,
+            container = c.danger,
+            content = Color.White,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        V4TextButton(
+            if (isGuest) "Keep my data" else "Keep my account",
+            onClick = { if (!busy) onDismiss() },
+            color = c.ink2,
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+        )
+    }
 }
 
 private fun syncLine(state: SyncState): String = when (state) {
@@ -221,16 +294,13 @@ private fun syncLine(state: SyncState): String = when (state) {
     SyncState.ERROR -> "Sync is stuck, it will try again"
 }
 
-/** Name, sync and sign out, without leaving v4. */
+/** Name, sync and sign out, without leaving v4. Deleting the account lives on the You page itself. */
 @Composable
 private fun AccountSheet(authState: AuthState, authViewModel: AuthViewModel, sync: SyncState, onDismiss: () -> Unit) {
     val c = V4.colors
     val user = (authState as? AuthState.Authenticated)?.user
     var name by remember { mutableStateOf(user?.displayName.orEmpty()) }
     var confirm by remember { mutableStateOf(false) }
-    var deleting by remember { mutableStateOf(false) }
-    var busy by remember { mutableStateOf(false) }
-    var failed by remember { mutableStateOf(false) }
     AreaSheet("Your account", onDismiss) {
         user?.email?.let { Text(it, style = V4.type.body, color = c.ink2) }
         Text(syncLine(sync), style = V4.type.caption, color = c.ink3)
@@ -242,31 +312,6 @@ private fun AccountSheet(authState: AuthState, authViewModel: AuthViewModel, syn
             modifier = Modifier.fillMaxWidth(),
         )
         V4TextButton("Sign out", onClick = { confirm = true }, color = c.ink2, modifier = Modifier.align(Alignment.CenterHorizontally))
-        V4TextButton("Delete account", onClick = { deleting = true }, color = c.ink3, modifier = Modifier.align(Alignment.CenterHorizontally))
-    }
-    if (deleting) {
-        AlertDialog(
-            onDismissRequest = { if (!busy) deleting = false },
-            title = { Text("Delete your account?") },
-            text = {
-                Text(
-                    if (failed) "That did not work. Check your connection and try again."
-                    else "This permanently deletes your account and everything in it, here and on our servers: habits, plans, money, journal and coach chats. It cannot be undone."
-                )
-            },
-            confirmButton = {
-                V4TextButton(
-                    if (busy) "Deleting..." else "Delete everything",
-                    onClick = {
-                        if (busy) return@V4TextButton
-                        busy = true; failed = false
-                        authViewModel.deleteAccount { ok -> busy = false; if (ok) { deleting = false; onDismiss() } else failed = true }
-                    },
-                    color = androidx.compose.ui.graphics.Color(0xFFD33F3F),
-                )
-            },
-            dismissButton = { V4TextButton("Keep my account", onClick = { if (!busy) deleting = false }) },
-        )
     }
     if (confirm) {
         val unsynced = sync == SyncState.OFFLINE || sync == SyncState.ERROR

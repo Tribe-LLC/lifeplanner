@@ -111,6 +111,131 @@ class AuthViewModelTest {
         }
     }
 
+    // ── Delete account ───────────────────────────────────────────────
+
+    @Test
+    fun `deleteAccount removes the server account, then clears the phone and lands on first run`() = runTest(testDispatcher) {
+        val user = createTestUser()
+        mockUserRepository.currentUser = user
+        viewModel._authState.value = AuthState.Authenticated(user)
+        viewModel._hasCompletedOnboarding.value = true
+        mockAuthService.deleteResult = true
+
+        var result: Boolean? = null
+        viewModel.deleteAccount { result = it }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(true, result)
+        assertEquals(1, mockAuthService.deleteAccountCalls)
+        assertTrue(mockUserRepository.clearAllLocalDataCalled, "local database must be wiped after the server delete")
+        assertTrue(mockAuthService.signOutCalled, "the dead session must be dropped")
+        assertNull(mockUserRepository.currentUser)
+        assertEquals(false, viewModel.hasCompletedOnboarding.value, "first run again")
+        assertTrue(viewModel.authState.value is AuthState.Unauthenticated, "got ${viewModel.authState.value}")
+    }
+
+    @Test
+    fun `deleteAccount reports the result only after the phone is clear`() = runTest(testDispatcher) {
+        val user = createTestUser()
+        mockUserRepository.currentUser = user
+        viewModel._authState.value = AuthState.Authenticated(user)
+
+        var clearedWhenReported: Boolean? = null
+        viewModel.deleteAccount { clearedWhenReported = mockUserRepository.clearAllLocalDataCalled }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(true, clearedWhenReported, "the sheet must not close before the local wipe has happened")
+    }
+
+    @Test
+    fun `deleteAccount keeps everything when the server refuses`() = runTest(testDispatcher) {
+        val user = createTestUser()
+        mockUserRepository.currentUser = user
+        viewModel._authState.value = AuthState.Authenticated(user)
+        viewModel._hasCompletedOnboarding.value = true
+        mockAuthService.deleteResult = false
+
+        var result: Boolean? = null
+        viewModel.deleteAccount { result = it }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(false, result)
+        assertFalse(mockUserRepository.clearAllLocalDataCalled, "a failed delete must not touch local data")
+        assertFalse(mockAuthService.signOutCalled)
+        assertEquals(user, mockUserRepository.currentUser)
+        assertEquals(true, viewModel.hasCompletedOnboarding.value)
+        assertTrue(viewModel.authState.value is AuthState.Authenticated, "user stays signed in, got ${viewModel.authState.value}")
+    }
+
+    @Test
+    fun `deleteAccount treats a thrown error like a refusal`() = runTest(testDispatcher) {
+        val user = createTestUser()
+        mockUserRepository.currentUser = user
+        viewModel._authState.value = AuthState.Authenticated(user)
+        mockAuthService.deleteThrows = true
+
+        var result: Boolean? = null
+        viewModel.deleteAccount { result = it }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(false, result)
+        assertFalse(mockUserRepository.clearAllLocalDataCalled)
+        assertTrue(viewModel.authState.value is AuthState.Authenticated)
+    }
+
+    // ── Erase data on this device (guests) ───────────────────────────
+
+    @Test
+    fun `eraseDeviceData for an anonymous guest wipes the phone and drops the anonymous login`() = runTest(testDispatcher) {
+        val guest = createTestUser(isGuest = true)
+        mockUserRepository.currentUser = guest
+        viewModel._authState.value = AuthState.Guest(guest)
+        viewModel._isLocalOnlyGuest.value = false
+
+        var done = false
+        viewModel.eraseDeviceData { done = true }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(done)
+        assertEquals(1, mockAuthService.deleteAccountCalls, "the anonymous auth user is server junk, remove it")
+        assertTrue(mockUserRepository.clearAllLocalDataCalled)
+        assertTrue(viewModel.authState.value is AuthState.Unauthenticated)
+    }
+
+    @Test
+    fun `eraseDeviceData for a local-only guest never calls the server`() = runTest(testDispatcher) {
+        val guest = createTestUser(id = "local_guest", isGuest = true)
+        mockUserRepository.currentUser = guest
+        viewModel._authState.value = AuthState.Guest(guest)
+        viewModel._isLocalOnlyGuest.value = true
+
+        var done = false
+        viewModel.eraseDeviceData { done = true }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(done)
+        assertEquals(0, mockAuthService.deleteAccountCalls)
+        assertTrue(mockUserRepository.clearAllLocalDataCalled)
+        assertFalse(viewModel.isLocalOnlyGuest.value)
+        assertTrue(viewModel.authState.value is AuthState.Unauthenticated)
+    }
+
+    @Test
+    fun `eraseDeviceData still clears the phone when the server cleanup fails`() = runTest(testDispatcher) {
+        val guest = createTestUser(isGuest = true)
+        mockUserRepository.currentUser = guest
+        viewModel._authState.value = AuthState.Guest(guest)
+        mockAuthService.deleteThrows = true
+
+        var done = false
+        viewModel.eraseDeviceData { done = true }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(done)
+        assertTrue(mockUserRepository.clearAllLocalDataCalled)
+        assertTrue(viewModel.authState.value is AuthState.Unauthenticated)
+    }
+
     @Test
     fun `completeOnboarding marks onboarding complete for current user`() = runTest(testDispatcher) {
         val testUser = createTestUser()
@@ -183,7 +308,13 @@ class MockAuthService : AuthService {
     }
 
     var deleteResult = true
-    override suspend fun deleteAccount(): Boolean = deleteResult
+    var deleteThrows = false
+    var deleteAccountCalls = 0
+    override suspend fun deleteAccount(): Boolean {
+        deleteAccountCalls++
+        if (deleteThrows) throw Exception("Test error: delete failed")
+        return deleteResult
+    }
 
     override suspend fun signOut() {
         signOutCalled = true

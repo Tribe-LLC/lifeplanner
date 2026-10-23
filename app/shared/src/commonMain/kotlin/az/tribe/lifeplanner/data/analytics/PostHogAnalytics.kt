@@ -96,6 +96,8 @@ object Analytics {
         PostHogAnalytics.capture("signin_completed", mapOf("method" to method))
 
     fun signOutCompleted() = PostHogAnalytics.capture("signout_completed")
+    fun accountDeleted() = PostHogAnalytics.capture("account_deleted")
+    fun deviceDataErased() = PostHogAnalytics.capture("device_data_erased")
 
     fun accountSecured() = PostHogAnalytics.capture("account_secured")
 

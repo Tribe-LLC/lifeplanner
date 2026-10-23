@@ -470,40 +470,72 @@ fun AuthViewModel.updateDisplayName(newName: String) {
  * Always transitions to Unauthenticated so navigation to Welcome fires even on errors.
  */
 fun AuthViewModel.signOut() {
-    viewModelScope.launch {
+    viewModelScope.launch { performSignOut() }
+}
+
+/**
+ * The sign-out itself, awaited. Used by [signOut], [deleteAccount] and [eraseDeviceData], which
+ * need to know when the phone is actually clear before reporting back.
+ */
+internal suspend fun AuthViewModel.performSignOut() {
+    try {
+        syncManager.onLogout()
+        userRepository.clearAllLocalData()
         try {
-            syncManager.onLogout()
-            userRepository.clearAllLocalData()
-            try {
-                authService.signOut()
-            } catch (e: Exception) {
-                Logger.w("AuthViewModel", e) { "Supabase sign-out failed (continuing): ${e.message}" }
-            }
-            Analytics.signOutCompleted()
-            PostHogAnalytics.reset()
+            authService.signOut()
         } catch (e: Exception) {
-            Logger.e("AuthViewModel", e) { "Sign-out error: ${e.message}" }
-        } finally {
-            settings.remove(PENDING_VERIFY_EMAIL_KEY)
-            // Coach onboarding is per-account, not per-device, clear so next login always re-onboards
-            settings.remove("coach_onboarding_complete")
-            _isLocalOnlyGuest.value = false
-            _hasCompletedOnboarding.value = false
-            _authState.value = AuthState.Unauthenticated
-            Logger.d("AuthViewModel") { "Sign out completed" }
+            Logger.w("AuthViewModel", e) { "Supabase sign-out failed (continuing): ${e.message}" }
         }
+        Analytics.signOutCompleted()
+        PostHogAnalytics.reset()
+    } catch (e: Exception) {
+        Logger.e("AuthViewModel", e) { "Sign-out error: ${e.message}" }
+    } finally {
+        settings.remove(PENDING_VERIFY_EMAIL_KEY)
+        // Coach onboarding is per-account, not per-device, clear so next login always re-onboards
+        settings.remove("coach_onboarding_complete")
+        _isLocalOnlyGuest.value = false
+        _hasCompletedOnboarding.value = false
+        _authState.value = AuthState.Unauthenticated
+        Logger.d("AuthViewModel") { "Sign out completed" }
     }
 }
 
 /**
- * Deletes the account on the server, then clears the phone exactly like a sign out. [onResult] gets
- * false when the server refused (offline, expired session), in which case nothing is cleared.
+ * Deletes the account on the server (edge function delete-account removes the auth user and every
+ * row tied to it), then clears the phone exactly like a sign out and lands on first run.
+ * [onResult] gets false when the server refused (offline, expired session); nothing is cleared then,
+ * so the user keeps their data and can try again.
  */
 fun AuthViewModel.deleteAccount(onResult: (Boolean) -> Unit) {
     viewModelScope.launch {
-        val ok = try { authService.deleteAccount() } catch (e: Exception) { false }
-        if (ok) signOut()
+        val ok = try { authService.deleteAccount() } catch (e: Exception) {
+            Logger.e("AuthViewModel", e) { "Delete account failed: ${e.message}" }
+            false
+        }
+        if (ok) {
+            Analytics.accountDeleted()
+            performSignOut()
+        }
         onResult(ok)
+    }
+}
+
+/**
+ * The guest's version of delete account: there is no account, so this wipes everything saved on this
+ * phone and returns to first run. A guest signed in anonymously on the server also has that anonymous
+ * login removed, best effort, so nothing is left behind there either. Never fails for the user.
+ */
+fun AuthViewModel.eraseDeviceData(onDone: () -> Unit) {
+    viewModelScope.launch {
+        if (!_isLocalOnlyGuest.value) {
+            try { authService.deleteAccount() } catch (e: Exception) {
+                Logger.w("AuthViewModel", e) { "Anonymous login cleanup failed (continuing): ${e.message}" }
+            }
+        }
+        Analytics.deviceDataErased()
+        performSignOut()
+        onDone()
     }
 }
 
