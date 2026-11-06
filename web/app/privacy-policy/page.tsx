@@ -4,7 +4,7 @@ export default function LifePlannerPrivacyPolicyPage() {
   return (
     <LegalLayout
       title="Privacy Policy"
-      lastUpdated="October 22, 2026"
+      lastUpdated="November 6, 2026"
       backLink="/"
       backLabel="Back to Life Planner"
       accentColor="emerald"
@@ -47,6 +47,7 @@ export default function LifePlannerPrivacyPolicyPage() {
         <ul className="list-disc pl-6 space-y-2">
           <li><strong className="dark:text-white text-gray-900">Authentication Providers:</strong> When you sign in with Google or Apple via Firebase Auth, we receive your basic profile information (name, email, profile picture) as authorized by you</li>
           <li><strong className="dark:text-white text-gray-900">Analytics Services:</strong> Aggregated usage data to help us understand how the app is used</li>
+          <li><strong className="dark:text-white text-gray-900">Microsoft Clarity:</strong> This website uses Microsoft Clarity and cookies to understand how visitors use it. Clicks, scrolling and session recordings are shared with Microsoft. What you type is hidden in the recordings. See the <a className="underline" href="https://privacy.microsoft.com/privacystatement">Microsoft Privacy Statement</a>.</li>
           <li><strong className="dark:text-white text-gray-900">Advertising Networks:</strong> Google AdMob may collect advertising identifiers and device information for free-tier users to serve relevant advertisements</li>
         </ul>
       </LegalSection>
